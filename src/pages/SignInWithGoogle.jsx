@@ -10,6 +10,10 @@ function SignInwithGoogle() {
 
   async function googleLogin() {
     const provider = new GoogleAuthProvider();
+    provider.setCustomParameters({
+      prompt: "select_account", // Forces the account selection dialog
+    });
+
     try {
       const result = await signInWithPopup(auth, provider);
       const user = result.user;
@@ -23,8 +27,8 @@ function SignInwithGoogle() {
           lastName: "",
         });
 
-        // Redirect to the profile page after successful login
-        navigate("/Profile"); // This ensures it navigates to the profile page
+        // Redirect to the profile page
+        navigate("/Profile");
       }
     } catch (error) {
       console.error("Error logging in with Google:", error.message);
