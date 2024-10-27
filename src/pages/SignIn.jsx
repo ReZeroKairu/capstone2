@@ -20,7 +20,7 @@ function SignIn() {
       setAlert({ message: "User logged in successfully!", type: "success" });
 
       // Navigate to profile page
-      navigate("/Profile");
+      navigate("/Home");
 
       // Hide the alert after 3 seconds
       setTimeout(() => setAlert({ message: "", type: "" }), 3000);

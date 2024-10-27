@@ -6,6 +6,7 @@ import { useNavigate } from "react-router-dom";
 function Profile() {
   const [userDetails, setUserDetails] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState(""); // Add error state
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -14,11 +15,17 @@ function Profile() {
         // Fetch user data from Firestore
         const docRef = doc(db, "Users", user.uid);
         const docSnap = await getDoc(docRef);
+
         if (docSnap.exists()) {
           setUserDetails(docSnap.data());
           console.log(docSnap.data());
         } else {
-          console.log("No such user data!");
+          // User not found in Firestore, log them out and show error
+          setErrorMessage("User does not exist. Please contact support.");
+          await auth.signOut(); // Sign out the user
+          setTimeout(() => {
+            navigate("/SignIn"); // Redirect to Sign In after showing the message
+          }, 2000);
         }
       } else {
         // Redirect to SignIn if no user is logged in
@@ -42,6 +49,10 @@ function Profile() {
 
   if (loading) {
     return <p className="text-center text-gray-500">Loading...</p>;
+  }
+
+  if (errorMessage) {
+    return <p className="text-center text-red-500">{errorMessage}</p>; // Display error if user not found
   }
 
   return (

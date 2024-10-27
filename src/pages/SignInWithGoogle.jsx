@@ -28,7 +28,7 @@ function SignInwithGoogle() {
         });
 
         // Redirect to the profile page
-        navigate("/Profile");
+        navigate("/Home");
       }
     } catch (error) {
       console.error("Error logging in with Google:", error.message);
