@@ -9,6 +9,7 @@ import SignIn from "./pages/SignIn";
 import SignUp from "./pages/SignUp";
 import Profile from "./pages/Profile";
 import { auth } from "./firebase/firebase";
+import Home from "./pages/Home";
 
 function App() {
   const [user, setUser] = useState(null);
@@ -31,13 +32,15 @@ function App() {
               {/* Redirect to Profile if user is authenticated, else go to SignIn */}
               <Route
                 path="/"
-                element={user ? <Navigate to="/Profile" /> : <SignIn />}
+                element={user ? <Navigate to="/Home" /> : <SignIn />}
               />
-              <Route path="/SignIn" element={<SignIn />} />
+              <Route path="/Home" element={<Home />} />
+              <Route path="/Profile" element={<Profile />} />
               <Route path="/SignUp" element={<SignUp />} />
+              <Route path="/SignIn" element={<SignIn />} />
               <Route
-                path="/Profile"
-                element={user ? <Profile /> : <Navigate to="/SignIn" />}
+                path="/Home"
+                element={user ? <Home /> : <Navigate to="/SignIn" />}
               />
             </Routes>
           </div>
