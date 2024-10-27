@@ -29,6 +29,7 @@ function App() {
         <div className="auth-wrapper">
           <div className="auth-inner">
             <Routes>
+              
               {/* Redirect to Profile if user is authenticated, else go to SignIn */}
               <Route
                 path="/"
