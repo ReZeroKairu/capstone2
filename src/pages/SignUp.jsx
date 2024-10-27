@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { createUserWithEmailAndPassword } from "firebase/auth";
 import { auth, db } from "../firebase/firebase";
 import { setDoc, doc } from "firebase/firestore";
+import Navbar from "../components/Navbar"; // Import the Navbar component
 
 function SignUp() {
   const [email, setEmail] = useState("");
@@ -51,7 +52,7 @@ function SignUp() {
         // Success message
         setSuccessMessage("User registered successfully!");
         setTimeout(() => {
-          window.location.href = "/Profile"; // Redirect to profile page after a short delay
+          window.location.href = "/Home"; // Redirect to home page after a short delay
         }, 1000);
       } catch (error) {
         console.error("Error writing document to Firestore: ", error.message);
@@ -66,90 +67,97 @@ function SignUp() {
   };
 
   return (
-    <div className="max-w-md mx-auto p-6 bg-white shadow-md rounded-lg mt-10">
-      <h3 className="text-2xl font-semibold mb-6 text-center">Sign Up</h3>
+    <div className="min-h-screen flex flex-col">
+      {/* Include Navbar component */}
+      <Navbar user={null} onLogout={() => {}} />
 
-      {/* Display error message */}
-      {errorMessage && (
-        <div className="mb-4 text-red-600 text-center">{errorMessage}</div>
-      )}
+      <div className="max-w-lg mx-auto p-6 bg-white shadow-md rounded-lg mt-32  flex-grow">
+        <h3 className="text-2xl font-semibold mb-6 text-center">Sign Up</h3>
 
-      {/* Display success message */}
-      {successMessage && (
-        <div className="mb-4 text-green-600 text-center">{successMessage}</div>
-      )}
+        {/* Display error message */}
+        {errorMessage && (
+          <div className="mb-4 text-red-600 text-center">{errorMessage}</div>
+        )}
 
-      <form onSubmit={handleRegister} className="space-y-4">
-        <div>
-          <label className="block text-sm font-medium text-gray-700">
-            First Name:
-          </label>
-          <input
-            type="text"
-            className="w-full mt-1 p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-            placeholder="Enter your first name"
-            value={firstName}
-            onChange={(e) => setFirstName(e.target.value)}
-          />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700">
-            Last Name:
-          </label>
-          <input
-            type="text"
-            className="w-full mt-1 p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-            placeholder="Enter your last name"
-            value={lastName}
-            onChange={(e) => setLastName(e.target.value)}
-          />
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700">
-            Email address
-          </label>
-          <input
-            type="email"
-            className="w-full mt-1 p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-            placeholder="Enter email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-          />
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700">
-            Password
-          </label>
-          <input
-            type="password"
-            className="w-full mt-1 p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-            placeholder="Enter password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
-        </div>
-
-        <div className="p-4">
-          <button
-            type="submit"
-            className={`w-full bg-blue-600 text-white py-2 px-4 rounded-md ${
-              loading ? "opacity-70" : ""
-            }`}
-            disabled={loading}
-          >
-            {loading ? "Signing Up..." : "Sign Up"}
-          </button>
-
-          <div className="mt-6 text-center">
-            <p>Already have an account?</p>
-            <a href="/SignIn" className="text-blue-500">
-              Sign In
-            </a>
+        {/* Display success message */}
+        {successMessage && (
+          <div className="mb-4 text-green-600 text-center">
+            {successMessage}
           </div>
-        </div>
-      </form>
+        )}
+
+        <form onSubmit={handleRegister} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700">
+              First Name:
+            </label>
+            <input
+              type="text"
+              className="w-full mt-1 p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+              placeholder="Enter your first name"
+              value={firstName}
+              onChange={(e) => setFirstName(e.target.value)}
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700">
+              Last Name:
+            </label>
+            <input
+              type="text"
+              className="w-full mt-1 p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+              placeholder="Enter your last name"
+              value={lastName}
+              onChange={(e) => setLastName(e.target.value)}
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700">
+              Email address
+            </label>
+            <input
+              type="email"
+              className="w-full mt-1 p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+              placeholder="Enter email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700">
+              Password
+            </label>
+            <input
+              type="password"
+              className="w-full mt-1 p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+              placeholder="Enter password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
+          </div>
+
+          <div className="p-4">
+            <button
+              type="submit"
+              className={`w-full bg-blue-600 text-white py-2 px-4 rounded-md ${
+                loading ? "opacity-70" : ""
+              }`}
+              disabled={loading}
+            >
+              {loading ? "Signing Up..." : "Sign Up"}
+            </button>
+
+            <div className="mt-6 text-center">
+              <p>Already have an account?</p>
+              <a href="/SignIn" className="text-blue-500">
+                Sign In
+              </a>
+            </div>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }
