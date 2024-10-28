@@ -138,13 +138,13 @@ const Navbar = ({ user, onLogout }) => {
         </nav>
       )}
 
-      <div className="bg-red-900 text-white py-1 fixed w-full mt-14 z-10">
+      <div className="bg-red-800 text-white py-1 fixed w-full mt-14 z-10">
         <div className="flex justify-end mr-4">
           <button
             onClick={toggleContactDropdown}
             className="text-white text-sm"
           >
-            CONTACT US
+            Contact Us
           </button>
         </div>
         {/* Contact Dropdown Menu */}
@@ -153,9 +153,10 @@ const Navbar = ({ user, onLogout }) => {
             contactDropdownOpen ? "max-h-40 opacity-100" : "max-h-0 opacity-0"
           }`}
         >
-          <div className="w-full bg-red-900 rounded-md shadow-lg">
-            <div className="flex flex-col items-center p-4">
-              <h2 className="text-lg font-semibold">Get in Touch</h2>
+          <div className="w-full bg-red-800  shadow-lg">
+            <div className="flex flex-col  p-4">
+              <p className="text-yellow-200">Ms. Leilani G. Pimentel</p>
+              <p className="text-gray-200">Publication Officer</p>
               <p className="text-gray-200">You can reach us through:</p>
               <ul className="list-disc pl-5 text-gray-200">
                 <li>Email: support@pubtrack.com</li>
