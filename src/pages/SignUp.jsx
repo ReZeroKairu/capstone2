@@ -2,7 +2,6 @@ import React, { useState } from "react";
 import { createUserWithEmailAndPassword } from "firebase/auth";
 import { auth, db } from "../firebase/firebase";
 import { setDoc, doc } from "firebase/firestore";
-import Navbar from "../components/Navbar"; // Import the Navbar component
 
 function SignUp() {
   const [email, setEmail] = useState("");
@@ -68,10 +67,7 @@ function SignUp() {
 
   return (
     <div className="min-h-screen flex flex-col">
-      {/* Include Navbar component */}
-      <Navbar user={null} onLogout={() => {}} />
-
-      <div className="max-w-lg mx-auto p-6 bg-white shadow-md rounded-lg mt-32  flex-grow">
+      <div className="max-w-lg mx-auto p-6 bg-white shadow-md rounded-lg mt-32 flex-grow">
         <h3 className="text-2xl font-semibold mb-6 text-center">Sign Up</h3>
 
         {/* Display error message */}
