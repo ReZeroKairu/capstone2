@@ -3,7 +3,6 @@ import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { auth } from "../firebase/firebase"; // Adjust the path based on your project structure
 import SignInwithGoogle from "../pages/SignInWithGoogle"; // Google SignIn component
-import Navbar from "../components/Navbar"; // Import the Navbar component
 
 function SignIn() {
   const [email, setEmail] = useState("");
@@ -20,7 +19,7 @@ function SignIn() {
       // Show success alert
       setAlert({ message: "User logged in successfully!", type: "success" });
 
-      // Navigate to profile page
+      // Navigate to home page
       navigate("/home"); // Use lowercase 'home' if your route is defined as such
 
       // Hide the alert after 3 seconds
@@ -38,9 +37,6 @@ function SignIn() {
 
   return (
     <div className="min-h-screen flex flex-col">
-      {/* Include Navbar component */}
-      <Navbar user={null} onLogout={() => {}} />
-
       <form
         onSubmit={handleSubmit}
         className="flex-grow flex items-center justify-center"

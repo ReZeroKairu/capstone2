@@ -45,7 +45,11 @@ function Home() {
 
         {/* Logo and Text Overlay */}
         <div className="relative flex flex-col items-center justify-center h-full bg-black bg-opacity-50 text-white">
-          <img src={pubtracklogo} alt="PubTrack Logo" className="h-96 mb-6" />
+          <img
+            src={pubtracklogo}
+            alt="PubTrack Logo"
+            className="h-96 mb-6 ml-96"
+          />
         </div>
       </main>
     </div>

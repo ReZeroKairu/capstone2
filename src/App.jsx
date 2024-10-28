@@ -8,8 +8,9 @@ import {
 import SignIn from "./pages/SignIn";
 import SignUp from "./pages/SignUp";
 import Profile from "./pages/Profile";
-import { auth } from "./firebase/firebase";
 import Home from "./pages/Home";
+import Navbar from "./components/Navbar";
+import { auth } from "./firebase/firebase";
 
 function App() {
   const [user, setUser] = useState(null);
@@ -25,24 +26,21 @@ function App() {
 
   return (
     <Router>
+      <Navbar user={user} onLogout={() => auth.signOut()} />{" "}
+      {/* Pass user and logout handler to Navbar */}
       <div className="App">
         <div className="auth-wrapper">
           <div className="auth-inner">
             <Routes>
-              
-              {/* Redirect to Profile if user is authenticated, else go to SignIn */}
+              {/* Home is accessible to everyone */}
+              <Route path="/" element={<Navigate to="/home" />} />
+              <Route path="/home" element={<Home />} />
               <Route
-                path="/"
-                element={user ? <Navigate to="/Home" /> : <SignIn />}
+                path="/profile"
+                element={user ? <Profile /> : <Navigate to="/signin" />}
               />
-              <Route path="/Home" element={<Home />} />
-              <Route path="/Profile" element={<Profile />} />
-              <Route path="/SignUp" element={<SignUp />} />
-              <Route path="/SignIn" element={<SignIn />} />
-              <Route
-                path="/Home"
-                element={user ? <Home /> : <Navigate to="/SignIn" />}
-              />
+              <Route path="/signup" element={<SignUp />} />
+              <Route path="/signin" element={<SignIn />} />
             </Routes>
           </div>
         </div>
