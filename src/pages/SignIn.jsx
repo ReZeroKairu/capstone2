@@ -3,6 +3,7 @@ import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { auth } from "../firebase/firebase"; // Adjust the path based on your project structure
 import SignInwithGoogle from "../pages/SignInWithGoogle"; // Google SignIn component
+import bg from "../assets/bg.jpg"; // Your background image
 
 function SignIn() {
   const [email, setEmail] = useState("");
@@ -36,12 +37,19 @@ function SignIn() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col">
-      <form
-        onSubmit={handleSubmit}
-        className="flex-grow flex items-center justify-center"
-      >
-        <div className="max-w-md mx-auto p-6 bg-white shadow-md rounded-lg mt-10">
+    <main className="relative h-screen">
+      <div
+        className="absolute inset-0 bg-cover bg-center bg-fixed"
+        style={{
+          backgroundImage: `url(${bg})`,
+          filter: "blur(2px)",
+        }}
+      ></div>
+      <div className="min-h-screen flex flex-col justify-center items-center">
+        <form
+          onSubmit={handleSubmit}
+          className="max-w-md mx-auto p-6 bg-white shadow-md rounded-lg mt-10 relative "
+        >
           <h3 className="text-2xl font-semibold mb-6 text-center">Sign In</h3>
 
           {/* Alert Messages */}
@@ -92,9 +100,9 @@ function SignIn() {
             </a>
           </p>
           <SignInwithGoogle />
-        </div>
-      </form>
-    </div>
+        </form>
+      </div>
+    </main>
   );
 }
 
