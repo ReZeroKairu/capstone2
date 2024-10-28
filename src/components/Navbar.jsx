@@ -1,17 +1,42 @@
-import React, { useState } from "react";
-import { Link } from "react-router-dom";
+import React, { useState, useEffect } from "react";
+import { Link, useLocation } from "react-router-dom"; // Import useLocation
 import { getAuth } from "firebase/auth";
 import pubtrackicon from "../assets/pubtrackicon.jpg";
+import liceo from "../assets/liceo.png";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faChevronDown, faChevronUp } from "@fortawesome/free-solid-svg-icons";
+import { useRef } from "react";
 
 const Navbar = ({ user, onLogout }) => {
+  const iconRef = useRef(null);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [contactDropdownOpen, setContactDropdownOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const auth = getAuth();
+  const location = useLocation(); // Use useLocation to track the current route
 
   const toggleDropdown = () => setDropdownOpen((prev) => !prev);
   const toggleContactDropdown = () => setContactDropdownOpen((prev) => !prev);
   const toggleMobileMenu = () => setMobileMenuOpen((prev) => !prev);
+  const handleIconClick = () => {
+    console.log("Icon clicked!"); // Add this line
+    if (iconRef.current) {
+      // Apply the scale effect
+      iconRef.current.style.transform = "scale(0.9)";
+      iconRef.current.style.transition = "transform 0.2s ease";
+
+      // Reset the scale effect after a short duration
+      setTimeout(() => {
+        iconRef.current.style.transform = "scale(1)";
+      }, 200);
+    }
+  };
+  // Reset dropdown states on route change
+  useEffect(() => {
+    setContactDropdownOpen(false); // Close the contact dropdown
+    setDropdownOpen(false); // Close the user dropdown if you have one
+    setMobileMenuOpen(false); // Close the mobile menu if open
+  }, [location]); // Dependency array containing location
 
   return (
     <>
@@ -21,16 +46,52 @@ const Navbar = ({ user, onLogout }) => {
           {/* Left Logo Section */}
           <div className="flex items-center">
             <Link to="/Home">
-              <img src={pubtrackicon} alt="Logo" className="h-12 w-12 mr-2" />
+              <img
+                ref={iconRef}
+                src={pubtrackicon}
+                alt="Logo"
+                className="h-12 w-12 mr-2" // Removed transition and scale classes here
+                onClick={handleIconClick}
+              />
             </Link>
           </div>
-
           {/* Mobile Menu Toggle Button */}
           <button onClick={toggleMobileMenu} className="md:hidden p-2">
             <span className="block w-6 h-0.5 bg-gray-700 mb-1"></span>
             <span className="block w-6 h-0.5 bg-gray-700 mb-1"></span>
             <span className="block w-6 h-0.5 bg-gray-700"></span>
           </button>
+          {/* Mobile Menu Dropdown */}
+          {mobileMenuOpen && (
+            <nav className="md:hidden bg-yellow-300">
+              <div className="flex flex-col text-gray-700 font-semibold">
+                <Link
+                  to="/journals"
+                  className="hover:text-red-800 active:scale-95 active:text-red-900  px-3 py-2"
+                >
+                  Journals
+                </Link>
+                <Link
+                  to="/call-for-papers"
+                  className="hover:text-red-800 active:scale-95 active:text-red-900 px-3 py-2"
+                >
+                  Call for Papers
+                </Link>
+                <Link
+                  to="/publication-ethics"
+                  className="hover:text-red-800 active:scale-95 active:text-red-900 px-3 py-2"
+                >
+                  Publication Ethics
+                </Link>
+                <Link
+                  to="/guidelines"
+                  className="hover:text-red-800 active:scale-95 active:text-red-900 px-3 py-2"
+                >
+                  Guidelines For Submission
+                </Link>
+              </div>
+            </nav>
+          )}
 
           {/* Center Navigation Links */}
           <nav
@@ -102,66 +163,72 @@ const Navbar = ({ user, onLogout }) => {
                 to="/signin"
                 className="bg-red-800 text-white font-semibold py-2 px-4 rounded-sm hover:bg-red-900 transition duration-300"
               >
-                SIGN IN
+                Sign In
               </Link>
             )}
           </div>
         </div>
       </header>
 
-      {/* Mobile Menu Dropdown */}
-      {mobileMenuOpen && (
-        <nav className="md:hidden bg-yellow-300">
-          <div className="flex flex-col text-gray-700 font-semibold">
-            <Link to="/home" className="hover:text-blue-600 px-3 py-2">
-              Home
-            </Link>
-            <Link to="/journals" className="hover:text-blue-600 px-3 py-2">
-              Journals
-            </Link>
-            <Link
-              to="/call-for-papers"
-              className="hover:text-blue-600 px-3 py-2"
-            >
-              Call for Papers
-            </Link>
-            <Link
-              to="/publication-ethics"
-              className="hover:text-blue-600 px-3 py-2"
-            >
-              Publication Ethics
-            </Link>
-            <Link to="/guidelines" className="hover:text-blue-600 px-3 py-2">
-              Guidelines For Submission
-            </Link>
-          </div>
-        </nav>
-      )}
-
       <div className="bg-red-800 text-white py-1 fixed w-full mt-14 z-10">
         <div className="flex justify-end mr-4">
           <button
             onClick={toggleContactDropdown}
-            className="text-white text-sm"
+            className="text-white text-sm flex items-center"
           >
             Contact Us
+            <FontAwesomeIcon
+              icon={contactDropdownOpen ? faChevronUp : faChevronDown} // Change icon based on dropdown state
+              className="ml-1 transition-transform duration-300"
+            />
           </button>
         </div>
+
         {/* Contact Dropdown Menu */}
         <div
-          className={`overflow-hidden transition-all duration-500 ease-in-out ${
-            contactDropdownOpen ? "max-h-40 opacity-100" : "max-h-0 opacity-0"
+          className={`overflow-hidden transition-max-height duration-500 ease-in-out ${
+            contactDropdownOpen ? "max-h-96 opacity-100" : "max-h-0 opacity-0"
           }`}
         >
-          <div className="w-full bg-red-800  shadow-lg">
-            <div className="flex flex-col  p-4">
-              <p className="text-yellow-200">Ms. Leilani G. Pimentel</p>
-              <p className="text-gray-200">Publication Officer</p>
-              <p className="text-gray-200">You can reach us through:</p>
-              <ul className="list-disc pl-5 text-gray-200">
-                <li>Email: support@pubtrack.com</li>
-                <li>Phone: +123456789</li>
-              </ul>
+          <div className="w-full bg-red-800 !shadow-none">
+            <div className="flex justify-between p-4">
+              {/* Left Side Contact Information */}
+              <div className="flex flex-col">
+                <p className="text-yellow-200 ml-20 font-bold">
+                  Ms. Leilani G. Pimentel
+                </p>
+                <p className="text-gray-200 ml-20">Publication Officer</p>
+                <br />
+                <p className="text-yellow-200 ml-20 mt-3 font-bold">
+                  Office of the University Research and Coordination
+                </p>
+                <p className="text-gray-200 ml-20 mt-3">
+                  Email: ourc@liceo.edu.ph
+                </p>
+                <p className="text-gray-200 ml-20 mt-3">
+                  Phone: +63 088 880-2047 / +63 08822 722244 local 135
+                </p>
+                <p className="text-gray-200 ml-20 mt-3">
+                  Fax: +63 088 880-2047
+                </p>
+              </div>
+
+              {/* Right Side Address */}
+              <div className="flex items-start text-gray-200 mr-4">
+                <p>
+                  <span className="text-yellow-200 mr-4 font-bold">
+                    Address:
+                  </span>
+                  <br />
+                  Rodolfo Neri Pelaez Boulevard, Kauswagan
+                  <br /> Cagayan de Oro, Misamis Oriental, Philippines
+                </p>
+              </div>
+
+              {/* Logo Section */}
+              <div className="flex items-start text-gray-200">
+                <img src={liceo} alt="Logo" className="h-32 w-32 mr-14" />
+              </div>
             </div>
           </div>
         </div>

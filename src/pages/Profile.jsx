@@ -56,7 +56,7 @@ function Profile() {
   }
 
   return (
-    <div className="flex flex-col items-center p-4">
+    <div className="flex flex-col items-center p-24">
       {userDetails ? (
         <>
           <div className="flex justify-center mb-4">
