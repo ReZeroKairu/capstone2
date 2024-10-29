@@ -1,42 +1,59 @@
-import React, { useState, useEffect } from "react";
-import { Link, useLocation } from "react-router-dom"; // Import useLocation
+import React, { useState, useEffect, useRef } from "react";
+import { Link, useLocation } from "react-router-dom";
 import { getAuth } from "firebase/auth";
 import pubtrackicon from "../assets/pubtrackicon.jpg";
 import liceo from "../assets/liceo.png";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faChevronDown, faChevronUp } from "@fortawesome/free-solid-svg-icons";
-import { useRef } from "react";
+import { doc, getDoc } from "firebase/firestore"; // Import Firestore functions
+import { db } from "../firebase/firebase"; // Adjust path as necessary
 
-const Navbar = ({ user, onLogout }) => {
+const Navbar = ({ onLogout }) => {
   const iconRef = useRef(null);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [contactDropdownOpen, setContactDropdownOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const auth = getAuth();
-  const location = useLocation(); // Use useLocation to track the current route
+  const user = auth.currentUser;
+  const [isAdmin, setIsAdmin] = useState(false);
+  const location = useLocation();
+
+  // Check admin status
+  const checkAdminStatus = async () => {
+    if (user) {
+      const userDoc = await getDoc(doc(db, "Users", user.uid));
+      if (userDoc.exists()) {
+        const userData = userDoc.data();
+        setIsAdmin(userData.role === "admin");
+      }
+    }
+  };
+
+  useEffect(() => {
+    checkAdminStatus(); // Check admin status when component mounts
+  }, [user]);
 
   const toggleDropdown = () => setDropdownOpen((prev) => !prev);
   const toggleContactDropdown = () => setContactDropdownOpen((prev) => !prev);
   const toggleMobileMenu = () => setMobileMenuOpen((prev) => !prev);
   const handleIconClick = () => {
-    console.log("Redirect to Home"); // Add this line
+    console.log("Redirect to Home");
     if (iconRef.current) {
-      // Apply the scale effect
       iconRef.current.style.transform = "scale(0.9)";
       iconRef.current.style.transition = "transform 0.2s ease";
 
-      // Reset the scale effect after a short duration
       setTimeout(() => {
         iconRef.current.style.transform = "scale(1)";
       }, 200);
     }
   };
+
   // Reset dropdown states on route change
   useEffect(() => {
-    setContactDropdownOpen(false); // Close the contact dropdown
-    setDropdownOpen(false); // Close the user dropdown if you have one
-    setMobileMenuOpen(false); // Close the mobile menu if open
-  }, [location]); // Dependency array containing location
+    setContactDropdownOpen(false);
+    setDropdownOpen(false);
+    setMobileMenuOpen(false);
+  }, [location]);
 
   return (
     <>
@@ -50,7 +67,7 @@ const Navbar = ({ user, onLogout }) => {
                 ref={iconRef}
                 src={pubtrackicon}
                 alt="Logo"
-                className="h-12 w-12 mr-2" // Removed transition and scale classes here
+                className="h-12 w-12 mr-2"
                 onClick={handleIconClick}
               />
             </Link>
@@ -67,7 +84,7 @@ const Navbar = ({ user, onLogout }) => {
               <div className="flex flex-col text-gray-700 font-semibold">
                 <Link
                   to="/journals"
-                  className="hover:text-red-800 active:scale-95 active:text-red-900  px-3 py-2"
+                  className="hover:text-red-800 active:scale-95 active:text-red-900 px-3 py-2"
                 >
                   Journals
                 </Link>
@@ -97,7 +114,7 @@ const Navbar = ({ user, onLogout }) => {
           <nav
             className={`hidden md:flex text-black-700 font-poppins flex-grow items-center`}
           >
-            <span className="border-l border-gray-500 h-4  ml-5" />
+            <span className="border-l border-gray-500 h-4 ml-5" />
             <Link
               to="/journals"
               className="px-6 ml-3 transition-all duration-300 ease-in-out hover:text-red-700 active:scale-95 active:text-red-900"
@@ -107,7 +124,7 @@ const Navbar = ({ user, onLogout }) => {
             <span className="border-l border-gray-500 h-4 mx-2" />
             <Link
               to="/call-for-papers"
-              className="px-6 transition-all duration-300 ease-in-out hover:text-red-700 active:scale-95 active:text-red-900 "
+              className="px-6 transition-all duration-300 ease-in-out hover:text-red-700 active:scale-95 active:text-red-900"
             >
               Call for Papers
             </Link>
@@ -149,6 +166,14 @@ const Navbar = ({ user, onLogout }) => {
                     >
                       Profile
                     </Link>
+                    {isAdmin && ( // Conditionally render the Admin Management link
+                      <Link
+                        to="/admin-management"
+                        className="block px-4 py-2 text-gray-800 hover:bg-gray-200"
+                      >
+                        Admin Management
+                      </Link>
+                    )}
                     <button
                       onClick={onLogout}
                       className="block w-full text-left px-4 py-2 text-red-500 hover:bg-gray-200"
@@ -178,7 +203,7 @@ const Navbar = ({ user, onLogout }) => {
           >
             Contact Us
             <FontAwesomeIcon
-              icon={contactDropdownOpen ? faChevronUp : faChevronDown} // Change icon based on dropdown state
+              icon={contactDropdownOpen ? faChevronUp : faChevronDown}
               className="ml-1 transition-transform duration-300"
             />
           </button>
