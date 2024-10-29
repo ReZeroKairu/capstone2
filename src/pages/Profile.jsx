@@ -69,7 +69,7 @@ function Profile() {
             />
           </div>
           <h3 className="text-xl font-bold mb-4">
-            Welcome {userDetails.firstName} 🙏🙏
+            Welcome {userDetails.firstName} !
           </h3>
           <div className="bg-white p-6 rounded shadow-md w-full max-w-md">
             <p className="mb-2">
