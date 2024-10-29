@@ -1,5 +1,5 @@
 import { signInWithEmailAndPassword } from "firebase/auth";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { auth } from "../firebase/firebase"; // Adjust the path based on your project structure
 import SignInwithGoogle from "../pages/SignInWithGoogle"; // Google SignIn component
@@ -10,7 +10,23 @@ function SignIn() {
   const [password, setPassword] = useState("");
   const [alert, setAlert] = useState({ message: "", type: "" }); // Alert state
   const navigate = useNavigate();
+  const [loading, setLoading] = useState(true);
 
+  useEffect(() => {
+    const unsubscribe = auth.onAuthStateChanged((user) => {
+      if (user) {
+        // Redirect to home or another page if user is logged in
+        navigate("/home"); // Change this to your desired route
+      } else {
+        setLoading(false); // User not logged in
+      }
+    });
+    return () => unsubscribe(); // Cleanup on unmount
+  }, [navigate]);
+
+  if (loading) {
+    return <div>Loading...</div>; // Optionally show a loading spinner
+  }
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {

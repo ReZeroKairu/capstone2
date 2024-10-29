@@ -19,7 +19,7 @@ const Navbar = ({ user, onLogout }) => {
   const toggleContactDropdown = () => setContactDropdownOpen((prev) => !prev);
   const toggleMobileMenu = () => setMobileMenuOpen((prev) => !prev);
   const handleIconClick = () => {
-    console.log("Icon clicked!"); // Add this line
+    console.log("Redirect to Home"); // Add this line
     if (iconRef.current) {
       // Apply the scale effect
       iconRef.current.style.transform = "scale(0.9)";
@@ -41,7 +41,7 @@ const Navbar = ({ user, onLogout }) => {
   return (
     <>
       {/* Fixed Header */}
-      <header className="bg-yellow-300 shadow-md fixed w-full z-20">
+      <header className="bg-yellow-300 shadow-md fixed w-full z-50">
         <div className="flex items-center px-4 py-1 border-b border-gray-200">
           {/* Left Logo Section */}
           <div className="flex items-center">
@@ -78,7 +78,7 @@ const Navbar = ({ user, onLogout }) => {
                   Call for Papers
                 </Link>
                 <Link
-                  to="/publication-ethics"
+                  to="/pub-ethics"
                   className="hover:text-red-800 active:scale-95 active:text-red-900 px-3 py-2"
                 >
                   Publication Ethics
@@ -107,13 +107,13 @@ const Navbar = ({ user, onLogout }) => {
             <span className="border-l border-gray-500 h-4 mx-2" />
             <Link
               to="/call-for-papers"
-              className="px-6 transition-all duration-300 ease-in-out hover:text-red-700 active:scale-95 active:text-red-900"
+              className="px-6 transition-all duration-300 ease-in-out hover:text-red-700 active:scale-95 active:text-red-900 "
             >
               Call for Papers
             </Link>
             <span className="border-l border-gray-500 h-4 mx-2" />
             <Link
-              to="/publication-ethics"
+              to="/pub-ethics"
               className="px-6 transition-all duration-300 ease-in-out hover:text-red-700 active:scale-95 active:text-red-900"
             >
               Publication Ethics
@@ -170,7 +170,7 @@ const Navbar = ({ user, onLogout }) => {
         </div>
       </header>
 
-      <div className="bg-red-800 text-white py-1 fixed w-full mt-14 z-10">
+      <div className="bg-red-800 text-white py-1 fixed w-full mt-14 z-40">
         <div className="flex justify-end mr-4">
           <button
             onClick={toggleContactDropdown}
@@ -190,8 +190,8 @@ const Navbar = ({ user, onLogout }) => {
             contactDropdownOpen ? "max-h-96 opacity-100" : "max-h-0 opacity-0"
           }`}
         >
-          <div className="w-full bg-red-800 !shadow-none">
-            <div className="flex justify-between p-4">
+          <div className="w-full bg-red-800 !shadow-none h-64">
+            <div className="flex justify-between p-3">
               {/* Left Side Contact Information */}
               <div className="flex flex-col">
                 <p className="text-yellow-200 ml-20 font-bold">
@@ -227,7 +227,7 @@ const Navbar = ({ user, onLogout }) => {
 
               {/* Logo Section */}
               <div className="flex items-start text-gray-200">
-                <img src={liceo} alt="Logo" className="h-32 w-32 mr-14" />
+                <img src={liceo} alt="Logo" className="h-40 w-40 mr-10 mt-5" />
               </div>
             </div>
           </div>
