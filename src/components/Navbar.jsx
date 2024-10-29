@@ -55,6 +55,10 @@ const Navbar = ({ onLogout }) => {
     setMobileMenuOpen(false);
   }, [location]);
 
+  const isActiveLink = (path) => {
+    return location.pathname === path ? "text-red-600" : "text-black";
+  };
+
   return (
     <>
       {/* Fixed Header */}
@@ -117,28 +121,36 @@ const Navbar = ({ onLogout }) => {
             <span className="border-l border-gray-500 h-4 ml-5" />
             <Link
               to="/journals"
-              className="px-6 ml-3 transition-all duration-300 ease-in-out hover:text-red-700 active:scale-95 active:text-red-900"
+              className={`px-6 ml-3 transition-all duration-300 ease-in-out hover:text-red-700 active:scale-95 active:text-red-900 ${isActiveLink(
+                "/journals"
+              )}`}
             >
               Journals
             </Link>
             <span className="border-l border-gray-500 h-4 mx-2" />
             <Link
               to="/call-for-papers"
-              className="px-6 transition-all duration-300 ease-in-out hover:text-red-700 active:scale-95 active:text-red-900"
+              className={`px-6 transition-all duration-300 ease-in-out hover:text-red-700 active:scale-95 active:text-red-900 ${isActiveLink(
+                "/call-for-papers"
+              )}`}
             >
               Call for Papers
             </Link>
             <span className="border-l border-gray-500 h-4 mx-2" />
             <Link
               to="/pub-ethics"
-              className="px-6 transition-all duration-300 ease-in-out hover:text-red-700 active:scale-95 active:text-red-900"
+              className={`px-6 transition-all duration-300 ease-in-out hover:text-red-700 active:scale-95 active:text-red-900 ${isActiveLink(
+                "/pub-ethics"
+              )}`}
             >
               Publication Ethics
             </Link>
             <span className="border-l border-gray-500 h-4 mx-2" />
             <Link
               to="/guidelines"
-              className="px-6 transition-all duration-300 ease-in-out hover:text-red-700 active:scale-95 active:text-red-900"
+              className={`px-6 transition-all duration-300 ease-in-out hover:text-red-700 active:scale-95 active:text-red-900 ${isActiveLink(
+                "/guidelines"
+              )}`}
             >
               Guidelines For Submission
             </Link>
