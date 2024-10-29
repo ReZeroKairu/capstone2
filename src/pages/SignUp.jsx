@@ -1,8 +1,9 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { createUserWithEmailAndPassword } from "firebase/auth";
 import { auth, db } from "../firebase/firebase";
 import { setDoc, doc } from "firebase/firestore";
-
+import bg from "../assets/bg.jpg"; // Background image
+import { useNavigate } from "react-router-dom";
 function SignUp() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -11,7 +12,22 @@ function SignUp() {
   const [errorMessage, setErrorMessage] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
   const [loading, setLoading] = useState(false);
+  const navigate = useNavigate();
+  useEffect(() => {
+    const unsubscribe = auth.onAuthStateChanged((user) => {
+      if (user) {
+        // Redirect to home or another page if user is logged in
+        navigate("/home"); // Change this to your desired route
+      } else {
+        setLoading(false); // User not logged in
+      }
+    });
+    return () => unsubscribe(); // Cleanup on unmount
+  }, [navigate]);
 
+  if (loading) {
+    return <div>Loading...</div>; // Optionally show a loading spinner
+  }
   const handleRegister = async (e) => {
     e.preventDefault();
 
@@ -28,7 +44,7 @@ function SignUp() {
     setLoading(true); // Set loading to true when the form is submitted
 
     try {
-      // Create user in Firebase Authentication
+      // Step 1: Create user in Firebase Authentication
       const userCredential = await createUserWithEmailAndPassword(
         auth,
         email,
@@ -38,28 +54,24 @@ function SignUp() {
 
       console.log("Firebase Authentication Success:", user.uid);
 
-      // Save user data to Firestore
-      try {
-        await setDoc(doc(db, "Users", user.uid), {
-          uid: user.uid,
-          firstName: firstName,
-          lastName: lastName,
-          email: user.email,
-        });
-        console.log("User added to Firestore successfully");
+      // Step 2: Save user data to Firestore with role
+      await setDoc(doc(db, "Users", user.uid), {
+        uid: user.uid,
+        firstName: firstName,
+        lastName: lastName,
+        email: user.email,
+        role: "user", // Default role
+      });
+      console.log("User added to Firestore successfully");
 
-        // Success message
-        setSuccessMessage("User registered successfully!");
-        setTimeout(() => {
-          window.location.href = "/Home"; // Redirect to home page after a short delay
-        }, 1000);
-      } catch (error) {
-        console.error("Error writing document to Firestore: ", error.message);
-        setErrorMessage("Failed to save user data to Firestore.");
-      }
+      // Success message
+      setSuccessMessage("User registered successfully!");
+      setTimeout(() => {
+        window.location.href = "/Home"; // Redirect to home page after a short delay
+      }, 1000);
     } catch (error) {
-      console.error("Error creating user:", error.message);
-      setErrorMessage(error.message);
+      console.error("Error during sign up:", error.message);
+      setErrorMessage("Failed to register user.");
     } finally {
       setLoading(false); // Stop the loading state after operation completes
     }
@@ -67,7 +79,15 @@ function SignUp() {
 
   return (
     <div className="min-h-screen flex flex-col">
-      <div className="max-w-lg mx-auto p-6 bg-white shadow-md rounded-lg mt-32 flex-grow">
+      <div
+        className="fixed inset-0 bg-cover bg-center"
+        style={{
+          backgroundImage: `url(${bg})`,
+          filter: "blur(2px)",
+          zIndex: -1, // Ensures the background stays behind other content
+        }}
+      ></div>
+      <div className="max-w-lg mx-auto p-6 bg-white shadow-md rounded-lg mt-32 flex-grow z-30">
         <h3 className="text-2xl font-semibold mb-6 text-center">Sign Up</h3>
 
         {/* Display error message */}
