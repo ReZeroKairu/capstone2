@@ -56,7 +56,7 @@ const Navbar = ({ onLogout }) => {
   }, [location]);
 
   const isActiveLink = (path) => {
-    return location.pathname === path ? "text-red-600" : "text-black";
+    return location.pathname === path ? "text-red-900" : "text-black";
   };
 
   return (
@@ -198,7 +198,7 @@ const Navbar = ({ onLogout }) => {
             ) : (
               <Link
                 to="/signin"
-                className="bg-red-800 text-white font-semibold py-2 px-4 rounded-sm hover:bg-red-900 transition duration-300"
+                className="bg-red-700 active:bg-red-900 text-white font-semibold py-2 px-4 rounded-sm hover:bg-red-800 transition duration-300"
               >
                 Sign In
               </Link>

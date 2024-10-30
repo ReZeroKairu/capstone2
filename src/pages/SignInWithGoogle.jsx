@@ -37,11 +37,11 @@ function SignInwithGoogle() {
 
   return (
     <div className="flex flex-col items-center">
-      <p className="text-gray-600 mb-4">or</p>
+      <p className="text-black mb-2">or</p>
 
       <button
         onClick={googleLogin}
-        className="flex items-center justify-center gap-2 bg-white text-gray-700 border border-gray-300 px-4 py-2 rounded shadow hover:bg-gray-100 transition-all duration-200"
+        className="flex items-center justify-center gap-2 bg-red-700 text-white  px-4 py-2 rounded shadow hover:bg-red-800 active:bg-red-900 transition-all duration-200"
       >
         <img src={googleLogo} alt="Google Logo" className="w-6 h-6" />
         <span className="font-semibold">Sign in with Google</span>
