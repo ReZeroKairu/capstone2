@@ -88,25 +88,33 @@ const Navbar = ({ onLogout }) => {
               <div className="flex flex-col text-gray-700 font-semibold">
                 <Link
                   to="/journals"
-                  className="hover:text-red-800 active:scale-95 active:text-red-900 px-3 py-2"
+                  className={`px-3 py-2 transition-all duration-300 ease-in-out hover:text-red-700 active:scale-95 active:text-red-900 ${isActiveLink(
+                    "/journals"
+                  )}`}
                 >
                   Journals
                 </Link>
                 <Link
                   to="/call-for-papers"
-                  className="hover:text-red-800 active:scale-95 active:text-red-900 px-3 py-2"
+                  className={`px-3 py-2 transition-all duration-300 ease-in-out hover:text-red-700 active:scale-95 active:text-red-900 ${isActiveLink(
+                    "/call-for-papers"
+                  )}`}
                 >
                   Call for Papers
                 </Link>
                 <Link
                   to="/pub-ethics"
-                  className="hover:text-red-800 active:scale-95 active:text-red-900 px-3 py-2"
+                  className={`px-3 py-2 transition-all duration-300 ease-in-out hover:text-red-700 active:scale-95 active:text-red-900 ${isActiveLink(
+                    "/pub-ethics"
+                  )}`}
                 >
                   Publication Ethics
                 </Link>
                 <Link
                   to="/guidelines"
-                  className="hover:text-red-800 active:scale-95 active:text-red-900 px-3 py-2"
+                  className={`px-3 py-2 transition-all duration-300 ease-in-out hover:text-red-700 active:scale-95 active:text-red-900 ${isActiveLink(
+                    "/guidelines"
+                  )}`}
                 >
                   Guidelines For Submission
                 </Link>
@@ -224,34 +232,38 @@ const Navbar = ({ onLogout }) => {
         {/* Contact Dropdown Menu */}
         <div
           className={`overflow-hidden transition-max-height duration-500 ease-in-out ${
-            contactDropdownOpen ? "max-h-96 opacity-100" : "max-h-0 opacity-0"
+            contactDropdownOpen
+              ? "max-h-screen opacity-100"
+              : "max-h-0 opacity-0"
           }`}
         >
-          <div className="w-full bg-red-800 !shadow-none h-64">
-            <div className="flex justify-between p-3">
+          <div className="w-full bg-red-800 !shadow-none min-h-full md:h-64">
+            <div className="flex flex-col md:flex-row justify-between p-3 h-full">
               {/* Left Side Contact Information */}
-              <div className="flex flex-col">
-                <p className="text-yellow-200 ml-20 font-bold">
+              <div className="flex flex-col mb-4 md:mb-0 flex-grow">
+                <p className="text-yellow-200 ml-2 md:ml-20 font-bold">
                   Ms. Leilani G. Pimentel
                 </p>
-                <p className="text-gray-200 ml-20">Publication Officer</p>
+                <p className="text-gray-200 ml-2 md:ml-20">
+                  Publication Officer
+                </p>
                 <br />
-                <p className="text-yellow-200 ml-20 mt-3 font-bold">
+                <p className="text-yellow-200 ml-2 md:ml-20 mt-3 font-bold">
                   Office of the University Research and Coordination
                 </p>
-                <p className="text-gray-200 ml-20 mt-3">
+                <p className="text-gray-200 ml-2 md:ml-20 mt-3">
                   Email: ourc@liceo.edu.ph
                 </p>
-                <p className="text-gray-200 ml-20 mt-3">
+                <p className="text-gray-200 ml-2 md:ml-20 mt-3">
                   Phone: +63 088 880-2047 / +63 08822 722244 local 135
                 </p>
-                <p className="text-gray-200 ml-20 mt-3">
+                <p className="text-gray-200 ml-2 md:ml-20 mt-3">
                   Fax: +63 088 880-2047
                 </p>
               </div>
 
               {/* Right Side Address */}
-              <div className="flex items-start text-gray-200 mr-4">
+              <div className="flex items-start text-gray-200 mb-4 md:mb-0 md:mr-4 flex-grow">
                 <p>
                   <span className="text-yellow-200 mr-4 font-bold">
                     Address:
@@ -263,8 +275,12 @@ const Navbar = ({ onLogout }) => {
               </div>
 
               {/* Logo Section */}
-              <div className="flex items-start text-gray-200">
-                <img src={liceo} alt="Logo" className="h-40 w-40 mr-10 mt-5" />
+              <div className="flex items-start text-gray-200 flex-grow">
+                <img
+                  src={liceo}
+                  alt="Logo"
+                  className="h-24 w-24 md:h-40 md:w-40 mr-10 mt-5"
+                />
               </div>
             </div>
           </div>

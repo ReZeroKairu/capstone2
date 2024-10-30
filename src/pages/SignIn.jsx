@@ -12,6 +12,7 @@ import {
   faEyeSlash,
   faEnvelope,
 } from "@fortawesome/free-solid-svg-icons";
+
 function SignIn() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -19,9 +20,11 @@ function SignIn() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
+
   const togglePasswordVisibility = () => {
     setShowPassword((prev) => !prev);
   };
+
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged((user) => {
       if (user) {
@@ -37,6 +40,7 @@ function SignIn() {
   if (loading) {
     return <div>Loading...</div>; // Optionally show a loading spinner
   }
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
@@ -49,16 +53,22 @@ function SignIn() {
       // Navigate to home page
       navigate("/home"); // Use lowercase 'home' if your route is defined as such
 
-      // Hide the alert after 3 seconds
-      setTimeout(() => setAlert({ message: "", type: "" }), 3000);
+      // Hide the alert after 5 seconds
+      setTimeout(() => setAlert({ message: "", type: "" }), 5000);
     } catch (error) {
       console.log(error.message);
 
-      // Show error alert
-      setAlert({ message: error.message, type: "error" });
+      // Handle specific error codes
+      let errorMessage = "Failed to sign in. Please check your credentials.";
+      if (error.code === "auth/invalid-credential") {
+        errorMessage = "Invalid email or password. Please try again.";
+      }
 
-      // Hide the alert after 3 seconds
-      setTimeout(() => setAlert({ message: "", type: "" }), 3000);
+      // Show error alert
+      setAlert({ message: errorMessage, type: "error" });
+
+      // Hide the alert after 5 seconds
+      setTimeout(() => setAlert({ message: "", type: "" }), 5000);
     }
   };
 
@@ -75,7 +85,7 @@ function SignIn() {
       <div className="min-h-screen flex flex-col justify-center items-center">
         <form
           onSubmit={handleSubmit}
-          className="max-w-md mx-auto px-20 border-2 border-white pt-2 pb-5 bg-yellow-400 shadow-md rounded-lg mt-20 relative"
+          className="max-w-md mx-auto px-20 border-2 border-white pt-2 pb-6 bg-yellow-400 shadow-md rounded-lg mt-24 mb-10 relative " // Added top and bottom margin
         >
           <img
             src={pubtrackicon2}
@@ -85,12 +95,14 @@ function SignIn() {
 
           {/* Alert Messages */}
           {alert.message && (
-            <div
-              className={`mb-4 p-2 rounded text-white ${
-                alert.type === "success" ? "bg-green-500" : "bg-red-500"
-              }`}
-            >
-              {alert.message}
+            <div className="mb-4 p-2 rounded text-white text-center mx-auto w-full">
+              <div
+                className={`bg-${
+                  alert.type === "success" ? "green" : "red"
+                }-500`}
+              >
+                {alert.message}
+              </div>
             </div>
           )}
 
@@ -136,7 +148,7 @@ function SignIn() {
                   className="text-red-800"
                 />
               </button>
-            </div>{" "}
+            </div>
           </div>
 
           <div className="flex justify-center">
@@ -151,7 +163,7 @@ function SignIn() {
             New user?{" "}
             <a
               href="/SignUp"
-              className="text-red-700 hover:text-red-800  active:text-red-950 hover:underline"
+              className="text-red-700 hover:text-red-800  active:text-red-950 underline"
             >
               Sign Up
             </a>

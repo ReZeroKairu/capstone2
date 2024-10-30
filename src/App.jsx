@@ -17,6 +17,7 @@ import PubEthics from "./pages/PubEthics";
 import Guidelines from "./pages/Guidelines";
 import AdminManagement from "./pages/AdminManagement";
 import Unauthorized from "./pages/Unauthorized";
+import Footer from "./components/Footer"; // Import Footer
 function App() {
   const [user, setUser] = useState(null);
 
@@ -53,6 +54,7 @@ function App() {
               <Route path="/unauthorized" element={<Unauthorized />} />
               <Route path="/admin-management" element={<AdminManagement />} />
             </Routes>
+            <Footer /> {/* Add the Footer here */}
           </div>
         </div>
       </div>
