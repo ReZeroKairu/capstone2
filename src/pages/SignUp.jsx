@@ -1,51 +1,58 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { createUserWithEmailAndPassword } from "firebase/auth";
 import { auth, db } from "../firebase/firebase";
 import { setDoc, doc } from "firebase/firestore";
-import bg from "../assets/bg.jpg"; // Background image
+import bg from "../assets/bg.jpg";
 import { useNavigate } from "react-router-dom";
 import pubtrackicon2 from "../assets/pubtrackicon2.png";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faEye, faEyeSlash } from "@fortawesome/free-solid-svg-icons";
+
 function SignUp() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const navigate = useNavigate();
-  useEffect(() => {
-    const unsubscribe = auth.onAuthStateChanged((user) => {
-      if (user) {
-        // Redirect to home or another page if user is logged in
-        navigate("/home"); // Change this to your desired route
-      } else {
-        setLoading(false); // User not logged in
-      }
-    });
-    return () => unsubscribe(); // Cleanup on unmount
-  }, [navigate]);
 
-  if (loading) {
-    return <div>Loading...</div>; // Optionally show a loading spinner
-  }
+  // Create ref for error message
+  const errorRef = useRef(null);
+
+  useEffect(() => {
+    if (errorMessage) {
+      errorRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [errorMessage]);
+
   const handleRegister = async (e) => {
     e.preventDefault();
 
-    // Clear previous messages
     setErrorMessage("");
     setSuccessMessage("");
 
-    // Validate form input
-    if (!firstName || !lastName || !email || !password) {
+    if (!firstName || !lastName || !email || !password || !confirmPassword) {
       setErrorMessage("Please fill out all fields");
       return;
     }
+    if (password.length < 6) {
+      // Check for minimum password length
+      setErrorMessage("Password must be at least 6 characters long!");
+      return;
+    }
+    if (password !== confirmPassword) {
+      setErrorMessage("Passwords do not match!");
+      return;
+    }
 
-    setLoading(true); // Set loading to true when the form is submitted
+    setLoading(true);
 
     try {
-      // Step 1: Create user in Firebase Authentication
       const userCredential = await createUserWithEmailAndPassword(
         auth,
         email,
@@ -53,39 +60,38 @@ function SignUp() {
       );
       const user = userCredential.user;
 
-      console.log("Firebase Authentication Success:", user.uid);
-
-      // Step 2: Save user data to Firestore with role
       await setDoc(doc(db, "Users", user.uid), {
         uid: user.uid,
         firstName: firstName,
         lastName: lastName,
         email: user.email,
-        role: "user", // Default role
+        role: "user",
       });
-      console.log("User added to Firestore successfully");
 
-      // Success message
       setSuccessMessage("User registered successfully!");
       setTimeout(() => {
-        window.location.href = "/Home"; // Redirect to home page after a short delay
+        navigate("/Home");
       }, 1000);
     } catch (error) {
-      console.error("Error during sign up:", error.message);
-      setErrorMessage("Failed to register user.");
+      // Check for specific error codes
+      if (error.code === "auth/email-already-in-use") {
+        setErrorMessage("Email already registered.");
+      } else {
+        setErrorMessage("Failed to register user.");
+      }
     } finally {
-      setLoading(false); // Stop the loading state after operation completes
+      setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex flex-col ">
+    <div className="min-h-screen flex flex-col">
       <div
         className="fixed inset-0 bg-cover bg-center"
         style={{
           backgroundImage: `url(${bg})`,
           filter: "blur(2px)",
-          zIndex: -1, // Ensures the background stays behind other content
+          zIndex: -1,
         }}
       ></div>
       <div className="min-h-screen flex flex-col justify-center items-center">
@@ -93,24 +99,25 @@ function SignUp() {
           onSubmit={handleRegister}
           className="max-w-md mx-auto border-2 border-white px-20 mt-32 mb-20 pt-4 pb-6 bg-yellow-400 rounded-lg space-y-4"
         >
-          <img
-            src={pubtrackicon2}
-            alt="Logo"
-            className="h-20 w-auto mx-auto" // Adjust height and margin as needed
-          />
-          {/* Display error message */}
-          {errorMessage && (
-            <div className="mb-4 text-red-600 text-center">{errorMessage}</div>
-          )}
+          <img src={pubtrackicon2} alt="Logo" className="h-20 w-auto mx-auto" />
 
-          {/* Display success message */}
+          {/* Error Message Section */}
+          {errorMessage && (
+            <div
+              ref={errorRef}
+              className="mb-4 p-2 rounded text-white bg-red-500 text-center"
+            >
+              {errorMessage}
+            </div>
+          )}
           {successMessage && (
-            <div className="mb-4 text-green-600 text-center">
+            <div className="mb-4 p-2 rounded text-white bg-green-500 text-center">
               {successMessage}
             </div>
           )}
+
           <div className="mb-3">
-            <label className="">First Name:</label>
+            <label>First Name:</label>
             <input
               type="text"
               className="w-full mt-1 p-2 border text-black rounded-lg focus:ring-blue-500 focus:border-blue-500"
@@ -146,17 +153,48 @@ function SignUp() {
             />
           </div>
 
-          <div>
+          <div className="relative">
             <label className="block text-sm font-medium text-black">
               Password
             </label>
             <input
-              type="password"
+              type={showPassword ? "text" : "password"}
               className="w-full mt-1 p-2 border text-black rounded-lg focus:ring-blue-500 focus:border-blue-500"
               placeholder="Enter password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
             />
+            <span
+              className="absolute inset-y-0 right-0 pr-3 mt-6 flex items-center cursor-pointer"
+              onClick={() => setShowPassword(!showPassword)}
+            >
+              <FontAwesomeIcon
+                icon={showPassword ? faEyeSlash : faEye}
+                className="text-red-800"
+              />
+            </span>
+          </div>
+
+          <div className="relative">
+            <label className="block text-sm font-medium text-black">
+              Confirm Password
+            </label>
+            <input
+              type={showConfirmPassword ? "text" : "password"}
+              className="w-full mt-1 p-2 border text-black rounded-lg focus:ring-blue-500 focus:border-blue-500"
+              placeholder="Confirm password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+            />
+            <span
+              className="absolute inset-y-0 right-0 pr-3 mt-6 flex items-center cursor-pointer"
+              onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+            >
+              <FontAwesomeIcon
+                icon={showConfirmPassword ? faEyeSlash : faEye}
+                className="text-red-800"
+              />
+            </span>
           </div>
 
           <div className="flex justify-center">
@@ -175,7 +213,7 @@ function SignUp() {
             <p>Already have an account?</p>
             <a
               href="/SignIn"
-              className="text-red-700 hover:text-red-800  active:text-red-950 hover:underline"
+              className="text-red-700 hover:text-red-800 active:text-red-950 hover:underline"
             >
               Sign In
             </a>

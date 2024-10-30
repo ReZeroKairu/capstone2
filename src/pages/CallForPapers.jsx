@@ -81,15 +81,14 @@ function CallForPapers() {
         className="absolute inset-0 bg-cover bg-center bg-fixed z-0"
         style={{
           backgroundImage: `url(${bg})`,
-          filter: "blur(4px)",
         }}
       ></div>
 
       {/* Content Section */}
-      <div className="relative z-10 flex items-center justify-center min-h-screen">
-        <div className="rounded-sm p-36">
-          <div className="bg-yellow-300 py-2 rounded-t-lg w-72">
-            <span className="text-2xl font-bold font-poppins ml-10 text-black">
+      <div className="relative z-10 flex flex-col items-center justify-center min-h-screen w-full">
+        <div className="rounded-sm p-6 w-full max-w-2xl mx-auto">
+          <div className="bg-yellow-300 py-2 rounded-t-lg w-full">
+            <span className="text-2xl font-bold font-poppins text-black">
               {content.title}
             </span>
           </div>
