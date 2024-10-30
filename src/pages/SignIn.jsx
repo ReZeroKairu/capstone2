@@ -4,14 +4,24 @@ import { useNavigate } from "react-router-dom";
 import { auth } from "../firebase/firebase"; // Adjust the path based on your project structure
 import SignInwithGoogle from "../pages/SignInWithGoogle"; // Google SignIn component
 import bg from "../assets/bg.jpg"; // Your background image
-
+import pubtrackicon2 from "../assets/pubtrackicon2.png";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import {
+  faLock,
+  faEye,
+  faEyeSlash,
+  faEnvelope,
+} from "@fortawesome/free-solid-svg-icons";
 function SignIn() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [alert, setAlert] = useState({ message: "", type: "" }); // Alert state
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
-
+  const [showPassword, setShowPassword] = useState(false);
+  const togglePasswordVisibility = () => {
+    setShowPassword((prev) => !prev);
+  };
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged((user) => {
       if (user) {
@@ -55,18 +65,23 @@ function SignIn() {
   return (
     <main className="relative h-screen">
       <div
-        className="absolute inset-0 bg-cover bg-center bg-fixed"
+        className="fixed inset-0 bg-cover bg-center"
         style={{
           backgroundImage: `url(${bg})`,
           filter: "blur(2px)",
+          zIndex: -1, // Ensures the background stays behind other content
         }}
       ></div>
       <div className="min-h-screen flex flex-col justify-center items-center">
         <form
           onSubmit={handleSubmit}
-          className="max-w-md mx-auto p-6 bg-white shadow-md rounded-lg mt-10 relative "
+          className="max-w-md mx-auto px-20 border-2 border-white pt-2 pb-5 bg-yellow-400 shadow-md rounded-lg mt-20 relative"
         >
-          <h3 className="text-2xl font-semibold mb-6 text-center">Sign In</h3>
+          <img
+            src={pubtrackicon2}
+            alt="Logo"
+            className="h-20 w-auto mb-6 mx-auto" // Adjust height and margin as needed
+          />
 
           {/* Alert Messages */}
           {alert.message && (
@@ -80,38 +95,64 @@ function SignIn() {
           )}
 
           <div className="mb-3">
-            <label className="block mb-2">Email address</label>
-            <input
-              type="email"
-              className="form-control w-full p-2 border border-gray-300 rounded"
-              placeholder="Enter email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-            />
+            <label className="">Email address:</label>
+            <div className="relative">
+              <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <FontAwesomeIcon icon={faEnvelope} className="text-red-800" />
+              </span>
+              <input
+                type="email"
+                className="form-control w-72 p-2 pl-10 border text-black rounded-lg" // Adjust padding to fit icon
+                placeholder="Email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+              />
+            </div>
           </div>
 
           <div className="mb-3">
-            <label className="block mb-2">Password</label>
-            <input
-              type="password"
-              className="form-control w-full p-2 border border-gray-300 rounded"
-              placeholder="Enter password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
+            <label className="block">Password:</label>
+            <div className="relative">
+              <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <FontAwesomeIcon
+                  icon={faLock}
+                  className="text-red-800 rounded-lg"
+                />
+              </span>
+              <input
+                type={showPassword ? "text" : "password"}
+                className="form-control w-72 p-2 pl-10 border rounded-lg"
+                placeholder="Password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
+              <button
+                type="button"
+                className="absolute inset-y-0 right-0 pr-3 flex items-center"
+                onClick={togglePasswordVisibility}
+              >
+                <FontAwesomeIcon
+                  icon={showPassword ? faEyeSlash : faEye}
+                  className="text-red-800"
+                />
+              </button>
+            </div>{" "}
           </div>
 
-          <div className="d-grid">
+          <div className="flex justify-center">
             <button
               type="submit"
-              className="btn btn-primary bg-blue-500 text-white p-2 rounded w-full"
+              className="btn btn-primary mt-2 bg-red-700 hover:bg-red-800 active:scale-95 active:bg-red-900 text-white p-2 rounded w-32"
             >
-              Submit
+              Sign In
             </button>
           </div>
-          <p className="forgot-password text-center mt-3 mb-3">
+          <p className="forgot-password text-center mt-4">
             New user?{" "}
-            <a href="/SignUp" className="text-blue-500">
+            <a
+              href="/SignUp"
+              className="text-red-700 hover:text-red-800  active:text-red-950 hover:underline"
+            >
               Sign Up
             </a>
           </p>
