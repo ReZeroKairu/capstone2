@@ -14,7 +14,7 @@ const Navbar = ({ onLogout }) => {
   const [contactDropdownOpen, setContactDropdownOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const auth = getAuth();
-  const user = auth.currentUser;
+  const user = auth.currentUser; // Access the current user directly
   const [isAdmin, setIsAdmin] = useState(false);
   const location = useLocation();
 
@@ -31,7 +31,7 @@ const Navbar = ({ onLogout }) => {
 
   useEffect(() => {
     checkAdminStatus(); // Check admin status when component mounts
-  }, [user]);
+  }, [user]); // Monitor user changes
 
   const toggleDropdown = () => setDropdownOpen((prev) => !prev);
   const toggleContactDropdown = () => setContactDropdownOpen((prev) => !prev);
@@ -166,7 +166,7 @@ const Navbar = ({ onLogout }) => {
 
           {/* Right Section with Profile and Sign Out Dropdown */}
           <div className="relative flex items-center ml-auto space-x-4">
-            {user ? (
+            {user ? ( // Use auth.currentUser to check if the user is logged in
               <div className="relative">
                 <button
                   onClick={toggleDropdown}
@@ -192,6 +192,14 @@ const Navbar = ({ onLogout }) => {
                         className="block px-4 py-2 text-gray-800 hover:bg-gray-200"
                       >
                         Admin Management
+                      </Link>
+                    )}
+                    {isAdmin && ( // Conditionally render the User Management link
+                      <Link
+                        to="/user-management"
+                        className="block px-4 py-2 text-gray-800 hover:bg-gray-200"
+                      >
+                        User Management
                       </Link>
                     )}
                     <button

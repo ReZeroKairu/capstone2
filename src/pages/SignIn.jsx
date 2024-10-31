@@ -73,7 +73,7 @@ function SignIn() {
   };
 
   return (
-    <main className="relative h-screen">
+    <main className="flex flex-col min-h-screen">
       <div
         className="fixed inset-0 bg-cover bg-center"
         style={{
@@ -82,7 +82,7 @@ function SignIn() {
           zIndex: -1, // Ensures the background stays behind other content
         }}
       ></div>
-      <div className="min-h-screen flex flex-col justify-center items-center">
+      <div className="flex-grow flex justify-center items-center">
         <form
           onSubmit={handleSubmit}
           className="max-w-md mx-auto px-20 border-2 border-white pt-2 pb-6 bg-yellow-400 shadow-md rounded-lg mt-24 mb-10 relative " // Added top and bottom margin

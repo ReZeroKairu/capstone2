@@ -8,7 +8,7 @@ import {
   where,
   getDoc,
 } from "firebase/firestore";
-import { db } from "../firebase/firebase";
+import { db } from "../../firebase/firebase";
 import { useNavigate } from "react-router-dom";
 import { getAuth, onAuthStateChanged } from "firebase/auth";
 
@@ -17,8 +17,9 @@ function AdminManagement() {
   const [message, setMessage] = useState("");
   const [currentAdmins, setCurrentAdmins] = useState([]);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [loading, setLoading] = useState(true); // Loading state
   const navigate = useNavigate();
-  const auth = getAuth(); // Get the Auth instance
+  const auth = getAuth();
 
   const fetchCurrentAdmins = async () => {
     try {
@@ -36,42 +37,37 @@ function AdminManagement() {
 
   const checkAdminStatus = async (userId) => {
     const userDoc = await getDoc(doc(db, "Users", userId));
-
     if (userDoc.exists()) {
       const userData = userDoc.data();
-      console.log("User data:", userData); // Log user data to see the role
       if (userData.role === "admin") {
         setIsAdmin(true);
-        fetchCurrentAdmins(); // Fetch admins if user is admin
+        fetchCurrentAdmins();
       } else {
-        console.log("User is not an admin."); // Log if user is not an admin
-        navigate("/unauthorized"); // Redirect to Not Authorized page
+        navigate("/unauthorized"); // Redirect if not admin
       }
     } else {
-      console.log("User document does not exist."); // Log if document does not exist
-      navigate("/signin"); // Redirect to login if no user found
+      navigate("/signin"); // Redirect to login if user doc doesn't exist
     }
+    setLoading(false); // Stop loading after checking admin status
   };
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user) {
-        console.log("Current user role:", user.uid); // Log the current user's UID
-        checkAdminStatus(user.uid); // Check admin status with the user ID
+        checkAdminStatus(user.uid);
       } else {
-        console.log("No user is logged in."); // Log if no user is logged in
-        navigate("/signin"); // Redirect to login if no user is logged in
+        navigate("/signin"); // Redirect if no user is logged in
+        setLoading(false); // Stop loading if no user is logged in
       }
     });
-
-    return () => unsubscribe(); // Cleanup subscription on unmount
+    return () => unsubscribe(); // Cleanup on unmount
   }, [auth, navigate]);
 
   const makeUserAdmin = async (uid) => {
     try {
       await setDoc(doc(db, "Users", uid), { role: "admin" }, { merge: true });
       setMessage("User has been assigned the admin role.");
-      fetchCurrentAdmins(); // Refresh the admin list
+      fetchCurrentAdmins();
     } catch (error) {
       console.error("Error assigning admin role:", error);
       setMessage("Failed to assign admin role.");
@@ -87,7 +83,16 @@ function AdminManagement() {
     }
   };
 
-  return (
+  if (loading) {
+    // Show loading while checking admin status
+    return (
+      <div className="flex justify-center items-center h-screen">
+        <p>Loading...</p>
+      </div>
+    );
+  }
+
+  return isAdmin ? (
     <div className="p-36">
       <h2 className="text-2xl font-bold">Admin Management</h2>
       <form onSubmit={handleAssignAdmin} className="my-4">
@@ -138,7 +143,7 @@ function AdminManagement() {
         </div>
       </div>
     </div>
-  );
+  ) : null;
 }
 
 export default AdminManagement;
