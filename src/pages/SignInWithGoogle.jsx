@@ -21,13 +21,15 @@ function SignInwithGoogle() {
       if (user) {
         // Store user details in Firestore
         await setDoc(doc(db, "Users", user.uid), {
+          uid: user.uid,
           email: user.email,
           firstName: user.displayName,
           photo: user.photoURL,
           lastName: "",
+          //reminder make this updatable in the update user page
+          role: "Researcher",
         });
 
-        // Redirect to the profile page
         navigate("/Home");
       }
     } catch (error) {

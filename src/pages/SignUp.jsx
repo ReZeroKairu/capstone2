@@ -65,7 +65,7 @@ function SignUp() {
         firstName: firstName,
         lastName: lastName,
         email: user.email,
-        role: "user",
+        role: "Researcher",
       });
 
       setSuccessMessage("User registered successfully!");
