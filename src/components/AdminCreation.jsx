@@ -19,7 +19,7 @@ const AdminCreation = () => {
   const checkAdminStatus = async () => {
     if (currentUser) {
       const userDoc = await getDoc(doc(db, "Users", currentUser.uid));
-      if (!userDoc.exists() || userDoc.data().role !== "admin") {
+      if (!userDoc.exists() || userDoc.data().role !== "Admin") {
         navigate("/unauthorized"); // Redirect if not admin
       }
     } else {

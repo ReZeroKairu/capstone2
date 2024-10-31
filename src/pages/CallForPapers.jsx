@@ -1,7 +1,6 @@
 import React, { useEffect, useState, useRef } from "react";
 import { auth, db } from "../firebase/firebase";
 import { doc, getDoc, updateDoc, onSnapshot } from "firebase/firestore";
-import bg from "../assets/bg.jpg"; // Background image
 
 function CallForPapers() {
   const [isAdmin, setIsAdmin] = useState(false);
@@ -100,9 +99,9 @@ function CallForPapers() {
     <div className="relative min-h-screen">
       {/* Background Image */}
       <div
-        className="absolute inset-0 bg-cover bg-center bg-fixed z-0"
+        className="absolute inset-0 bg-cover bg-center bg-fixed"
         style={{
-          backgroundImage: `url(${bg})`,
+          backgroundImage: "url('/bg.jpg')",
         }}
       ></div>
 

@@ -2,7 +2,6 @@ import { GoogleAuthProvider, signInWithPopup } from "firebase/auth";
 import { auth, db } from "../firebase/firebase";
 import { setDoc, doc } from "firebase/firestore";
 import { useNavigate } from "react-router-dom";
-import googleLogo from "../assets/googlelogo.png"; // Assuming you have a Google logo in your assets
 import React from "react";
 
 function SignInwithGoogle() {
@@ -45,7 +44,8 @@ function SignInwithGoogle() {
         onClick={googleLogin}
         className="flex items-center justify-center gap-2 bg-white  px-4 py-2 rounded shadow hover:bg-red-800 active:bg-red-900 transition-all duration-200"
       >
-        <img src={googleLogo} alt="Google Logo" className="w-6 h-6" />
+        <img src={`/googlelogo.png`} alt="Google Logo" className="w-6 h-6" />
+
         <span className="font-semibold">Sign in with Google</span>
       </button>
     </div>

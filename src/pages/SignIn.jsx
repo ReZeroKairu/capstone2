@@ -3,8 +3,6 @@ import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { auth } from "../firebase/firebase"; // Adjust the path based on your project structure
 import SignInwithGoogle from "../pages/SignInWithGoogle"; // Google SignIn component
-import bg from "../assets/bg.jpg"; // Your background image
-import pubtrackicon2 from "../assets/pubtrackicon2.png";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faLock,
@@ -75,11 +73,9 @@ function SignIn() {
   return (
     <main className="flex flex-col min-h-screen">
       <div
-        className="fixed inset-0 bg-cover bg-center"
+        className="absolute inset-0 bg-cover bg-center bg-fixed"
         style={{
-          backgroundImage: `url(${bg})`,
-          filter: "blur(2px)",
-          zIndex: -1, // Ensures the background stays behind other content
+          backgroundImage: "url('/bg.jpg')",
         }}
       ></div>
       <div className="flex-grow flex justify-center items-center">
@@ -88,7 +84,7 @@ function SignIn() {
           className="max-w-md mx-auto px-20 border-2 border-white pt-2 pb-6 bg-yellow-400 shadow-md rounded-lg mt-24 mb-10 relative " // Added top and bottom margin
         >
           <img
-            src={pubtrackicon2}
+            src="/pubtrackIcon2.png" // Reference the image directly from the public folder
             alt="Logo"
             className="h-20 w-auto mb-6 mx-auto" // Adjust height and margin as needed
           />

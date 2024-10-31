@@ -2,9 +2,7 @@ import React, { useEffect, useState, useRef } from "react";
 import { createUserWithEmailAndPassword } from "firebase/auth";
 import { auth, db } from "../firebase/firebase";
 import { setDoc, doc } from "firebase/firestore";
-import bg from "../assets/bg.jpg";
 import { useNavigate } from "react-router-dom";
-import pubtrackicon2 from "../assets/pubtrackicon2.png";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faEye, faEyeSlash } from "@fortawesome/free-solid-svg-icons";
 
@@ -19,6 +17,7 @@ function SignUp() {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true); // New state for checking authentication
   const navigate = useNavigate();
 
   // Create ref for error message
@@ -29,6 +28,18 @@ function SignUp() {
       errorRef.current?.scrollIntoView({ behavior: "smooth" });
     }
   }, [errorMessage]);
+
+  // Check if user is logged in
+  useEffect(() => {
+    const unsubscribe = auth.onAuthStateChanged((user) => {
+      if (user) {
+        navigate("/Home"); // Redirect to Home if user is logged in
+      }
+      setIsCheckingAuth(false); // Set loading to false after checking auth status
+    });
+
+    return () => unsubscribe(); // Cleanup subscription on unmount
+  }, [navigate]);
 
   const handleRegister = async (e) => {
     e.preventDefault();
@@ -84,12 +95,17 @@ function SignUp() {
     }
   };
 
+  // Return null or loading indicator while checking auth status
+  if (isCheckingAuth) {
+    return null; // Do not render anything while checking auth
+  }
+
   return (
     <div className="min-h-screen flex flex-col">
       <div
         className="fixed inset-0 bg-cover bg-center"
         style={{
-          backgroundImage: `url(${bg})`,
+          backgroundImage: `url('/bg.jpg')`, // Directly reference the image from the public folder
           filter: "blur(2px)",
           zIndex: -1,
         }}
@@ -99,7 +115,11 @@ function SignUp() {
           onSubmit={handleRegister}
           className="max-w-md mx-auto border-2 border-white px-20 mt-32 mb-20 pt-4 pb-6 bg-yellow-400 rounded-lg space-y-4"
         >
-          <img src={pubtrackicon2} alt="Logo" className="h-20 w-auto mx-auto" />
+          <img
+            src="/pubtrackIcon2.png" // Reference the image directly from the public folder
+            alt="Logo"
+            className="h-20 w-auto mb-6 mx-auto" // Adjust height and margin as needed
+          />
 
           {/* Error Message Section */}
           {errorMessage && (
