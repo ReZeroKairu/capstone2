@@ -1,8 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom"; // useNavigate for navigation
 import { getAuth, onAuthStateChanged } from "firebase/auth"; // Import Firebase authentication methods
-import pubtracklogo from "../assets/pubtracklogo.png"; // Your logo
-import bg from "../assets/bg.jpg"; // Your background image
 import Navbar from "../components/Navbar";
 
 function Home() {
@@ -39,16 +37,15 @@ function Home() {
         <div
           className="absolute inset-0 bg-cover bg-center bg-fixed"
           style={{
-            backgroundImage: `url(${bg})`,
+            backgroundImage: "url('/bg.jpg')",
           }}
         ></div>
-
         {/* Logo and Text Overlay */}
         <div className="relative flex flex-col items-center justify-center h-full bg-black bg-opacity-5 text-white">
           <img
-            src={pubtracklogo}
+            src="/pubtracklogo.png" // Directly reference the logo from the public folder
             alt="PubTrack Logo"
-            className="h-4/5 mb-6 ml-96 mt-20" // Increased height
+            className="h-4/5 mb-6 ml-96 mt-20" // Adjusted height and margins as needed
           />
         </div>
       </main>

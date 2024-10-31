@@ -47,6 +47,7 @@ function Profile() {
     }
   }
 
+  // Handle loading and error state before rendering the profile
   if (loading) {
     return <p className="text-center text-gray-500">Loading...</p>;
   }
@@ -55,6 +56,7 @@ function Profile() {
     return <p className="text-center text-red-500">{errorMessage}</p>; // Display error if user not found
   }
 
+  // Render user profile details
   return (
     <div className="flex flex-col items-center p-24">
       {userDetails ? (

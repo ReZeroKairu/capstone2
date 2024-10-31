@@ -1,8 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom"; // Import useNavigate
 import { getAuth } from "firebase/auth";
-import pubtrackicon from "../assets/pubtrackicon.jpg";
-import liceo from "../assets/liceo.png";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faChevronDown, faChevronUp } from "@fortawesome/free-solid-svg-icons";
 import { doc, getDoc } from "firebase/firestore"; // Import Firestore functions
@@ -17,6 +15,7 @@ const Navbar = ({ onLogout }) => {
   const user = auth.currentUser; // Access the current user directly
   const [isAdmin, setIsAdmin] = useState(false);
   const location = useLocation();
+  const navigate = useNavigate(); // Initialize useNavigate
 
   // Check admin status
   const checkAdminStatus = async () => {
@@ -27,6 +26,10 @@ const Navbar = ({ onLogout }) => {
         setIsAdmin(userData.role === "admin");
       }
     }
+  };
+  const handleLogout = async () => {
+    await onLogout(); // Call the logout function
+    navigate("/signin"); // Redirect to Sign In page
   };
 
   useEffect(() => {
@@ -68,9 +71,8 @@ const Navbar = ({ onLogout }) => {
           <div className="flex items-center">
             <Link to="/Home">
               <img
-                ref={iconRef}
-                src={pubtrackicon}
-                alt="Logo"
+                src="/pubtrackIcon.jpg"
+                alt="PubTrack Icon"
                 className="h-12 w-12 mr-2"
                 onClick={handleIconClick}
               />
@@ -186,14 +188,7 @@ const Navbar = ({ onLogout }) => {
                     >
                       Profile
                     </Link>
-                    {isAdmin && ( // Conditionally render the Admin Management link
-                      <Link
-                        to="/admin-management"
-                        className="block px-4 py-2 text-gray-800 hover:bg-gray-200"
-                      >
-                        Admin Management
-                      </Link>
-                    )}
+
                     {isAdmin && ( // Conditionally render the User Management link
                       <Link
                         to="/user-management"
@@ -203,7 +198,7 @@ const Navbar = ({ onLogout }) => {
                       </Link>
                     )}
                     <button
-                      onClick={onLogout}
+                      onClick={handleLogout}
                       className="block w-full text-left rounded-md px-4 py-2 text-red-500 hover:bg-gray-200"
                     >
                       Sign Out
@@ -285,7 +280,7 @@ const Navbar = ({ onLogout }) => {
               {/* Logo Section */}
               <div className="flex items-start text-gray-200 flex-grow">
                 <img
-                  src={liceo}
+                  src="/liceo.png" // Adjust the filename if necessary
                   alt="Logo"
                   className="h-24 w-24 md:h-40 md:w-40 mr-10 mt-5"
                 />
