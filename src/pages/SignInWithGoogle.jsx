@@ -37,7 +37,6 @@ function SignInwithGoogle() {
             firstName: user.displayName,
             photo: user.photoURL,
             lastName: "",
-            // Reminder: make this updatable in the update user page
             role: "",
           });
 
