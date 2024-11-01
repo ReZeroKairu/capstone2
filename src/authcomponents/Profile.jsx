@@ -17,6 +17,7 @@ function Profile() {
         const docSnap = await getDoc(docRef);
 
         if (docSnap.exists()) {
+          // Set user details to state, including photo URL
           setUserDetails(docSnap.data());
           console.log(docSnap.data());
         } else {
@@ -66,12 +67,12 @@ function Profile() {
               src={userDetails.photo || "https://via.placeholder.com/150"}
               width="150"
               height="150"
-              className="rounded-full shadow-md"
+              className="rounded-full shadow-md object-cover"
               alt="User Profile"
             />
           </div>
           <h3 className="text-xl font-bold mb-4">
-            Welcome {userDetails.firstName} !
+            Welcome {userDetails.firstName}!
           </h3>
           <div className="bg-white p-6 rounded shadow-md w-full max-w-md">
             <p className="mb-2">
