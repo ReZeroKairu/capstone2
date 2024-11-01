@@ -10,8 +10,8 @@ function CallForPapers() {
     description: "",
     issues: [""],
   });
-  const textareaRef = useRef(null); // Create a ref for the textarea
-  const issueRefs = useRef([]); // Create a ref for the issue inputs
+  const textareaRef = useRef(null);
+  const issueRefs = useRef([]);
 
   useEffect(() => {
     const checkAdminRole = async () => {
@@ -29,13 +29,13 @@ function CallForPapers() {
 
     const unsubscribe = auth.onAuthStateChanged(async (user) => {
       if (user) {
-        await checkAdminRole(); // Only check admin role if user is signed in
+        await checkAdminRole();
       } else {
-        setIsAdmin(false); // Reset isAdmin on sign out
+        setIsAdmin(false);
       }
     });
 
-    return () => unsubscribe(); // Cleanup on unmount
+    return () => unsubscribe();
   }, []);
 
   useEffect(() => {
@@ -58,28 +58,28 @@ function CallForPapers() {
       }
     );
 
-    return () => unsubscribe(); // Cleanup listener on unmount
+    return () => unsubscribe();
   }, []);
 
   const handleResizeTextarea = () => {
     if (textareaRef.current) {
-      textareaRef.current.style.height = "auto"; // Reset height
-      textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`; // Set to scroll height
+      textareaRef.current.style.height = "auto";
+      textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`;
     }
   };
 
   const handleResizeIssueInputs = (index) => {
     if (issueRefs.current[index]) {
-      issueRefs.current[index].style.height = "auto"; // Reset height
+      issueRefs.current[index].style.height = "auto";
       issueRefs.current[
         index
-      ].style.height = `${issueRefs.current[index].scrollHeight}px`; // Set to scroll height
+      ].style.height = `${issueRefs.current[index].scrollHeight}px`;
     }
   };
 
   useEffect(() => {
-    handleResizeTextarea(); // Adjust height when description changes
-  }, [content.description]); // Run when description changes
+    handleResizeTextarea();
+  }, [content.description]);
 
   const handleSaveChanges = async () => {
     try {
@@ -89,14 +89,14 @@ function CallForPapers() {
         description: content.description,
         issues: content.issues,
       });
-      setIsEditing(false); // Close edit mode on save
+      setIsEditing(false);
     } catch (error) {
       console.error("Failed to save content:", error);
     }
   };
 
   return (
-    <div className="relative min-h-screen">
+    <div className="relative min-h-screen overflow-hidden">
       {/* Background Image */}
       <div
         className="absolute inset-0 bg-cover bg-center bg-fixed"
@@ -108,7 +108,7 @@ function CallForPapers() {
       {/* Content Section */}
       <div className="relative z-10 flex flex-col items-center justify-center min-h-screen py-24 w-full">
         <div className="rounded-sm p-6 w-full max-w-2xl mx-auto">
-          <div className="bg-yellow-300 py-2 rounded-t-lg w-56 flex items-center justify-center">
+          <div className="bg-yellow-300 py-2 rounded-t-lg w-full flex items-center justify-center">
             <span className="text-2xl font-bold text-black text-center">
               {content.title}
             </span>
@@ -117,39 +117,37 @@ function CallForPapers() {
           <div className="bg-red-800 text-white p-6 rounded-b-lg">
             {isEditing ? (
               <div className="flex flex-col items-center">
-                {/* Flex container for centering */}
                 <input
-                  className="block w-full max-w-md p-2 my-2 text-black rounded text-center overflow-hidden" // Center text and prevent overflow
+                  className="block w-full p-2 my-2 text-black rounded text-center overflow-hidden"
                   value={content.title}
                   onChange={(e) =>
                     setContent({ ...content, title: e.target.value })
                   }
                 />
                 <textarea
-                  ref={textareaRef} // Attach ref to textarea
-                  className="block w-full max-w-md p-2 my-2 text-black rounded text-center resize-y overflow-hidden" // Center text and allow vertical resizing
+                  ref={textareaRef}
+                  className="block w-full p-2 my-2 text-black rounded text-center resize-y overflow-hidden"
                   value={content.description}
                   onChange={(e) => {
                     setContent({ ...content, description: e.target.value });
-                    handleResizeTextarea(); // Adjust height when the value changes
+                    handleResizeTextarea();
                   }}
-                  style={{ minHeight: "40px", maxHeight: "300px" }} // Set min and max height
+                  style={{ minHeight: "40px", maxHeight: "300px" }}
                 />
                 <div className="my-4 w-full flex flex-col items-center">
-                  {/* Flex container for issues */}
                   {content.issues.map((issue, index) => (
                     <textarea
                       key={index}
-                      ref={(el) => (issueRefs.current[index] = el)} // Attach ref for each issue input
-                      className="block w-full max-w-md p-2 my-2 text-black rounded text-center resize-y overflow-hidden" // Center text and allow vertical resizing
+                      ref={(el) => (issueRefs.current[index] = el)}
+                      className="block w-full p-2 my-2 text-black rounded text-center resize-y overflow-hidden"
                       value={issue}
                       onChange={(e) => {
                         const updatedIssues = [...content.issues];
                         updatedIssues[index] = e.target.value;
                         setContent({ ...content, issues: updatedIssues });
-                        handleResizeIssueInputs(index); // Adjust height for the current input
+                        handleResizeIssueInputs(index);
                       }}
-                      style={{ minHeight: "40px", maxHeight: "300px" }} // Set min and max height
+                      style={{ minHeight: "40px", maxHeight: "300px" }}
                     />
                   ))}
                 </div>
@@ -176,7 +174,6 @@ function CallForPapers() {
                     </p>
                   ))}
                 </div>
-                {/* Edit Button for Admin */}
                 {isAdmin && (
                   <div className="text-center mt-6">
                     <button

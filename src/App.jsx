@@ -18,8 +18,9 @@ import PubEthics from "./pages/PubEthics"; // Adjust path as needed
 import Guidelines from "./pages/Guidelines"; // Adjust path as needed
 import Unauthorized from "./pages/Unauthorized"; // Adjust path as needed
 import UserManagement from "./pages/Admin/UserManagement"; // Adjust path as needed
+import AdminCreation from "./components/AdminCreation"; // Adjust path as needed
+import ProtectedRoute from "./authcontext/ProtectedRoute"; // Import ProtectedRoute
 import { getAuth, onAuthStateChanged } from "firebase/auth"; // Import getAuth and onAuthStateChanged from Firebase
-import AdminCreation from "./components/AdminCreation";
 
 function App() {
   const [loading, setLoading] = useState(true);
@@ -27,10 +28,17 @@ function App() {
   const auth = getAuth(); // Get auth instance
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      setUser(currentUser);
-      setLoading(false); // Set loading to false once auth state is determined
-    });
+    const unsubscribe = onAuthStateChanged(
+      auth,
+      (currentUser) => {
+        setUser(currentUser);
+        setLoading(false); // Set loading to false once auth state is determined
+      },
+      (error) => {
+        console.error("Error checking auth state:", error);
+        setLoading(false); // Set loading to false on error
+      }
+    );
 
     return () => unsubscribe();
   }, [auth]);
@@ -40,7 +48,9 @@ function App() {
   }
 
   return (
-    <AuthProvider>
+    <AuthProvider value={{ currentUser: user }}>
+      {" "}
+      {/* Pass user to AuthProvider */}
       <Router>
         <Navbar user={user} onLogout={() => auth.signOut()} />{" "}
         {/* Pass the current user to Navbar */}
@@ -48,22 +58,45 @@ function App() {
           <div className="auth-wrapper">
             <div className="auth-inner">
               <Routes>
-                {/* Home is accessible to everyone */}
                 <Route path="/" element={<Navigate to="/home" />} />
                 <Route path="/home" element={<Home />} />
-                <Route
-                  path="/profile"
-                  element={user ? <Profile /> : <Navigate to="/signin" />}
-                />
+
+                {/* Sign up and sign in routes */}
                 <Route path="/signup" element={<SignUp />} />
                 <Route path="/signin" element={<SignIn />} />
+
+                {/* Public routes */}
                 <Route path="/journals" element={<Journals />} />
                 <Route path="/call-for-papers" element={<CallForPapers />} />
                 <Route path="/pub-ethics" element={<PubEthics />} />
                 <Route path="/guidelines" element={<Guidelines />} />
                 <Route path="/unauthorized" element={<Unauthorized />} />
-                <Route path="/user-management" element={<UserManagement />} />
-                <Route path="/create-admin" element={<AdminCreation />} />
+
+                {/* Protected routes */}
+                <Route
+                  path="/profile"
+                  element={
+                    <ProtectedRoute>
+                      <Profile />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/user-management"
+                  element={
+                    <ProtectedRoute>
+                      <UserManagement />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/create-admin"
+                  element={
+                    <ProtectedRoute>
+                      <AdminCreation />
+                    </ProtectedRoute>
+                  }
+                />
               </Routes>
               <Footer /> {/* Add the Footer here */}
             </div>
