@@ -1,5 +1,8 @@
 import React, { useEffect, useState, useRef } from "react";
-import { createUserWithEmailAndPassword } from "firebase/auth";
+import {
+  createUserWithEmailAndPassword,
+  sendEmailVerification,
+} from "firebase/auth";
 import { auth, db } from "../firebase/firebase";
 import { setDoc, doc } from "firebase/firestore";
 import { useNavigate } from "react-router-dom";
@@ -17,10 +20,9 @@ function SignUp() {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [isCheckingAuth, setIsCheckingAuth] = useState(true); // New state for checking authentication
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const navigate = useNavigate();
 
-  // Create ref for error message
   const errorRef = useRef(null);
 
   useEffect(() => {
@@ -29,16 +31,16 @@ function SignUp() {
     }
   }, [errorMessage]);
 
-  // Check if user is logged in
+  // Check if the user is already authenticated
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged((user) => {
       if (user) {
-        navigate("/Home"); // Redirect to Home if user is logged in
+        setIsCheckingAuth(false);
+      } else {
+        setIsCheckingAuth(false);
       }
-      setIsCheckingAuth(false); // Set loading to false after checking auth status
     });
-
-    return () => unsubscribe(); // Cleanup subscription on unmount
+    return () => unsubscribe();
   }, [navigate]);
 
   const handleRegister = async (e) => {
@@ -52,7 +54,6 @@ function SignUp() {
       return;
     }
     if (password.length < 6) {
-      // Check for minimum password length
       setErrorMessage("Password must be at least 6 characters long!");
       return;
     }
@@ -71,6 +72,9 @@ function SignUp() {
       );
       const user = userCredential.user;
 
+      console.log("User ID:", user.uid); // Log the user ID for debugging
+
+      // Write user data to Firestore
       await setDoc(doc(db, "Users", user.uid), {
         uid: user.uid,
         firstName: firstName,
@@ -79,12 +83,20 @@ function SignUp() {
         role: "Researcher",
       });
 
-      setSuccessMessage("User registered successfully!");
+      // Send verification email
+      await sendEmailVerification(user);
+      setSuccessMessage(
+        "User registered successfully! A verification email has been sent. Please check your inbox and verify your email before signing in."
+      );
+
+      // Log the user out to prevent unverified access
+      await auth.signOut();
+
       setTimeout(() => {
-        navigate("/Home");
-      }, 1000);
+        navigate("/SignIn"); // Redirect to Sign In after showing success message
+      }, 10000);
     } catch (error) {
-      // Check for specific error codes
+      console.error("Error creating user:", error); // Log error
       if (error.code === "auth/email-already-in-use") {
         setErrorMessage("Email already registered.");
       } else {
@@ -95,9 +107,8 @@ function SignUp() {
     }
   };
 
-  // Return null or loading indicator while checking auth status
   if (isCheckingAuth) {
-    return null; // Do not render anything while checking auth
+    return null; // Optionally, you can show a loading indicator here
   }
 
   return (
@@ -105,7 +116,7 @@ function SignUp() {
       <div
         className="fixed inset-0 bg-cover bg-center"
         style={{
-          backgroundImage: `url('/bg.jpg')`, // Directly reference the image from the public folder
+          backgroundImage: `url('/bg.jpg')`,
           filter: "blur(2px)",
           zIndex: -1,
         }}
@@ -116,12 +127,11 @@ function SignUp() {
           className="max-w-md mx-auto border-2 border-white px-20 mt-32 mb-20 pt-4 pb-6 bg-yellow-400 rounded-lg space-y-4"
         >
           <img
-            src="/pubtrackIcon2.png" // Reference the image directly from the public folder
+            src="/pubtrackIcon2.png"
             alt="Logo"
-            className="h-20 w-auto mb-6 mx-auto" // Adjust height and margin as needed
+            className="h-20 w-auto mb-6 mx-auto"
           />
 
-          {/* Error Message Section */}
           {errorMessage && (
             <div
               ref={errorRef}
@@ -185,12 +195,12 @@ function SignUp() {
               onChange={(e) => setPassword(e.target.value)}
             />
             <span
-              className="absolute inset-y-0 right-0 pr-3 mt-6 flex items-center cursor-pointer"
+              className="absolute inset-y-0 right-0 flex items-center pr-2 mt-6 cursor-pointer"
               onClick={() => setShowPassword(!showPassword)}
             >
               <FontAwesomeIcon
                 icon={showPassword ? faEyeSlash : faEye}
-                className="text-red-800"
+                className="text-red-900"
               />
             </span>
           </div>
@@ -207,35 +217,33 @@ function SignUp() {
               onChange={(e) => setConfirmPassword(e.target.value)}
             />
             <span
-              className="absolute inset-y-0 right-0 pr-3 mt-6 flex items-center cursor-pointer"
+              className="absolute inset-y-0 right-0 flex items-center pr-2 mt-6 cursor-pointer"
               onClick={() => setShowConfirmPassword(!showConfirmPassword)}
             >
               <FontAwesomeIcon
                 icon={showConfirmPassword ? faEyeSlash : faEye}
-                className="text-red-800"
+                className="text-red-900"
               />
             </span>
           </div>
 
-          <div className="flex justify-center">
+          <div className="flex justify-center mt-4">
             <button
               type="submit"
-              className={`w-full mt-2 bg-red-700 hover:bg-red-800 active:scale-95 active:bg-red-900 text-white p-2 rounded-lg ${
-                loading ? "opacity-70" : ""
-              }`}
+              className="btn btn-primary mt-2 bg-red-700 hover:bg-red-800 active:scale-95 active:bg-red-900 text-white p-2 rounded w-32"
               disabled={loading}
             >
               {loading ? "Signing Up..." : "Sign Up"}
             </button>
           </div>
 
-          <div className="mt-6 text-center">
-            <p>Already have an account?</p>
+          <div className="text-sm text-center">
+            Already have an account?{" "}
             <a
               href="/SignIn"
-              className="text-red-700 hover:text-red-800 active:text-red-950 hover:underline"
+              className="text-red-700 hover:text-red-800 active:text-red-950 underline"
             >
-              Sign In
+              Sign in
             </a>
           </div>
         </form>

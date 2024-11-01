@@ -1,7 +1,7 @@
-import { signInWithEmailAndPassword } from "firebase/auth";
+import { signInWithEmailAndPassword, signInWithPopup } from "firebase/auth";
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { auth } from "../firebase/firebase"; // Adjust the path based on your project structure
+import { auth, provider } from "../firebase/firebase"; // Adjust the path based on your project structure
 import SignInwithGoogle from "../pages/SignInWithGoogle"; // Google SignIn component
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
@@ -14,9 +14,9 @@ import {
 function SignIn() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [alert, setAlert] = useState({ message: "", type: "" }); // Alert state
+  const [alert, setAlert] = useState({ message: "", type: "" });
   const navigate = useNavigate();
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
   const togglePasswordVisibility = () => {
@@ -25,48 +25,90 @@ function SignIn() {
 
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged((user) => {
-      if (user) {
-        // Redirect to home or another page if user is logged in
-        navigate("/home"); // Change this to your desired route
-      } else {
-        setLoading(false); // User not logged in
+      if (user && user.emailVerified) {
+        navigate("/home");
       }
     });
-    return () => unsubscribe(); // Cleanup on unmount
+    return () => unsubscribe();
   }, [navigate]);
-
-  if (loading) {
-    return <div>Loading...</div>; // Optionally show a loading spinner
-  }
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setLoading(true);
     try {
-      await signInWithEmailAndPassword(auth, email, password);
-      console.log("User logged in successfully");
+      const userCredential = await signInWithEmailAndPassword(
+        auth,
+        email,
+        password
+      );
+      const user = userCredential.user;
+      await user.reload();
 
-      // Show success alert
+      if (!user.emailVerified) {
+        setAlert({
+          message:
+            "Please verify your email before logging in. Please check your email.",
+          type: "error",
+        });
+        await auth.signOut();
+        return;
+      }
+
       setAlert({ message: "User logged in successfully!", type: "success" });
-
-      // Navigate to home page
-      navigate("/home"); // Use lowercase 'home' if your route is defined as such
-
-      // Hide the alert after 5 seconds
-      setTimeout(() => setAlert({ message: "", type: "" }), 5000);
+      navigate("/home");
     } catch (error) {
-      console.log(error.message);
-
-      // Handle specific error codes
+      console.error(error.message);
       let errorMessage = "Failed to sign in. Please check your credentials.";
-      if (error.code === "auth/invalid-credential") {
+      if (error.code === "auth/invalid-email") {
+        errorMessage = "The email address is not valid. Please try again.";
+      } else if (error.code === "auth/user-not-found") {
+        errorMessage = "No user found with this email address.";
+      } else if (error.code === "auth/wrong-password") {
         errorMessage = "Invalid email or password. Please try again.";
       }
 
-      // Show error alert
       setAlert({ message: errorMessage, type: "error" });
-
-      // Hide the alert after 5 seconds
       setTimeout(() => setAlert({ message: "", type: "" }), 5000);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGoogleSignIn = async () => {
+    try {
+      const userCredential = await signInWithPopup(auth, provider);
+      const user = userCredential.user;
+
+      // Check if the user already has an email/password account
+      const existingUser = await auth.fetchSignInMethodsForEmail(user.email);
+      if (existingUser.length && existingUser[0] === "password") {
+        // User exists with email/password; need to link accounts
+        setAlert({
+          message:
+            "You already have an account with this email. Please sign in with email and password.",
+          type: "error",
+        });
+        return;
+      }
+
+      // Successfully signed in with Google
+      if (user.emailVerified) {
+        setAlert({ message: "User logged in successfully!", type: "success" });
+        navigate("/home");
+      } else {
+        setAlert({
+          message:
+            "Please verify your email before logging in. Please check your email.",
+          type: "error",
+        });
+        await auth.signOut();
+      }
+    } catch (error) {
+      console.error("Google Sign-In error:", error.message);
+      setAlert({
+        message: "Failed to sign in with Google. Please try again.",
+        type: "error",
+      });
     }
   };
 
@@ -74,52 +116,53 @@ function SignIn() {
     <main className="flex flex-col min-h-screen relative">
       <div
         className="absolute inset-0 bg-cover bg-center"
-        style={{
-          backgroundImage: "url('/bg.jpg')",
-        }}
+        style={{ backgroundImage: "url('/bg.jpg')" }}
       ></div>
       <div className="flex-grow flex justify-center items-center">
         <form
           onSubmit={handleSubmit}
-          className="max-w-md mx-auto px-20 border-2 border-white pt-2 pb-6 bg-yellow-400 shadow-md rounded-lg mt-24 mb-10 relative " // Added top and bottom margin
+          className="max-w-md mx-auto px-20 border-2 border-white pt-2 pb-6 bg-yellow-400 shadow-md rounded-lg mt-24 mb-10 relative"
         >
           <img
-            src="/pubtrackIcon2.png" // Reference the image directly from the public folder
+            src="/pubtrackIcon2.png"
             alt="Logo"
-            className="h-20 w-auto mb-6 mx-auto" // Adjust height and margin as needed
+            className="h-20 w-auto mb-6 mx-auto"
           />
 
           {/* Alert Messages */}
           {alert.message && (
-            <div className="mb-4 p-2 rounded text-white text-center mx-auto w-full">
-              <div
-                className={`bg-${
-                  alert.type === "success" ? "green" : "red"
-                }-500`}
-              >
-                {alert.message}
-              </div>
+            <div
+              className={`mb-4 p-2 rounded text-white text-center mx-auto w-full bg-${
+                alert.type === "success"
+                  ? "green"
+                  : alert.type === "error"
+                  ? "red"
+                  : "yellow"
+              }-500`}
+            >
+              {alert.message}
             </div>
           )}
 
           <div className="mb-3">
-            <label className="">Email address:</label>
+            <label>Email address:</label>
             <div className="relative">
               <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                 <FontAwesomeIcon icon={faEnvelope} className="text-red-800" />
               </span>
               <input
                 type="email"
-                className="form-control w-72 p-2 pl-10 border text-black rounded-lg" // Adjust padding to fit icon
+                className="form-control w-72 p-2 pl-10 border text-black rounded-lg"
                 placeholder="Email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
+                required
               />
             </div>
           </div>
 
           <div className="mb-3">
-            <label className="block">Password:</label>
+            <label>Password:</label>
             <div className="relative">
               <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                 <FontAwesomeIcon
@@ -133,6 +176,7 @@ function SignIn() {
                 placeholder="Password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
+                required
               />
               <button
                 type="button"
@@ -151,8 +195,9 @@ function SignIn() {
             <button
               type="submit"
               className="btn btn-primary mt-2 bg-red-700 hover:bg-red-800 active:scale-95 active:bg-red-900 text-white p-2 rounded w-32"
+              disabled={loading}
             >
-              Sign In
+              {loading ? "Signing In..." : "Sign In"}
             </button>
           </div>
           <p className="forgot-password text-center mt-4">
@@ -166,6 +211,13 @@ function SignIn() {
           </p>
           <SignInwithGoogle />
         </form>
+
+        {/* Loading Indicator */}
+        {loading && (
+          <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50">
+            <span className="text-white">Loading...</span>
+          </div>
+        )}
       </div>
     </main>
   );
