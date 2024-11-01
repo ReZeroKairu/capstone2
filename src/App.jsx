@@ -9,9 +9,9 @@ import { AuthProvider } from "./authcontext/AuthContext"; // Adjust path as need
 import Navbar from "./components/Navbar"; // Adjust path as needed
 import Footer from "./components/Footer"; // Adjust path as needed
 import Home from "./pages/Home"; // Adjust path as needed
-import Profile from "./pages/Profile"; // Adjust path as needed
-import SignUp from "./pages/SignUp"; // Adjust path as needed
-import SignIn from "./pages/SignIn"; // Adjust path as needed
+import Profile from "./authcomponents/Profile"; // Adjust path as needed
+import SignUp from "./authcomponents/SignUp"; // Adjust path as needed
+import SignIn from "./authcomponents/SignIn"; // Adjust path as needed
 import Journals from "./pages/Journals"; // Adjust path as needed
 import CallForPapers from "./pages/CallForPapers"; // Adjust path as needed
 import PubEthics from "./pages/PubEthics"; // Adjust path as needed

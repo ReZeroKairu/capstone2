@@ -1,9 +1,4 @@
-import {
-  GoogleAuthProvider,
-  signInWithPopup,
-  EmailAuthProvider,
-  linkWithCredential,
-} from "firebase/auth";
+import { GoogleAuthProvider, signInWithPopup } from "firebase/auth";
 import { auth, db } from "../firebase/firebase";
 import { setDoc, doc, getDoc } from "firebase/firestore"; // Import getDoc to check if the user exists
 import { useNavigate } from "react-router-dom";
@@ -22,6 +17,8 @@ function SignInwithGoogle() {
       const result = await signInWithPopup(auth, provider);
       const user = result.user;
 
+      console.log("User photo URL:", user.photoURL); // Log photo URL for debugging
+
       if (user) {
         // Check if user already exists in Firestore
         const userDoc = await getDoc(doc(db, "Users", user.uid));
@@ -31,14 +28,18 @@ function SignInwithGoogle() {
           navigate("/Home");
         } else {
           // New user, store user details in Firestore
-          await setDoc(doc(db, "Users", user.uid), {
-            uid: user.uid,
-            email: user.email,
-            firstName: user.displayName,
-            photo: user.photoURL,
-            lastName: "",
-            role: "",
-          });
+          try {
+            await setDoc(doc(db, "Users", user.uid), {
+              uid: user.uid,
+              email: user.email,
+              firstName: user.displayName,
+              lastName: "",
+              photo: user.photoURL ?? "https://via.placeholder.com/150",
+              role: "",
+            });
+          } catch (error) {
+            console.error("Error saving document to Firestore:", error);
+          }
 
           navigate("/Home");
         }

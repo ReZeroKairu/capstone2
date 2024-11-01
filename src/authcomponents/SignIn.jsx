@@ -2,7 +2,7 @@ import { signInWithEmailAndPassword, signInWithPopup } from "firebase/auth";
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { auth, provider } from "../firebase/firebase"; // Adjust the path based on your project structure
-import SignInwithGoogle from "../pages/SignInWithGoogle"; // Google SignIn component
+import SignInwithGoogle from "./SignInWithGoogle"; // Google SignIn component
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faLock,
