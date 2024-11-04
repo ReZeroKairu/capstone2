@@ -18,6 +18,23 @@ function SignIn() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const errorMessages = {
+    "auth/invalid-email": "The email address is not valid. Please try again.",
+    "auth/user-not-found":
+      "No user found with this email address. Please sign up first.",
+    "auth/wrong-password": "Invalid email or password. Please try again.",
+    "auth/invalid-credential":
+      "Invalid credentials provided. Please check and try again.",
+    "auth/email-already-in-use":
+      "This email address is already in use by another account.",
+    "auth/operation-not-allowed":
+      "This operation is not allowed. Please contact support.",
+    "auth/user-disabled":
+      "This user has been disabled. Please contact support.",
+    "auth/weak-password":
+      "The password is too weak. Please enter a stronger password.",
+    // Add more error codes as needed
+  };
 
   const togglePasswordVisibility = () => {
     setShowPassword((prev) => !prev);
@@ -36,14 +53,18 @@ function SignIn() {
     e.preventDefault();
     setLoading(true);
     try {
+      // Attempt to sign in the user with email and password
       const userCredential = await signInWithEmailAndPassword(
         auth,
         email,
         password
       );
       const user = userCredential.user;
+
+      // Reload user to ensure we have the latest data, especially regarding email verification
       await user.reload();
 
+      // Check if the user's email is verified
       if (!user.emailVerified) {
         setAlert({
           message:
@@ -54,19 +75,28 @@ function SignIn() {
         return;
       }
 
+      // If verified, proceed to navigate to the home page
       setAlert({ message: "User logged in successfully!", type: "success" });
       navigate("/home");
     } catch (error) {
-      console.error(error.message);
+      console.error("Error during email/password sign-in:", error);
+
+      // Check the error code to determine the appropriate message
       let errorMessage = "Failed to sign in. Please check your credentials.";
+
       if (error.code === "auth/invalid-email") {
         errorMessage = "The email address is not valid. Please try again.";
       } else if (error.code === "auth/user-not-found") {
-        errorMessage = "No user found with this email address.";
+        errorMessage =
+          "No user found with this email address. Please sign up first.";
       } else if (error.code === "auth/wrong-password") {
         errorMessage = "Invalid email or password. Please try again.";
+      } else if (error.code === "auth/invalid-credential") {
+        errorMessage =
+          "The credentials provided are invalid. Please check and try again.";
       }
 
+      // Set the alert with the specific error message
       setAlert({ message: errorMessage, type: "error" });
       setTimeout(() => setAlert({ message: "", type: "" }), 5000);
     } finally {
