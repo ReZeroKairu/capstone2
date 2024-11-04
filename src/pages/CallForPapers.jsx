@@ -166,10 +166,17 @@ function CallForPapers() {
               </div>
             ) : (
               <div>
-                <p className="text-lg mb-6">{content.description}</p>
+                {/* Apply `white-space: pre-line` to preserve line breaks and spaces */}
+                <p className="text-lg mb-6" style={{ whiteSpace: "pre-line" }}>
+                  {content.description}
+                </p>
                 <div className="text-center">
                   {content.issues.map((issue, index) => (
-                    <p key={index} className="text-2xl font-bold my-2">
+                    <p
+                      key={index}
+                      className="text-2xl font-bold my-2"
+                      style={{ whiteSpace: "pre-line" }}
+                    >
                       {issue}
                     </p>
                   ))}
