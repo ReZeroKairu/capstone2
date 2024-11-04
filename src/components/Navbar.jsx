@@ -2,7 +2,11 @@ import React, { useState, useEffect, useRef } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom"; // Import useNavigate
 import { getAuth } from "firebase/auth";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faChevronDown, faChevronUp } from "@fortawesome/free-solid-svg-icons";
+import {
+  faChevronDown,
+  faChevronUp,
+  faUser,
+} from "@fortawesome/free-solid-svg-icons";
 import { doc, getDoc } from "firebase/firestore"; // Import Firestore functions
 import { db } from "../firebase/firebase"; // Adjust path as necessary
 
@@ -174,11 +178,20 @@ const Navbar = ({ onLogout }) => {
                   onClick={toggleDropdown}
                   className="flex items-center justify-center bg-gray-500 w-12 h-12 rounded-full hover:bg-red-600 transition duration-300 shadow-lg border-2 border-white"
                 >
-                  <img
-                    src={user.photoURL || "https://via.placeholder.com/150"}
-                    className="w-full h-full rounded-full object-cover"
-                    alt="User Profile"
-                  />
+                  {user.photoURL ? (
+                    <img
+                      src={user.photoURL}
+                      alt="User profile"
+                      className="w-full h-full rounded-full object-cover border-2 border-gray-300 shadow-md" // Adjusts to full width and height while maintaining round shape
+                    />
+                  ) : (
+                    <div className="w-full h-full rounded-full hover:bg-red-800 active:bg-red-900 bg-gray-100 flex items-center justify-center">
+                      <FontAwesomeIcon
+                        icon={faUser}
+                        className="text-gray-500 hover:text-white p-3 text-2xl"
+                      />
+                    </div>
+                  )}
                 </button>
                 {dropdownOpen && (
                   <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg">
