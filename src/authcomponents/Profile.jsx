@@ -1,102 +1,133 @@
-import React, { useEffect, useState } from "react";
-import { auth, db } from "../firebase/firebase";
-import { doc, getDoc } from "firebase/firestore";
-import { useNavigate } from "react-router-dom";
+import React, { useState, useEffect } from "react";
+import { db } from "../firebase/firebase"; // Adjust path as needed
+import { doc, getDoc, updateDoc } from "firebase/firestore";
+import { useAuth } from "../authcontext/AuthContext"; // Adjust path as needed
 
 function Profile() {
-  const [userDetails, setUserDetails] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [errorMessage, setErrorMessage] = useState(""); // Add error state
-  const navigate = useNavigate();
+  const { currentUser } = useAuth();
+  const [profile, setProfile] = useState(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [message, setMessage] = useState("");
 
   useEffect(() => {
-    const unsubscribe = auth.onAuthStateChanged(async (user) => {
-      if (user) {
-        // Fetch user data from Firestore
-        const docRef = doc(db, "Users", user.uid);
-        const docSnap = await getDoc(docRef);
-
-        if (docSnap.exists()) {
-          // Set user details to state, including photo URL
-          setUserDetails(docSnap.data());
-          console.log(docSnap.data());
-        } else {
-          // User not found in Firestore, log them out and show error
-          setErrorMessage("User does not exist. Please contact support.");
-          await auth.signOut(); // Sign out the user
-          setTimeout(() => {
-            navigate("/SignIn"); // Redirect to Sign In after showing the message
-          }, 2000);
-        }
-      } else {
-        // Redirect to SignIn if no user is logged in
-        navigate("/SignIn");
-      }
-      setLoading(false);
-    });
-
-    return () => unsubscribe();
-  }, [navigate]);
-
-  async function handleLogout() {
-    try {
-      await auth.signOut();
-      navigate("/SignIn");
-      console.log("User logged out successfully!");
-    } catch (error) {
-      console.error("Error logging out:", error.message);
+    if (currentUser) {
+      fetchProfile(currentUser.uid);
     }
-  }
+  }, [currentUser]);
 
-  // Handle loading and error state before rendering the profile
-  if (loading) {
-    return <p className="text-center text-gray-500">Loading...</p>;
-  }
+  const fetchProfile = async (userId) => {
+    try {
+      const userDoc = await getDoc(doc(db, "Users", userId));
+      if (userDoc.exists()) {
+        setProfile({ id: userDoc.id, ...userDoc.data() });
+      } else {
+        setMessage("Profile not found.");
+      }
+    } catch (error) {
+      console.error("Error fetching profile:", error);
+      setMessage("Failed to fetch profile.");
+    }
+  };
 
-  if (errorMessage) {
-    return <p className="text-center text-red-500">{errorMessage}</p>; // Display error if user not found
-  }
+  const handleEdit = () => {
+    setIsEditing(true);
+  };
 
-  // Render user profile details
+  const handleUpdateProfile = async () => {
+    try {
+      await updateDoc(doc(db, "Users", profile.id), {
+        firstName: profile.firstName,
+        lastName: profile.lastName,
+      });
+      setMessage("Profile updated successfully.");
+      setIsEditing(false);
+    } catch (error) {
+      console.error("Error updating profile:", error);
+      setMessage("Failed to update profile.");
+    }
+  };
+
   return (
-    <div className="flex flex-col items-center p-24">
-      {userDetails ? (
-        <>
-          <div className="flex justify-center mb-4">
-            <img
-              src={userDetails.photo || "https://via.placeholder.com/150"}
-              width="150"
-              height="150"
-              className="rounded-full shadow-md object-cover"
-              alt="User Profile"
-            />
-          </div>
-          <h3 className="text-xl font-bold mb-4">
-            Welcome {userDetails.firstName}!
-          </h3>
-          <div className="bg-white p-6 rounded shadow-md w-full max-w-md">
-            <p className="mb-2">
-              <strong>Email:</strong> {userDetails.email}
-            </p>
-            <p className="mb-2">
-              <strong>First Name:</strong> {userDetails.firstName}
-            </p>
-            {userDetails.lastName && (
-              <p className="mb-2">
-                <strong>Last Name:</strong> {userDetails.lastName}
-              </p>
+    <div className="flex justify-center items-center min-h-screen bg-gray-100">
+      <div className="bg-white p-8 rounded-lg shadow-lg w-full mt-28 max-w-md">
+        <h2 className="text-3xl font-semibold mb-6 text-center text-gray-800">
+          Profile
+        </h2>
+
+        {message && <p className="text-center text-red-600 mb-4">{message}</p>}
+
+        {profile ? (
+          <div className="space-y-4">
+            <div>
+              <label className="font-semibold text-gray-600">Email:</label>
+              <p className="text-gray-700">{profile.email}</p>
+            </div>
+
+            <div>
+              <label className="font-semibold text-gray-600">First Name:</label>
+              {isEditing ? (
+                <input
+                  type="text"
+                  value={profile.firstName}
+                  onChange={(e) =>
+                    setProfile({ ...profile, firstName: e.target.value })
+                  }
+                  className="w-full p-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400"
+                />
+              ) : (
+                <p className="text-gray-700">{profile.firstName}</p>
+              )}
+            </div>
+
+            <div>
+              <label className="font-semibold text-gray-600">Last Name:</label>
+              {isEditing ? (
+                <input
+                  type="text"
+                  value={profile.lastName}
+                  onChange={(e) =>
+                    setProfile({ ...profile, lastName: e.target.value })
+                  }
+                  className="w-full p-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400"
+                />
+              ) : (
+                <p className="text-gray-700">{profile.lastName}</p>
+              )}
+            </div>
+
+            <div>
+              <label className="font-semibold text-gray-600">Role:</label>
+              <p className="text-gray-700">{profile.role}</p>
+            </div>
+
+            {isEditing ? (
+              <div className="flex justify-between mt-4">
+                <button
+                  className="bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-4 rounded-lg transition-all"
+                  onClick={handleUpdateProfile}
+                >
+                  Save Changes
+                </button>
+                <button
+                  className="bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold py-2 px-4 rounded-lg transition-all"
+                  onClick={() => setIsEditing(false)}
+                >
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <button
+                className="w-full bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-4 rounded-lg transition-all mt-4"
+                onClick={handleEdit}
+              >
+                Edit Profile
+              </button>
             )}
           </div>
-          <button
-            onClick={handleLogout}
-            className="mt-6 bg-red-500 text-white py-2 px-4 rounded hover:bg-red-600"
-          >
-            Sign Out
-          </button>
-        </>
-      ) : (
-        <p className="text-center text-gray-500">No user details available.</p>
-      )}
+        ) : (
+          <p className="text-center text-gray-600">Loading profile...</p>
+        )}
+      </div>
     </div>
   );
 }
