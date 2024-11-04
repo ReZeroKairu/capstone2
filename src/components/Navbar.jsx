@@ -1,27 +1,29 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom"; // Import useNavigate
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { getAuth } from "firebase/auth";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
-  faChevronDown,
-  faChevronUp,
   faUser,
+  faChevronUp,
+  faChevronDown,
 } from "@fortawesome/free-solid-svg-icons";
-import { doc, getDoc } from "firebase/firestore"; // Import Firestore functions
-import { db } from "../firebase/firebase"; // Adjust path as necessary
+import { doc, getDoc } from "firebase/firestore";
+import { db } from "../firebase/firebase";
 
 const Navbar = ({ onLogout }) => {
   const iconRef = useRef(null);
+  const profileDropdownRef = useRef(null);
+  const contactDropdownRef = useRef(null);
+  const contactButtonRef = useRef(null);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [contactDropdownOpen, setContactDropdownOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const auth = getAuth();
-  const user = auth.currentUser; // Access the current user directly
+  const user = auth.currentUser;
   const [isAdmin, setIsAdmin] = useState(false);
   const location = useLocation();
-  const navigate = useNavigate(); // Initialize useNavigate
+  const navigate = useNavigate();
 
-  // Check admin status
   const checkAdminStatus = async () => {
     if (user) {
       const userDoc = await getDoc(doc(db, "Users", user.uid));
@@ -31,36 +33,64 @@ const Navbar = ({ onLogout }) => {
       }
     }
   };
+
   const handleLogout = async () => {
-    await onLogout(); // Call the logout function
-    navigate("/signin"); // Redirect to Sign In page
+    await onLogout();
+    navigate("/signin");
   };
 
   useEffect(() => {
-    checkAdminStatus(); // Check admin status when component mounts
-  }, [user]); // Monitor user changes
+    checkAdminStatus();
+  }, [user]);
 
   const toggleDropdown = () => setDropdownOpen((prev) => !prev);
-  const toggleContactDropdown = () => setContactDropdownOpen((prev) => !prev);
+
+  const toggleContactDropdown = (e) => {
+    e.stopPropagation();
+    setContactDropdownOpen((prev) => !prev);
+  };
+
   const toggleMobileMenu = () => setMobileMenuOpen((prev) => !prev);
+
   const handleIconClick = () => {
-    console.log("Redirect to Home");
     if (iconRef.current) {
       iconRef.current.style.transform = "scale(0.9)";
       iconRef.current.style.transition = "transform 0.2s ease";
-
       setTimeout(() => {
         iconRef.current.style.transform = "scale(1)";
       }, 200);
     }
   };
 
-  // Reset dropdown states on route change
   useEffect(() => {
     setContactDropdownOpen(false);
     setDropdownOpen(false);
     setMobileMenuOpen(false);
   }, [location]);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (
+        contactDropdownRef.current &&
+        !contactDropdownRef.current.contains(event.target) &&
+        contactButtonRef.current &&
+        !contactButtonRef.current.contains(event.target)
+      ) {
+        setContactDropdownOpen(false);
+      }
+      if (
+        profileDropdownRef.current &&
+        !profileDropdownRef.current.contains(event.target)
+      ) {
+        setDropdownOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
 
   const isActiveLink = (path) => {
     return location.pathname === path ? "text-red-900" : "text-black";
@@ -68,10 +98,10 @@ const Navbar = ({ onLogout }) => {
 
   return (
     <>
-      {/* Fixed Header */}
+      {/* Main Navbar Header */}
       <header className="bg-yellow-300 shadow-md fixed w-full z-50">
         <div className="flex items-center px-4 py-1 border-b border-gray-200">
-          {/* Left Logo Section */}
+          {/* Logo Section */}
           <div className="flex items-center">
             <Link to="/Home">
               <img
@@ -128,11 +158,11 @@ const Navbar = ({ onLogout }) => {
             </nav>
           )}
 
-          {/* Center Navigation Links */}
+          {/* Center Navigation */}
           <nav
             className={`hidden md:flex text-black-700 font-poppins flex-grow items-center`}
           >
-            <span className="border-l border-gray-500 h-4 ml-5" />
+            <span className="border-l border-black h-4 ml-5" />
             <Link
               to="/journals"
               className={`px-6 ml-3 transition-all duration-300 ease-in-out hover:text-red-700 active:scale-95 active:text-red-900 ${isActiveLink(
@@ -141,7 +171,7 @@ const Navbar = ({ onLogout }) => {
             >
               Journals
             </Link>
-            <span className="border-l border-gray-500 h-4 mx-2" />
+            <span className="border-l border-black h-4 mx-2" />
             <Link
               to="/call-for-papers"
               className={`px-6 transition-all duration-300 ease-in-out hover:text-red-700 active:scale-95 active:text-red-900 ${isActiveLink(
@@ -150,7 +180,7 @@ const Navbar = ({ onLogout }) => {
             >
               Call for Papers
             </Link>
-            <span className="border-l border-gray-500 h-4 mx-2" />
+            <span className="border-l border-black h-4 mx-2" />
             <Link
               to="/pub-ethics"
               className={`px-6 transition-all duration-300 ease-in-out hover:text-red-700 active:scale-95 active:text-red-900 ${isActiveLink(
@@ -159,7 +189,7 @@ const Navbar = ({ onLogout }) => {
             >
               Publication Ethics
             </Link>
-            <span className="border-l border-gray-500 h-4 mx-2" />
+            <span className="border-l border-black h-4 mx-2" />
             <Link
               to="/guidelines"
               className={`px-6 transition-all duration-300 ease-in-out hover:text-red-700 active:scale-95 active:text-red-900 ${isActiveLink(
@@ -169,11 +199,10 @@ const Navbar = ({ onLogout }) => {
               Guidelines For Submission
             </Link>
           </nav>
-
-          {/* Right Section with Profile and Sign Out Dropdown */}
+          {/* Profile and Sign Out Dropdown */}
           <div className="relative flex items-center ml-auto space-x-4">
-            {user ? ( // Use auth.currentUser to check if the user is logged in
-              <div className="relative">
+            {user ? (
+              <div className="relative" ref={profileDropdownRef}>
                 <button
                   onClick={toggleDropdown}
                   className="flex items-center justify-center bg-gray-500 w-12 h-12 rounded-full hover:bg-red-600 transition duration-300 shadow-lg border-2 border-white"
@@ -182,13 +211,13 @@ const Navbar = ({ onLogout }) => {
                     <img
                       src={user.photoURL}
                       alt="User profile"
-                      className="w-full h-full rounded-full object-cover border-2 border-gray-300 shadow-md" // Adjusts to full width and height while maintaining round shape
+                      className="w-full h-full rounded-full object-cover border-2 border-gray-300 shadow-md"
                     />
                   ) : (
-                    <div className="w-full h-full rounded-full hover:bg-red-800 active:bg-red-900 bg-gray-100 flex items-center justify-center">
+                    <div className="w-full h-full rounded-full bg-gray-100 flex items-center justify-center">
                       <FontAwesomeIcon
                         icon={faUser}
-                        className="text-gray-500 hover:text-white p-3 text-2xl"
+                        className="text-gray-500 p-3 text-2xl"
                       />
                     </div>
                   )}
@@ -201,8 +230,7 @@ const Navbar = ({ onLogout }) => {
                     >
                       Profile
                     </Link>
-
-                    {isAdmin && ( // Conditionally render the User Management link
+                    {isAdmin && (
                       <Link
                         to="/user-management"
                         className="block px-4 py-2 text-gray-800 hover:bg-gray-200"
@@ -222,7 +250,7 @@ const Navbar = ({ onLogout }) => {
             ) : (
               <Link
                 to="/signin"
-                className="bg-red-700 active:bg-red-900 text-white py-2 px-4 rounded-sm hover:bg-red-800 transition duration-300"
+                className="bg-red-700 text-white py-2 px-4 rounded-sm hover:bg-red-800 transition duration-300"
               >
                 Sign In
               </Link>
@@ -231,9 +259,11 @@ const Navbar = ({ onLogout }) => {
         </div>
       </header>
 
+      {/* Contact Us Dropdown Header */}
       <div className="bg-red-800 text-white py-1 fixed w-full mt-14 z-40">
         <div className="flex justify-end mr-4">
           <button
+            ref={contactButtonRef}
             onClick={toggleContactDropdown}
             className="text-white text-sm flex items-center"
           >
@@ -245,8 +275,8 @@ const Navbar = ({ onLogout }) => {
           </button>
         </div>
 
-        {/* Contact Dropdown Menu */}
         <div
+          ref={contactDropdownRef}
           className={`overflow-hidden transition-max-height duration-500 ease-in-out ${
             contactDropdownOpen
               ? "max-h-screen opacity-100"
