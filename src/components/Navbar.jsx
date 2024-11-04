@@ -217,7 +217,7 @@ const Navbar = ({ onLogout }) => {
                     <div className="w-full h-full rounded-full bg-gray-100 hover:bg-red-800 flex items-center justify-center">
                       <FontAwesomeIcon
                         icon={faUser}
-                        className="text-gray-500 hover:text-white p-3 text-2xl"
+                        className="text-gray-500 hover:text-white p-1 text-2xl"
                       />
                     </div>
                   )}
