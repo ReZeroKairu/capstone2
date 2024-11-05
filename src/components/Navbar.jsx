@@ -100,7 +100,7 @@ const Navbar = ({ onLogout }) => {
     <>
       {/* Main Navbar Header */}
       <header className="bg-yellow-400 shadow-md fixed w-full z-50">
-        <div className="flex items-center px-4 py-1 border-b border-gray-200">
+        <div className="flex items-center px-4 py-1">
           {/* Logo Section */}
           <div className="flex items-center">
             <Link to="/Home">
