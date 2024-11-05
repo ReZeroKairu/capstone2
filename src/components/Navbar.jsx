@@ -99,7 +99,7 @@ const Navbar = ({ onLogout }) => {
   return (
     <>
       {/* Main Navbar Header */}
-      <header className="bg-yellow-300 shadow-md fixed w-full z-50">
+      <header className="bg-yellow-400 shadow-md fixed w-full z-50">
         <div className="flex items-center px-4 py-1 border-b border-gray-200">
           {/* Logo Section */}
           <div className="flex items-center">
@@ -120,7 +120,7 @@ const Navbar = ({ onLogout }) => {
           </button>
           {/* Mobile Menu Dropdown */}
           {mobileMenuOpen && (
-            <nav className="md:hidden bg-yellow-300">
+            <nav className="md:hidden bg-yellow-400">
               <div className="flex flex-col text-gray-700 font-semibold">
                 <Link
                   to="/journals"
@@ -214,10 +214,10 @@ const Navbar = ({ onLogout }) => {
                       className="w-full h-full rounded-full object-cover border-2 border-gray-300 shadow-md"
                     />
                   ) : (
-                    <div className="w-full h-full rounded-full bg-gray-100 hover:bg-red-800 flex items-center justify-center">
+                    <div className="w-full h-full rounded-full bg-white transition-all duration-300 ease-in-out hover:bg-red-700 active:scale-95 active:bg-red-900  flex items-center justify-center">
                       <FontAwesomeIcon
                         icon={faUser}
-                        className="text-gray-500 hover:text-white p-1 text-2xl"
+                        className="text-gray-500 hover:text-white p-3 text-2xl"
                       />
                     </div>
                   )}
