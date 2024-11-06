@@ -8,6 +8,8 @@ function Profile() {
   const [profile, setProfile] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
   const [message, setMessage] = useState("");
+  const [messageType, setMessageType] = useState(""); // "success" or "error"
+  const [messageTimeout, setMessageTimeout] = useState(null); // Store timeout ID
 
   useEffect(() => {
     if (currentUser) {
@@ -21,11 +23,11 @@ function Profile() {
       if (userDoc.exists()) {
         setProfile({ id: userDoc.id, ...userDoc.data() });
       } else {
-        setMessage("Profile not found.");
+        showMessage("Profile not found.", "error");
       }
     } catch (error) {
       console.error("Error fetching profile:", error);
-      setMessage("Failed to fetch profile.");
+      showMessage("Failed to fetch profile.", "error");
     }
   };
 
@@ -39,12 +41,30 @@ function Profile() {
         firstName: profile.firstName,
         lastName: profile.lastName,
       });
-      setMessage("Profile updated successfully.");
+      showMessage("Profile updated successfully.", "success");
       setIsEditing(false);
     } catch (error) {
       console.error("Error updating profile:", error);
-      setMessage("Failed to update profile.");
+      showMessage("Failed to update profile.", "error");
     }
+  };
+
+  const showMessage = (text, type) => {
+    setMessage(text);
+    setMessageType(type);
+
+    // Clear any existing timeout
+    if (messageTimeout) {
+      clearTimeout(messageTimeout);
+    }
+
+    // Set a new timeout to clear the message after 3 seconds
+    const timeout = setTimeout(() => {
+      setMessage("");
+      setMessageType("");
+    }, 7000);
+
+    setMessageTimeout(timeout);
   };
 
   return (
@@ -54,7 +74,15 @@ function Profile() {
           Profile
         </h2>
 
-        {message && <p className="text-center text-red-600 mb-4">{message}</p>}
+        {message && (
+          <p
+            className={`text-center mb-4 ${
+              messageType === "success" ? "text-green-600" : "text-red-600"
+            }`}
+          >
+            {message}
+          </p>
+        )}
 
         {profile ? (
           <div className="space-y-4">

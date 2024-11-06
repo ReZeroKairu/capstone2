@@ -94,7 +94,7 @@ function SignUp() {
 
       setTimeout(() => {
         navigate("/SignIn"); // Redirect to Sign In after showing success message
-      }, 10000);
+      }, 5000);
     } catch (error) {
       console.error("Error creating user:", error); // Log error
       if (error.code === "auth/email-already-in-use") {
