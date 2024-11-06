@@ -30,6 +30,8 @@ const Navbar = ({ onLogout }) => {
       if (userDoc.exists()) {
         const userData = userDoc.data();
         setIsAdmin(userData.role === "admin");
+      } else {
+        setIsAdmin(false); // Default to non-admin if no user data found
       }
     }
   };

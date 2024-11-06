@@ -35,7 +35,7 @@ function SignInwithGoogle() {
               firstName: user.displayName,
               lastName: "",
               photo: user.photoURL ?? "https://via.placeholder.com/150",
-              role: "",
+              role: "Researcher",
             });
           } catch (error) {
             console.error("Error saving document to Firestore:", error);
