@@ -4,7 +4,8 @@ import {
   Routes,
   Route,
   Navigate,
-} from "react-router-dom";
+  useLocation,
+} from "react-router-dom"; // Don't forget to import useLocation
 import { AuthProvider } from "./authcontext/AuthContext"; // Adjust path as needed
 import Navbar from "./components/Navbar"; // Adjust path as needed
 import Footer from "./components/Footer"; // Adjust path as needed
@@ -49,9 +50,9 @@ function App() {
 
   return (
     <AuthProvider value={{ currentUser: user }}>
-      {" "}
       {/* Pass user to AuthProvider */}
       <Router>
+        {/* Make sure Navbar is rendered */}
         <Navbar user={user} onLogout={() => auth.signOut()} />{" "}
         {/* Pass the current user to Navbar */}
         <div className="App">
@@ -60,19 +61,13 @@ function App() {
               <Routes>
                 <Route path="/" element={<Navigate to="/home" />} />
                 <Route path="/home" element={<Home />} />
-
-                {/* Sign up and sign in routes */}
                 <Route path="/signup" element={<SignUp />} />
                 <Route path="/signin" element={<SignIn />} />
-
-                {/* Public routes */}
                 <Route path="/journals" element={<Journals />} />
                 <Route path="/call-for-papers" element={<CallForPapers />} />
                 <Route path="/pub-ethics" element={<PubEthics />} />
                 <Route path="/guidelines" element={<Guidelines />} />
                 <Route path="/unauthorized" element={<Unauthorized />} />
-
-                {/* Protected routes */}
                 <Route
                   path="/profile"
                   element={
@@ -98,13 +93,21 @@ function App() {
                   }
                 />
               </Routes>
-              <Footer /> {/* Add the Footer here */}
+              <FooterWrapper />{" "}
+              {/* Move Footer rendering to a dedicated component */}
             </div>
           </div>
         </div>
       </Router>
     </AuthProvider>
   );
+}
+
+function FooterWrapper() {
+  const location = useLocation(); // Get current location (route)
+  const shouldRenderFooter = location.pathname !== "/user-management"; // Exclude Footer on /user-management
+
+  return shouldRenderFooter ? <Footer /> : null; // Render Footer if not on /user-management
 }
 
 export default App;
