@@ -18,24 +18,6 @@ function SignIn() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const errorMessages = {
-    "auth/invalid-email": "The email address is not valid. Please try again.",
-    "auth/user-not-found":
-      "No user found with this email address. Please sign up first.",
-    "auth/wrong-password": "Invalid email or password. Please try again.",
-    "auth/invalid-credential":
-      "Invalid credentials provided. Please check and try again.",
-    "auth/email-already-in-use":
-      "This email address is already in use by another account.",
-    "auth/operation-not-allowed":
-      "This operation is not allowed. Please contact support.",
-    "auth/user-disabled":
-      "This user has been disabled. Please contact support.",
-    "auth/weak-password":
-      "The password is too weak. Please enter a stronger password.",
-    // Add more error codes as needed
-  };
-
   const togglePasswordVisibility = () => {
     setShowPassword((prev) => !prev);
   };
