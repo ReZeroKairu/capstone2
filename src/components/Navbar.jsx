@@ -37,8 +37,11 @@ const Navbar = ({ onLogout }) => {
   };
 
   const handleLogout = async () => {
-    await onLogout();
-    navigate("/signin");
+    const confirmLogout = window.confirm("Are you sure you want to sign out?");
+    if (confirmLogout) {
+      await onLogout();
+      navigate("/signin");
+    }
   };
 
   useEffect(() => {
