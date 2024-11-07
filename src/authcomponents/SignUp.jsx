@@ -237,7 +237,7 @@ function SignUp() {
             </button>
           </div>
 
-          <div className="text-sm text-center">
+          <div className="text-center">
             Already have an account?{" "}
             <a
               href="/SignIn"

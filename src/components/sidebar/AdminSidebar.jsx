@@ -1,12 +1,28 @@
 import React, { useState } from "react"; // Ensure useState is imported
-import { FaBars, FaTimes } from "react-icons/fa"; // Burger and close icons
+import {
+  FaHome,
+  FaBullhorn,
+  FaUsers,
+  FaTachometerAlt,
+  FaFileUpload,
+  FaBook,
+  FaBars,
+  FaTimes,
+} from "react-icons/fa";
+import { Link } from "react-router-dom"; // Import Link from React Router
 
 const AdminSidebar = () => {
   const [isOpen, setIsOpen] = useState(false); // Start with sidebar closed
+  const [activeTab, setActiveTab] = useState("Home"); // Initialize activeTab
 
   // Toggle sidebar visibility
   const toggleSidebar = () => {
     setIsOpen(!isOpen);
+  };
+
+  // Set active tab
+  const handleTabClick = (tab) => {
+    setActiveTab(tab);
   };
 
   return (
@@ -15,47 +31,113 @@ const AdminSidebar = () => {
       <div
         className={`transition-all duration-300 ease-in-out mt-16 sm:mt-20 ${
           isOpen ? "w-64" : "w-0"
-        } bg-gray-800 text-white fixed inset-y-0 left-0 z-30 overflow-hidden transform`}
+        } bg-red-800 text-white fixed inset-y-0 left-0 z-30 overflow-hidden transform`}
         style={{
-          height: "455px", // Fixed height of 455px
+          height: "100vh", // Fixed height of 455px
           backgroundImage: "url('/path-to-your-image.jpg')", // Set a background image (optional)
           backgroundSize: "cover", // Ensure the background image covers the sidebar
           backgroundPosition: "center", // Position the background image to center
         }}
       >
         {/* Sidebar Header */}
-        <div className="bg-gray-900 text-white text-center py-4 px-6 text-xl font-semibold">
+        <div className="bg-red-800 text-white text-center py-4 px-6 text-xl font-semibold">
           Menu
         </div>
 
         {/* Sidebar content */}
-        <div className="relative z-10">
-          {" "}
-          {/* Ensure content is above the background */}
+        <div
+          className={`relative z-10 ${
+            isOpen ? "opacity-100" : "opacity-0"
+          } transition-opacity duration-300 delay-150`}
+        >
           <ul className={`${isOpen ? "block" : "hidden"}`}>
-            <li className="border-b border-gray-700">
-              <a
-                href="#"
-                className="block px-6 py-4 hover:bg-gray-700 transition-colors"
+            {/* Sidebar Tab Links */}
+            <li>
+              <Link
+                to="/home" // Replace with the actual path
+                onClick={() => handleTabClick("Home")}
+                className={`flex items-center w-52 ml-8 px-3 py-3 font-bold transition-colors ${
+                  activeTab === "Home" ? "bg-white text-black" : "text-white"
+                } hover:bg-white hover:text-black rounded-lg`}
               >
-                Dashboard
-              </a>
+                <FaHome className="mr-3 text-2xl" />
+                Home
+              </Link>
             </li>
-            <li className="border-b border-gray-700">
-              <a
-                href="#"
-                className="block px-6 py-4 hover:bg-gray-700 transition-colors"
+
+            <li>
+              <Link
+                to="/announcements" // Replace with the actual path
+                onClick={() => handleTabClick("Announcements")}
+                className={`flex items-center w-52 ml-8 px-3 py-3 font-bold transition-colors ${
+                  activeTab === "Announcements"
+                    ? "bg-white text-black"
+                    : "text-white"
+                } hover:bg-white hover:text-black rounded-lg`}
               >
+                <FaBullhorn className="mr-3 text-xl" />
+                Announcements
+              </Link>
+            </li>
+
+            <li>
+              <Link
+                to="/user-management" // Replace with the actual path
+                onClick={() => handleTabClick("User Management")}
+                className={`flex items-center w-52 ml-8 px-3 py-3 font-bold transition-colors ${
+                  activeTab === "User Management"
+                    ? "bg-white text-black"
+                    : "text-white"
+                } hover:bg-white hover:text-black rounded-lg`}
+              >
+                <FaUsers className="mr-3 text-xl" />
                 User Management
-              </a>
+              </Link>
             </li>
-            <li className="border-b border-gray-700">
-              <a
-                href="#"
-                className="block px-6 py-4 hover:bg-gray-700 transition-colors"
+
+            <li>
+              <Link
+                to="/dashboard" // Replace with the actual path
+                onClick={() => handleTabClick("Dashboard")}
+                className={`flex items-center w-52 ml-8 px-3 py-3 font-bold transition-colors ${
+                  activeTab === "Dashboard"
+                    ? "bg-white text-black"
+                    : "text-white"
+                } hover:bg-white hover:text-black rounded-lg`}
               >
-                Settings
-              </a>
+                <FaTachometerAlt className="mr-3 text-xl" />
+                Dashboard
+              </Link>
+            </li>
+
+            <li>
+              <Link
+                to="/submit-manuscript" // Replace with the actual path
+                onClick={() => handleTabClick("Submit Manuscript")}
+                className={`flex items-center w-52 ml-8 px-3 py-3 font-bold transition-colors ${
+                  activeTab === "Submit Manuscript"
+                    ? "bg-white text-black"
+                    : "text-white"
+                } hover:bg-white hover:text-black rounded-lg`}
+              >
+                <FaFileUpload className="mr-3 text-xl" />
+                Submit Manuscript
+              </Link>
+            </li>
+
+            <li>
+              <Link
+                to="/manuscripts" // Replace with the actual path
+                onClick={() => handleTabClick("Manuscripts")}
+                className={`flex items-center w-52 ml-8 px-3 py-3 font-bold transition-colors ${
+                  activeTab === "Manuscripts"
+                    ? "bg-white text-black"
+                    : "text-white"
+                } hover:bg-white hover:text-black rounded-lg`}
+              >
+                <FaBook className="mr-3 text-xl" />
+                Manuscripts
+              </Link>
             </li>
           </ul>
         </div>
