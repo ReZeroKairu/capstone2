@@ -231,21 +231,21 @@ const Navbar = ({ onLogout }) => {
                   <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg">
                     <Link
                       to="/profile"
-                      className="block px-4 py-2 text-gray-800 rounded-md hover:bg-gray-200"
+                      className="block px-4 py-2 text-gray-800 rounded-md hover:bg-gray-200 active:bg-gray-300"
                     >
                       Profile
                     </Link>
                     {isAdmin && (
                       <Link
                         to="/user-management"
-                        className="block px-4 py-2 text-gray-800 hover:bg-gray-200"
+                        className="block px-4 py-2 text-gray-800 hover:bg-gray-200 active:bg-gray-300"
                       >
                         User Management
                       </Link>
                     )}
                     <button
                       onClick={handleLogout}
-                      className="block w-full text-left rounded-md px-4 py-2 text-red-500 hover:bg-gray-200"
+                      className="block w-full text-left rounded-md px-4 py-2 text-red-500 hover:bg-gray-200 active:bg-gray-300"
                     >
                       Sign Out
                     </button>
