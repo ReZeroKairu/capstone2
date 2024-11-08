@@ -14,6 +14,7 @@ import { Link } from "react-router-dom"; // Import Link from React Router
 const AdminSidebar = () => {
   const [isOpen, setIsOpen] = useState(false); // Start with sidebar closed
   const [activeTab, setActiveTab] = useState("Home"); // Initialize activeTab
+  const [isHovered, setIsHovered] = useState(false);
 
   // Toggle sidebar visibility
   const toggleSidebar = () => {
@@ -56,9 +57,11 @@ const AdminSidebar = () => {
               <Link
                 to="/home" // Replace with the actual path
                 onClick={() => handleTabClick("Home")}
-                className={`flex items-center w-52 ml-8 px-3 py-3 font-bold transition-colors ${
-                  activeTab === "Home" ? "bg-white text-black" : "text-white"
-                } hover:bg-white hover:text-black rounded-lg`}
+                className={`flex items-center w-52 ml-8 px-3 py-3 transition-colors ${
+                  activeTab === "Home"
+                    ? "bg-white text-black font-bold"
+                    : "text-white"
+                } hover:bg-white hover:text-black hover:font-bold rounded-lg`}
               >
                 <FaHome className="mr-3 text-2xl" />
                 Home
@@ -69,11 +72,11 @@ const AdminSidebar = () => {
               <Link
                 to="/announcements" // Replace with the actual path
                 onClick={() => handleTabClick("Announcements")}
-                className={`flex items-center w-52 ml-8 px-3 py-3 font-bold transition-colors ${
+                className={`flex items-center w-52 ml-8 px-3 py-3 transition-colors ${
                   activeTab === "Announcements"
-                    ? "bg-white text-black"
+                    ? "bg-white text-black font-bold"
                     : "text-white"
-                } hover:bg-white hover:text-black rounded-lg`}
+                } hover:bg-white hover:text-black hover:font-bold rounded-lg`}
               >
                 <FaBullhorn className="mr-3 text-xl" />
                 Announcements
@@ -84,11 +87,11 @@ const AdminSidebar = () => {
               <Link
                 to="/user-management" // Replace with the actual path
                 onClick={() => handleTabClick("User Management")}
-                className={`flex items-center w-52 ml-8 px-3 py-3 font-bold transition-colors ${
+                className={`flex items-center w-52 ml-8 px-3 py-3 transition-colors ${
                   activeTab === "User Management"
-                    ? "bg-white text-black"
+                    ? "bg-white text-black font-bold"
                     : "text-white"
-                } hover:bg-white hover:text-black rounded-lg`}
+                } hover:bg-white hover:text-black hover:font-bold rounded-lg`}
               >
                 <FaUsers className="mr-3 text-xl" />
                 User Management
@@ -99,11 +102,11 @@ const AdminSidebar = () => {
               <Link
                 to="/dashboard" // Replace with the actual path
                 onClick={() => handleTabClick("Dashboard")}
-                className={`flex items-center w-52 ml-8 px-3 py-3 font-bold transition-colors ${
+                className={`flex items-center w-52 ml-8 px-3 py-3 transition-colors ${
                   activeTab === "Dashboard"
-                    ? "bg-white text-black"
+                    ? "bg-white text-black font-bold"
                     : "text-white"
-                } hover:bg-white hover:text-black rounded-lg`}
+                } hover:bg-white hover:text-black hover:font-bold rounded-lg`}
               >
                 <FaTachometerAlt className="mr-3 text-xl" />
                 Dashboard
@@ -114,11 +117,11 @@ const AdminSidebar = () => {
               <Link
                 to="/submit-manuscript" // Replace with the actual path
                 onClick={() => handleTabClick("Submit Manuscript")}
-                className={`flex items-center w-52 ml-8 px-3 py-3 font-bold transition-colors ${
+                className={`flex items-center w-52 ml-8 px-3 py-3 transition-colors ${
                   activeTab === "Submit Manuscript"
-                    ? "bg-white text-black"
+                    ? "bg-white text-black font-bold"
                     : "text-white"
-                } hover:bg-white hover:text-black rounded-lg`}
+                } hover:bg-white hover:text-black hover:font-bold rounded-lg`}
               >
                 <FaFileUpload className="mr-3 text-xl" />
                 Submit Manuscript
@@ -129,11 +132,11 @@ const AdminSidebar = () => {
               <Link
                 to="/manuscripts" // Replace with the actual path
                 onClick={() => handleTabClick("Manuscripts")}
-                className={`flex items-center w-52 ml-8 px-3 py-3 font-bold transition-colors ${
+                className={`flex items-center w-52 ml-8 px-3 py-3 transition-colors ${
                   activeTab === "Manuscripts"
-                    ? "bg-white text-black"
+                    ? "bg-white text-black font-bold"
                     : "text-white"
-                } hover:bg-white hover:text-black rounded-lg`}
+                } hover:bg-white hover:text-black hover:font-bold rounded-lg`}
               >
                 <FaBook className="mr-3 text-xl" />
                 Manuscripts
