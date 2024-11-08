@@ -5,6 +5,7 @@ import { getFirestore, doc, getDoc } from "firebase/firestore";
 import Sidebar from "../components/Sidebar"; // Import your Sidebar component
 import Navbar from "../components/Navbar";
 import Footer from "../components/Footer";
+
 function Home() {
   const [user, setUser] = useState(null); // State to hold user information
   const [role, setRole] = useState(null); // State to hold user role
@@ -46,8 +47,8 @@ function Home() {
     <div className="flex flex-col h-screen overflow-hidden">
       <Navbar user={user} onLogout={handleLogout} />
       <div className="flex flex-1">
-        {/* Sidebar Component */}
-        <Sidebar role={role} /> {/* Pass role to Sidebar */}
+        {/* Conditionally render Sidebar only if user is authenticated */}
+        {user && <Sidebar role={role} />} {/* Pass role to Sidebar */}
         {/* Main Content */}
         <main className="relative flex-1 overflow-hidden">
           <div
