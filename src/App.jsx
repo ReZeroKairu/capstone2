@@ -22,9 +22,8 @@ import UserManagement from "./pages/Admin/UserManagement"; // Adjust path as nee
 import AdminCreation from "./components/AdminCreation"; // Adjust path as needed
 import ProtectedRoute from "./authcontext/ProtectedRoute"; // Import ProtectedRoute
 import { getAuth, onAuthStateChanged } from "firebase/auth"; // Import getAuth and onAuthStateChanged from Firebase
-import AdminSidebar from "./components/sidebar/AdminSidebar";
-import ReviewerSidebar from "./components/sidebar/ReviewerSidebar";
-import ResearcherSidebar from "./components/sidebar/ResearcherSidebar";
+import Sidebar from "./components/Sidebar";
+
 function App() {
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState(null);
@@ -63,12 +62,6 @@ function App() {
               <Routes>
                 <Route path="/" element={<Navigate to="/home" />} />
                 <Route path="/home" element={<Home />} />
-                <Route path="/adminsidebar" element={<AdminSidebar />} />
-                <Route
-                  path="/researchersidebar"
-                  element={<ResearcherSidebar />}
-                />
-                <Route path="/reviewersidebar" element={<ReviewerSidebar />} />
                 <Route path="/signup" element={<SignUp />} />
                 <Route path="/signin" element={<SignIn />} />
                 <Route path="/journals" element={<Journals />} />
@@ -107,13 +100,6 @@ function App() {
       </Router>
     </AuthProvider>
   );
-}
-
-function FooterWrapper() {
-  const location = useLocation(); // Get current location (route)
-  const shouldRenderFooter = location.pathname !== "/user-management"; // Exclude Footer on /user-management
-
-  return shouldRenderFooter ? <Footer /> : null; // Render Footer if not on /user-management
 }
 
 export default App;

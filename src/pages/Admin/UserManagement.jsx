@@ -287,8 +287,9 @@ function UserManagement() {
               }
               className="border p-2 w-full mb-2"
             >
-              <option value="user">Researcher</option>
+              <option value="Researcher">Researcher</option>
               <option value="admin">Admin</option>
+              <option value="Peer Reviewer">Peer Reviewer</option>
             </select>
             <button
               className="bg-blue-500 text-white p-2 rounded"

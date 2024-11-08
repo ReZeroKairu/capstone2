@@ -255,7 +255,7 @@ const Navbar = ({ onLogout }) => {
             ) : (
               <Link
                 to="/signin"
-                className="bg-red-700 text-white py-2 px-4 rounded-sm hover:bg-red-800 transition duration-300"
+                className="bg-red-700 hover:bg-red-800 active:scale-95 active:bg-red-900 text-white py-2 px-4 rounded-sm transition duration-300"
               >
                 Sign In
               </Link>
