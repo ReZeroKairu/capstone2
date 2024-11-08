@@ -2,12 +2,9 @@ import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { getAuth, onAuthStateChanged } from "firebase/auth";
 import { getFirestore, doc, getDoc } from "firebase/firestore";
-import AdminSidebar from "../components/sidebar/AdminSidebar";
-import ReviewerSidebar from "../components/sidebar/ReviewerSidebar";
-import ResearcherSidebar from "../components/sidebar/ResearcherSidebar";
+import Sidebar from "../components/Sidebar"; // Import your Sidebar component
 import Navbar from "../components/Navbar";
-import Footer from "../components/Footer"; // Import your Footer component
-
+import Footer from "../components/Footer";
 function Home() {
   const [user, setUser] = useState(null); // State to hold user information
   const [role, setRole] = useState(null); // State to hold user role
@@ -49,11 +46,8 @@ function Home() {
     <div className="flex flex-col h-screen overflow-hidden">
       <Navbar user={user} onLogout={handleLogout} />
       <div className="flex flex-1">
-        {/* Conditionally Render Sidebar Based on Role */}
-        {role === "admin" && <AdminSidebar />}
-        {role === "Peer_Reviewer" && <ReviewerSidebar />}
-        {role === "Researcher" && <ResearcherSidebar />}
-
+        {/* Sidebar Component */}
+        <Sidebar role={role} /> {/* Pass role to Sidebar */}
         {/* Main Content */}
         <main className="relative flex-1 overflow-hidden">
           <div
