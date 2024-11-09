@@ -1,6 +1,13 @@
 import React, { useState, useEffect } from "react";
 import { db } from "../../firebase/firebase";
-import { collection, getDocs, doc, getDoc, addDoc } from "firebase/firestore";
+import {
+  collection,
+  getDocs,
+  doc,
+  getDoc,
+  addDoc,
+  serverTimestamp,
+} from "firebase/firestore";
 import { useAuth } from "../../authcontext/AuthContext";
 import { useNavigate } from "react-router-dom";
 import { deleteDoc, updateDoc } from "firebase/firestore";
@@ -62,44 +69,44 @@ function UserManagement() {
   const handleUpdateUser = async () => {
     if (editingUser) {
       try {
-        // Get the current user's role from Firestore
-        const userDoc = await getDoc(doc(db, "Users", currentUser.uid));
-        if (userDoc.exists() && userDoc.data().role !== "admin") {
-          console.log("User is not authorized to change roles");
-          setMessage("You are not authorized to change roles.");
-          return; // Stop execution if the user is not an admin
-        }
+        const userDocRef = doc(db, "Users", editingUser.id);
+        const userSnapshot = await getDoc(userDocRef);
+        const previousRole = userSnapshot.data().role;
 
-        // Ensure originalRole is set if not already
-        if (!editingUser.originalRole) {
-          editingUser.originalRole = editingUser.role;
-        }
-
-        // Check if the role has changed
-        const roleChanged = editingUser.role !== editingUser.originalRole;
-        if (roleChanged) {
-          const notificationMessage = `${currentUser.email} assigned ${editingUser.role} role to ${editingUser.firstName} ${editingUser.lastName}`;
-          setMessage(notificationMessage);
-
-          // Log the activity
-          await addDoc(collection(db, "ActivityLogs"), {
-            message: notificationMessage,
-            timestamp: new Date(),
-          });
-
-          // Update the user's role in Firestore
-          await updateDoc(doc(db, "Users", editingUser.uid), {
+        // Check if role has changed
+        if (previousRole !== editingUser.role) {
+          // Update the user's role
+          await updateDoc(userDocRef, {
+            firstName: editingUser.firstName,
+            lastName: editingUser.lastName,
             role: editingUser.role,
           });
 
-          console.log("Role updated successfully!");
+          // Send a notification if the role has changed
+          await addDoc(
+            collection(db, "Users", editingUser.id, "Notifications"),
+            {
+              message: `Your role has been changed to ${editingUser.role}`,
+              timestamp: serverTimestamp(),
+              seen: false, // You can use this to mark if the notification has been read
+            }
+          );
         } else {
-          console.log("Role has not changed.");
-          setMessage("Role has not changed.");
+          // Update user data without notification if role hasn't changed
+          await updateDoc(userDocRef, {
+            firstName: editingUser.firstName,
+            lastName: editingUser.lastName,
+            role: editingUser.role,
+          });
         }
+
+        setMessage("User updated successfully.");
+        fetchUsers(); // Refresh the user list
+        setIsEditing(false);
+        setEditingUser(null); // Reset editing state
       } catch (error) {
-        console.error("Error updating user role:", error);
-        setMessage("An error occurred while updating the user role.");
+        console.error("Error updating user:", error);
+        setMessage("Failed to update user.");
       }
     }
   };
