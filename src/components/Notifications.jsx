@@ -9,10 +9,10 @@ import {
   getDocs,
   doc,
   updateDoc,
+  deleteDoc,
 } from "firebase/firestore";
 import { useNavigate } from "react-router-dom";
-
-const db = getFirestore();
+import { db } from "../firebase/firebase"; // Ensure your Firebase config is correct
 
 const Notifications = ({ user }) => {
   const [notifications, setNotifications] = useState([]);
@@ -44,8 +44,8 @@ const Notifications = ({ user }) => {
     }
   };
 
-  const markNotificationAsRead = async (notificationId, userId) => {
-    console.log("Marking notification as read:", notificationId, userId); // Log user and notification IDs
+  // Mark notification as read (update 'seen' field)
+  const markNotificationAsUnread = async (notificationId, userId) => {
     try {
       const notificationRef = doc(
         db,
@@ -54,38 +54,70 @@ const Notifications = ({ user }) => {
         "Notifications",
         notificationId
       );
-      // Update the 'seen' field instead of 'isRead'
+      await updateDoc(notificationRef, { seen: false });
+    } catch (error) {
+      console.error("Error marking notification as Unread: ", error);
+    }
+  };
+
+  const markNotificationAsRead = async (notificationId, userId) => {
+    try {
+      const notificationRef = doc(
+        db,
+        "Users",
+        userId,
+        "Notifications",
+        notificationId
+      );
       await updateDoc(notificationRef, { seen: true });
     } catch (error) {
       console.error("Error marking notification as seen: ", error);
     }
   };
 
-  // Mark notification as seen locally
-  const markAsRead = (id) => {
-    setNotifications((prev) =>
-      prev.map((notification) =>
-        notification.id === id
-          ? { ...notification, seen: true } // Update 'seen' field locally
-          : notification
-      )
-    );
-    markNotificationAsRead(id, user.uid);
-  };
-
-  // Mark notification as unread locally and in Firestore
-  const markAsUnread = async (id) => {
+  const markAsUnread = (id) => {
     setNotifications((prev) =>
       prev.map((notification) =>
         notification.id === id ? { ...notification, seen: false } : notification
       )
     );
+    markNotificationAsUnread(id, user.uid);
+  };
+
+  // Mark notification as read locally and in Firestore
+  const markAsRead = (id) => {
+    setNotifications((prev) =>
+      prev.map((notification) =>
+        notification.id === id ? { ...notification, seen: true } : notification
+      )
+    );
+    markNotificationAsRead(id, user.uid);
+  };
+
+  // Delete notification from Firestore and local state
+  const deleteNotification = async (notificationId) => {
+    const isConfirmed = window.confirm(
+      "Are you sure you want to delete this notification?"
+    );
+    if (!isConfirmed) {
+      return; // If the user cancels, exit the function without deleting
+    }
+
     try {
-      await updateDoc(doc(db, "Users", user.uid, "Notifications", id), {
-        seen: false,
-      });
+      const notificationRef = doc(
+        db,
+        "Users",
+        user.uid,
+        "Notifications",
+        notificationId
+      );
+      await deleteDoc(notificationRef);
+      console.log("Notification deleted");
+      setNotifications((prev) =>
+        prev.filter((notification) => notification.id !== notificationId)
+      );
     } catch (error) {
-      console.error("Error marking notification as unread: ", error);
+      console.error("Error deleting notification:", error);
     }
   };
 
@@ -109,11 +141,12 @@ const Notifications = ({ user }) => {
   }, [user]);
 
   // Handle notification dropdown toggle
-  const toggleNotificationDropdown = () => {
+  const toggleNotificationDropdown = (event) => {
+    event.stopPropagation(); // Stop click propagation to prevent the outside listener from closing it
     setNotificationDropdownOpen((prev) => !prev);
   };
 
-  // Close dropdown if clicked outside
+  // Close dropdown if clicking outside of it
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
@@ -122,7 +155,6 @@ const Notifications = ({ user }) => {
     };
 
     document.addEventListener("mousedown", handleClickOutside);
-
     return () => {
       document.removeEventListener("mousedown", handleClickOutside);
     };
@@ -144,10 +176,10 @@ const Notifications = ({ user }) => {
       >
         <FontAwesomeIcon
           icon={faBell}
-          className="text-gray-700 text-2xl hover:text-red-600 active:text-red-900"
+          className="text-gray-700 text-3xl hover:text-red-600 active:text-red-900"
         />
         {notifications.length > 0 && (
-          <span className="absolute -top-2 -right-2 bg-red-600 text-white rounded-full px-1.5 text-xs">
+          <span className="absolute -top-1 -right-1 bg-red-600 text-white rounded-full px-1.5 text-xs">
             {notifications.filter((notif) => !notif.seen).length}
           </span>
         )}
@@ -155,65 +187,97 @@ const Notifications = ({ user }) => {
 
       {notificationDropdownOpen && (
         <div
-          ref={dropdownRef} // Attach the ref to the dropdown div
-          className="absolute right-0 mt-2 max-w-xs w-64 bg-white rounded-md shadow-lg p-4 z-10"
+          ref={dropdownRef}
+          className="absolute right-0 mt-2 w-72 bg-white border border-gray-300 rounded-lg shadow-lg overflow-hidden"
         >
-          <div className="mb-2">
-            <h3 className="font-semibold text-gray-800">Notifications</h3>
+          <div className="p-3 bg-gray-100 flex justify-between items-center">
+            <h3 className="text-sm font-semibold text-gray-800">
+              Notifications
+            </h3>
+            <div className="flex space-x-2">
+              <button
+                onClick={() => setActiveTab("all")}
+                className={`text-xs font-medium ${
+                  activeTab === "all" ? "text-blue-600" : "text-gray-600"
+                }`}
+              >
+                All
+              </button>
+              <button
+                onClick={() => setActiveTab("unread")}
+                className={`text-xs font-medium ${
+                  activeTab === "unread" ? "text-blue-600" : "text-gray-600"
+                }`}
+              >
+                Unread
+              </button>
+              <button
+                onClick={() => setActiveTab("read")}
+                className={`text-xs font-medium ${
+                  activeTab === "read" ? "text-blue-600" : "text-gray-600"
+                }`}
+              >
+                Read
+              </button>
+            </div>
           </div>
-          <div className="flex justify-between mb-2">
-            <button
-              onClick={() => setActiveTab("all")}
-              className={`text-sm font-medium ${
-                activeTab === "all" ? "text-blue-600" : "text-gray-600"
-              }`}
-            >
-              All
-            </button>
-            <button
-              onClick={() => setActiveTab("unread")}
-              className={`text-sm font-medium ${
-                activeTab === "unread" ? "text-blue-600" : "text-gray-600"
-              }`}
-            >
-              Unread
-            </button>
-            <button
-              onClick={() => setActiveTab("read")}
-              className={`text-sm font-medium ${
-                activeTab === "read" ? "text-blue-600" : "text-gray-600"
-              }`}
-            >
-              Read
-            </button>
-          </div>
-          <div>
-            {loading ? (
-              <p className="text-gray-500 text-sm">Loading notifications...</p>
-            ) : filteredNotifications.length > 0 ? (
-              filteredNotifications.map((notification) => (
-                <div
-                  key={notification.id}
-                  className={`p-2 rounded-md cursor-pointer ${
-                    notification.seen ? "bg-gray-100" : "bg-gray-200"
-                  }`}
-                  onClick={() => handleNotificationClick(notification)}
-                >
-                  <p className="text-sm">{notification.message}</p>
+
+          {loading ? (
+            <p className="p-4 text-center text-gray-600">Loading...</p>
+          ) : filteredNotifications.length === 0 ? (
+            <p className="p-4 text-center text-gray-600">No notifications</p>
+          ) : (
+            filteredNotifications.map((notification) => (
+              <div
+                key={notification.id}
+                className="flex flex-col items-start p-4 cursor-pointer hover:bg-gray-50 transition-colors"
+                onClick={() => handleNotificationClick(notification)}
+              >
+                <div className="w-full">
+                  <p
+                    className={`text-sm ${
+                      notification.seen ? "text-gray-600" : "font-semibold"
+                    }`}
+                  >
+                    {notification.message}
+                  </p>
+                </div>
+                <div className="flex items-center justify-between mt-2 space-x-2">
                   {!notification.seen && (
                     <button
-                      onClick={() => markAsUnread(notification.id)}
-                      className="text-blue-600 text-xs mt-1"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        markAsRead(notification.id);
+                      }}
+                      className="text-xs text-blue-600 hover:text-blue-800"
                     >
-                      Mark as Unread
+                      Mark as read
                     </button>
                   )}
+                  {notification.seen && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation(); // Prevent the click event from bubbling up
+                        markAsUnread(notification.id); // Mark notification as unread
+                      }}
+                      className="text-xs text-blue-600 hover:text-blue-800"
+                    >
+                      Mark as unread
+                    </button>
+                  )}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      deleteNotification(notification.id);
+                    }}
+                    className="text-xs text-red-600 hover:text-red-800"
+                  >
+                    Delete
+                  </button>
                 </div>
-              ))
-            ) : (
-              <p className="text-gray-500 text-sm">No notifications</p>
-            )}
-          </div>
+              </div>
+            ))
+          )}
         </div>
       )}
     </div>
