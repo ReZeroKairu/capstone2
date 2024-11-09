@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { db } from "../../firebase/firebase";
-import { collection, getDocs, doc, getDoc } from "firebase/firestore";
+import { collection, getDocs, doc, getDoc, addDoc } from "firebase/firestore";
 import { useAuth } from "../../authcontext/AuthContext";
 import { useNavigate } from "react-router-dom";
 import { deleteDoc, updateDoc } from "firebase/firestore";
@@ -19,6 +19,17 @@ function UserManagement() {
   const [currentPage, setCurrentPage] = useState(1);
   const [usersPerPage, setUsersPerPage] = useState(5);
   const [searchQuery, setSearchQuery] = useState("");
+
+  const checkAdminStatus = async (userId) => {
+    const userDoc = await getDoc(doc(db, "Users", userId));
+    if (userDoc.exists() && userDoc.data().role === "admin") {
+      setIsAdmin(true);
+      fetchUsers();
+    } else {
+      navigate("/unauthorized");
+    }
+    setLoading(false);
+  };
   const handleEdit = (user) => {
     setEditingUser(user);
     setIsEditing(true); // Open the editing modal
@@ -48,34 +59,51 @@ function UserManagement() {
     }
   }, [currentUser, authLoading, navigate]);
 
-  const checkAdminStatus = async (userId) => {
-    const userDoc = await getDoc(doc(db, "Users", userId));
-    if (userDoc.exists() && userDoc.data().role === "admin") {
-      setIsAdmin(true);
-      fetchUsers();
-    } else {
-      navigate("/unauthorized");
-    }
-    setLoading(false);
-  };
   const handleUpdateUser = async () => {
     if (editingUser) {
       try {
-        await updateDoc(doc(db, "Users", editingUser.id), {
-          firstName: editingUser.firstName,
-          lastName: editingUser.lastName,
-          role: editingUser.role,
-        });
-        setMessage("User updated successfully.");
-        fetchUsers(); // Refresh the user list
-        setIsEditing(false);
-        setEditingUser(null); // Reset editing state
+        // Get the current user's role from Firestore
+        const userDoc = await getDoc(doc(db, "Users", currentUser.uid));
+        if (userDoc.exists() && userDoc.data().role !== "admin") {
+          console.log("User is not authorized to change roles");
+          setMessage("You are not authorized to change roles.");
+          return; // Stop execution if the user is not an admin
+        }
+
+        // Ensure originalRole is set if not already
+        if (!editingUser.originalRole) {
+          editingUser.originalRole = editingUser.role;
+        }
+
+        // Check if the role has changed
+        const roleChanged = editingUser.role !== editingUser.originalRole;
+        if (roleChanged) {
+          const notificationMessage = `${currentUser.email} assigned ${editingUser.role} role to ${editingUser.firstName} ${editingUser.lastName}`;
+          setMessage(notificationMessage);
+
+          // Log the activity
+          await addDoc(collection(db, "ActivityLogs"), {
+            message: notificationMessage,
+            timestamp: new Date(),
+          });
+
+          // Update the user's role in Firestore
+          await updateDoc(doc(db, "Users", editingUser.uid), {
+            role: editingUser.role,
+          });
+
+          console.log("Role updated successfully!");
+        } else {
+          console.log("Role has not changed.");
+          setMessage("Role has not changed.");
+        }
       } catch (error) {
-        console.error("Error updating user:", error);
-        setMessage("Failed to update user.");
+        console.error("Error updating user role:", error);
+        setMessage("An error occurred while updating the user role.");
       }
     }
   };
+
   const fetchUsers = async () => {
     setLoading(true);
     try {

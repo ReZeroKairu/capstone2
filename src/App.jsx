@@ -22,7 +22,6 @@ import UserManagement from "./pages/Admin/UserManagement"; // Adjust path as nee
 import AdminCreation from "./components/AdminCreation"; // Adjust path as needed
 import ProtectedRoute from "./authcontext/ProtectedRoute"; // Import ProtectedRoute
 import { getAuth, onAuthStateChanged } from "firebase/auth"; // Import getAuth and onAuthStateChanged from Firebase
-import Sidebar from "./components/Sidebar";
 
 function App() {
   const [loading, setLoading] = useState(true);

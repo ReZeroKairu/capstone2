@@ -9,6 +9,7 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "../firebase/firebase";
+import Notifications from "./Notifications";
 
 const Navbar = ({ onLogout }) => {
   const iconRef = useRef(null);
@@ -206,6 +207,8 @@ const Navbar = ({ onLogout }) => {
           </nav>
           {/* Profile and Sign Out Dropdown */}
           <div className="relative flex items-center ml-auto space-x-4">
+            {user && <Notifications user={user} />}{" "}
+            {/* Include the Notifications component */}
             {user ? (
               <div className="relative" ref={profileDropdownRef}>
                 <button
