@@ -27,4 +27,4 @@ const provider = new GoogleAuthProvider(); // Create a new instance of GoogleAut
 const storage = getStorage(app); // Initialize Firebase Storage
 
 // Export the initialized services
-export { app, db, auth, provider, storage }; // Add storage to exports
+export { app, db, auth, provider, storage }; // db (Firestore) is exported here
