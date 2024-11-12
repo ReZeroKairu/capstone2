@@ -89,6 +89,7 @@ function UserManagement() {
               message: `Your role has been changed to ${editingUser.role}`,
               timestamp: serverTimestamp(),
               seen: false, // You can use this to mark if the notification has been read
+              status: "new", // Add the status field, for example "new"
             }
           );
         } else {
