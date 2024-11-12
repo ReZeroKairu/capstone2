@@ -13,6 +13,7 @@ import {
 } from "firebase/firestore";
 import { useNavigate } from "react-router-dom";
 import { db } from "../firebase/firebase"; // Ensure your Firebase config is correct
+import { getAuth } from "firebase/auth";
 
 const Notifications = ({ user }) => {
   const [notifications, setNotifications] = useState([]);
@@ -22,7 +23,7 @@ const Notifications = ({ user }) => {
   const [loading, setLoading] = useState(true);
   const dropdownRef = useRef(null); // Create a ref for the dropdown
   const navigate = useNavigate();
-
+  const auth = getAuth();
   // Fetch notifications from Firestore
   const fetchNotifications = async (userId) => {
     setLoading(true);
@@ -44,9 +45,11 @@ const Notifications = ({ user }) => {
     }
   };
 
-  // Mark notification as read (update 'seen' field)
-  const markNotificationAsUnread = async (notificationId, userId) => {
+  const markNotificationAsUnread = async (notificationId) => {
     try {
+      const userId = auth.currentUser?.uid; // Get the authenticated user's UID
+      if (!userId) throw new Error("User is not authenticated.");
+
       const notificationRef = doc(
         db,
         "Users",
@@ -54,12 +57,13 @@ const Notifications = ({ user }) => {
         "Notifications",
         notificationId
       );
+
       await updateDoc(notificationRef, { seen: false });
+      console.log("Notification marked as unread");
     } catch (error) {
-      console.error("Error marking notification as Unread: ", error);
+      console.error("Error marking notification as unread: ", error);
     }
   };
-
   const markNotificationAsRead = async (notificationId, userId) => {
     try {
       const notificationRef = doc(
@@ -69,19 +73,43 @@ const Notifications = ({ user }) => {
         "Notifications",
         notificationId
       );
-      await updateDoc(notificationRef, { seen: true });
+
+      // Access the current authenticated user
+      const auth = getAuth();
+      const currentUser = auth.currentUser;
+
+      if (currentUser) {
+        // Ensure the user is authenticated before updating
+        await updateDoc(notificationRef, { seen: true });
+        console.log("Notification marked as seen");
+      } else {
+        console.error("User is not authenticated");
+      }
     } catch (error) {
       console.error("Error marking notification as seen: ", error);
     }
   };
 
   const markAsUnread = (id) => {
-    setNotifications((prev) =>
-      prev.map((notification) =>
-        notification.id === id ? { ...notification, seen: false } : notification
-      )
-    );
-    markNotificationAsUnread(id, user.uid);
+    try {
+      // Update local state
+      setNotifications((prev) =>
+        prev.map((notification) =>
+          notification.id === id
+            ? { ...notification, seen: false }
+            : notification
+        )
+      );
+
+      // Update Firestore
+      if (user?.uid) {
+        markNotificationAsUnread(id, user.uid);
+      } else {
+        console.error("User is not authenticated.");
+      }
+    } catch (error) {
+      console.error("Error marking notification as unread:", error);
+    }
   };
 
   // Mark notification as read locally and in Firestore
@@ -135,7 +163,7 @@ const Notifications = ({ user }) => {
 
   // Fetch notifications when the component mounts (only when user is logged in)
   useEffect(() => {
-    if (user) {
+    if (user && user.uid) {
       fetchNotifications(user.uid);
     }
   }, [user]);

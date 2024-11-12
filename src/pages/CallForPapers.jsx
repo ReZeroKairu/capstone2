@@ -13,6 +13,7 @@ function CallForPapers() {
   const textareaRef = useRef(null);
   const issueRefs = useRef([]);
 
+  // Check if the current user is an admin
   useEffect(() => {
     const checkAdminRole = async () => {
       const user = auth.currentUser;
@@ -38,6 +39,7 @@ function CallForPapers() {
     return () => unsubscribe();
   }, []);
 
+  // Fetch the content and listen for changes in real-time
   useEffect(() => {
     const fetchContent = async () => {
       const docRef = doc(db, "Content", "CallForPapers");
@@ -61,6 +63,7 @@ function CallForPapers() {
     return () => unsubscribe();
   }, []);
 
+  // Handle resizing of text areas dynamically
   const handleResizeTextarea = () => {
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
@@ -81,6 +84,7 @@ function CallForPapers() {
     handleResizeTextarea();
   }, [content.description]);
 
+  // Save changes to Firestore
   const handleSaveChanges = async () => {
     try {
       const docRef = doc(db, "Content", "CallForPapers");
@@ -166,7 +170,6 @@ function CallForPapers() {
               </div>
             ) : (
               <div>
-                {/* Apply `white-space: pre-line` to preserve line breaks and spaces */}
                 <p className="text-lg mb-6" style={{ whiteSpace: "pre-line" }}>
                   {content.description}
                 </p>
