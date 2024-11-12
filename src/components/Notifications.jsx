@@ -32,10 +32,15 @@ const Notifications = ({ user }) => {
       const q = query(notificationsRef, orderBy("timestamp", "desc"));
       const querySnapshot = await getDocs(q);
 
-      const fetchedNotifications = querySnapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      }));
+      const fetchedNotifications = querySnapshot.docs.map((doc) => {
+        const data = doc.data();
+        const timestamp = data.timestamp ? data.timestamp.toDate() : null; // Convert Firestore timestamp to JavaScript Date
+        return {
+          id: doc.id,
+          ...data,
+          timestamp: timestamp, // Add timestamp to the notification object
+        };
+      });
 
       setNotifications(fetchedNotifications);
     } catch (error) {
@@ -195,9 +200,9 @@ const Notifications = ({ user }) => {
       : activeTab === "read"
       ? notifications.filter((notif) => notif.seen)
       : notifications;
-
   return (
     <div className="relative">
+      {/* Notification Icon */}
       <button
         onClick={toggleNotificationDropdown}
         className="relative focus:outline-none"
@@ -206,18 +211,20 @@ const Notifications = ({ user }) => {
           icon={faBell}
           className="text-gray-700 text-3xl hover:text-red-600 active:text-red-900"
         />
-        {notifications.length > 0 && (
+        {notifications.filter((notif) => !notif.seen).length > 0 && (
           <span className="absolute -top-1 -right-1 bg-red-600 text-white rounded-full px-1.5 text-xs">
             {notifications.filter((notif) => !notif.seen).length}
           </span>
         )}
       </button>
 
+      {/* Dropdown */}
       {notificationDropdownOpen && (
         <div
           ref={dropdownRef}
           className="absolute right-0 mt-2 w-72 bg-white border border-gray-300 rounded-lg shadow-lg overflow-hidden"
         >
+          {/* Header */}
           <div className="p-3 bg-gray-100 flex justify-between items-center">
             <h3 className="text-sm font-semibold text-gray-800">
               Notifications
@@ -250,62 +257,75 @@ const Notifications = ({ user }) => {
             </div>
           </div>
 
-          {loading ? (
-            <p className="p-4 text-center text-gray-600">Loading...</p>
-          ) : filteredNotifications.length === 0 ? (
-            <p className="p-4 text-center text-gray-600">No notifications</p>
-          ) : (
-            filteredNotifications.map((notification) => (
-              <div
-                key={notification.id}
-                className="flex flex-col items-start p-4 cursor-pointer hover:bg-gray-50 transition-colors"
-                onClick={() => handleNotificationClick(notification)}
-              >
-                <div className="w-full">
-                  <p
-                    className={`text-sm ${
-                      notification.seen ? "text-gray-600" : "font-semibold"
-                    }`}
-                  >
-                    {notification.message}
-                  </p>
-                </div>
-                <div className="flex items-center justify-between mt-2 space-x-2">
-                  {!notification.seen && (
+          {/* Notifications Content */}
+          <div className="notifications-container">
+            {loading ? (
+              <p className="p-4 text-center text-gray-600">Loading...</p>
+            ) : filteredNotifications.length === 0 ? (
+              <p className="p-4 text-center text-gray-600">No notifications</p>
+            ) : (
+              filteredNotifications.map((notification) => (
+                <div
+                  key={notification.id}
+                  className="flex flex-col items-start p-4 cursor-pointer hover:bg-gray-50 transition-colors"
+                  onClick={() => handleNotificationClick(notification)}
+                >
+                  <div className="w-full">
+                    <p
+                      className={`text-sm ${
+                        notification.seen ? "text-gray-600" : "font-semibold"
+                      }`}
+                    >
+                      {notification.message}
+                    </p>
+                  </div>
+                  <div className="flex items-center justify-between mt-2 space-x-2">
+                    {!notification.seen && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          markAsRead(notification.id);
+                        }}
+                        className="text-xs text-blue-600 hover:text-blue-800"
+                      >
+                        Mark as read
+                      </button>
+                    )}
+                    {notification.seen && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          markAsUnread(notification.id);
+                        }}
+                        className="text-xs text-blue-600 hover:text-blue-800"
+                      >
+                        Mark as unread
+                      </button>
+                    )}
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        markAsRead(notification.id);
+                        deleteNotification(notification.id);
                       }}
-                      className="text-xs text-blue-600 hover:text-blue-800"
+                      className="text-xs text-red-600 hover:text-red-800"
                     >
-                      Mark as read
+                      Delete
                     </button>
+                  </div>
+                  {/* Timestamp Display */}
+                  {notification.timestamp && (
+                    <div className="text-xs text-gray-500 mt-1">
+                      {new Date(
+                        notification.timestamp.toMillis
+                          ? notification.timestamp.toMillis()
+                          : Date.parse(notification.timestamp)
+                      ).toLocaleString()}
+                    </div>
                   )}
-                  {notification.seen && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation(); // Prevent the click event from bubbling up
-                        markAsUnread(notification.id); // Mark notification as unread
-                      }}
-                      className="text-xs text-blue-600 hover:text-blue-800"
-                    >
-                      Mark as unread
-                    </button>
-                  )}
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      deleteNotification(notification.id);
-                    }}
-                    className="text-xs text-red-600 hover:text-red-800"
-                  >
-                    Delete
-                  </button>
                 </div>
-              </div>
-            ))
-          )}
+              ))
+            )}
+          </div>
         </div>
       )}
     </div>

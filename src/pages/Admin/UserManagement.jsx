@@ -87,7 +87,7 @@ function UserManagement() {
             collection(db, "Users", editingUser.id, "Notifications"),
             {
               message: `Your role has been changed to ${editingUser.role}`,
-              timestamp: serverTimestamp(),
+              timestamp: serverTimestamp(), // Use serverTimestamp here
               seen: false, // You can use this to mark if the notification has been read
               status: "new", // Add the status field, for example "new"
             }
