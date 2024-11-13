@@ -2,9 +2,10 @@ import React, { useEffect, useState, useRef } from "react";
 import {
   createUserWithEmailAndPassword,
   sendEmailVerification,
+  signOut,
 } from "firebase/auth";
 import { auth, db } from "../firebase/firebase";
-import { setDoc, doc } from "firebase/firestore";
+import { setDoc, doc, collection, addDoc } from "firebase/firestore";
 import { useNavigate } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faEye, faEyeSlash } from "@fortawesome/free-solid-svg-icons";
@@ -34,16 +35,17 @@ function SignUp() {
   // Check if the user is already authenticated
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged((user) => {
-      if (user) {
+      if (user && !successMessage) {
         setIsCheckingAuth(false);
+        // If user is logged in but not seeing the success message, stay on the signup page
       } else {
         setIsCheckingAuth(false);
       }
     });
     return () => unsubscribe();
-  }, [navigate]);
+  }, [navigate, successMessage]);
 
-  const handleRegister = async (e) => {
+  const handleSignUp = async (e) => {
     e.preventDefault();
 
     setErrorMessage("");
@@ -65,6 +67,7 @@ function SignUp() {
     setLoading(true);
 
     try {
+      // Step 1: Create the user, but we don't want them signed in
       const userCredential = await createUserWithEmailAndPassword(
         auth,
         email,
@@ -72,28 +75,38 @@ function SignUp() {
       );
       const user = userCredential.user;
 
-      console.log("User ID:", user.uid); // Log the user ID for debugging
+      // Step 2: Log the user out immediately to prevent auto login
+      await signOut(auth);
 
-      // Write user data to Firestore
+      // Step 3: Write user data to Firestore (including the 'photo' field)
       await setDoc(doc(db, "Users", user.uid), {
         uid: user.uid,
         firstName: firstName,
         lastName: lastName,
         email: user.email,
-        role: "Researcher",
+        role: "Researcher", // Default role can be "Researcher"
+        photo: null, // Initialize photo as null or a placeholder URL
       });
 
-      // Send verification email
+      // Step 4: Send verification email
       await sendEmailVerification(user);
+
+      // Log the sign-up action to a top-level "UserLog" collection
+      const userLogRef = collection(db, "UserLog"); // Reference to UserLog top-level collection
+      await addDoc(userLogRef, {
+        userId: user.uid, // Reference to the user document
+        action: "SignUp",
+        email: user.email,
+        timestamp: new Date(),
+      });
+
       setSuccessMessage(
         "User registered successfully! A verification email has been sent. Please check your inbox and verify your email before signing in."
       );
 
-      // Log the user out to prevent unverified access
-      await auth.signOut();
-
+      // Redirect to sign-in page after 5 seconds to show success message
       setTimeout(() => {
-        navigate("/SignIn"); // Redirect to Sign In after showing success message
+        navigate("/SignIn");
       }, 5000);
     } catch (error) {
       console.error("Error creating user:", error); // Log error
@@ -123,7 +136,7 @@ function SignUp() {
       ></div>
       <div className="min-h-screen flex flex-col justify-center items-center">
         <form
-          onSubmit={handleRegister}
+          onSubmit={handleSignUp}
           className="max-w-md mx-auto border-2 border-white px-20 mt-32 mb-20 pt-4 pb-6 bg-yellow-400 rounded-lg space-y-4"
         >
           <img
@@ -180,6 +193,9 @@ function SignUp() {
               placeholder="Enter email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+              autoComplete="email" // Ensure this is set for autofill to work
+              name="email" // Set the name attribute as 'email'
+              id="email" // Optional: use an explicit id for the email input field
             />
           </div>
 

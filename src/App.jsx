@@ -26,15 +26,15 @@ import { getAuth, onAuthStateChanged } from "firebase/auth"; // Import getAuth a
 import UserLog from "./pages/Admin/UserLog";
 
 function App() {
-  const [loading, setLoading] = useState(true);
-  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true); // To track if auth state is being loaded
+  const [user, setUser] = useState(null); // To store authenticated user
   const auth = getAuth(); // Get auth instance
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(
       auth,
       (currentUser) => {
-        setUser(currentUser);
+        setUser(currentUser); // If user is authenticated, set the user
         setLoading(false); // Set loading to false once auth state is determined
       },
       (error) => {
@@ -43,7 +43,7 @@ function App() {
       }
     );
 
-    return () => unsubscribe();
+    return () => unsubscribe(); // Cleanup the listener on component unmount
   }, [auth]);
 
   if (loading) {

@@ -2,7 +2,8 @@ import { signInWithEmailAndPassword, signInWithPopup } from "firebase/auth";
 import React, { useEffect, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { auth, provider } from "../firebase/firebase";
-import SignInwithGoogle from "./SignInWithGoogle";
+import { db } from "../firebase/firebase"; // Make sure to import Firestore
+import { collection, addDoc } from "firebase/firestore"; // Firestore methods
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faLock,
@@ -10,6 +11,7 @@ import {
   faEyeSlash,
   faEnvelope,
 } from "@fortawesome/free-solid-svg-icons";
+import SignInwithGoogle from "./SignInWithGoogle";
 
 function SignIn() {
   const [email, setEmail] = useState("");
@@ -18,14 +20,43 @@ function SignIn() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+
   const togglePasswordVisibility = () => {
     setShowPassword((prev) => !prev);
   };
 
+  const checkEmailVerification = async (user) => {
+    await user.reload();
+    if (!user.emailVerified) {
+      setAlert({
+        message:
+          "Please verify your email before logging in. Please check your email.",
+        type: "error",
+      });
+      await auth.signOut();
+      return false;
+    }
+    return true;
+  };
+
+  // Log user action function
+  const logUserAction = async (user, action) => {
+    const userLogRef = collection(db, "UserLog"); // Reference to UserLog collection
+    await addDoc(userLogRef, {
+      userId: user.uid, // User ID
+      action: action, // The action being performed (e.g., "SignIn" or "GoogleSignIn")
+      email: user.email, // User email
+      timestamp: new Date(), // Timestamp of the action
+    });
+  };
+
   useEffect(() => {
-    const unsubscribe = auth.onAuthStateChanged((user) => {
-      if (user && user.emailVerified) {
-        navigate("/home");
+    const unsubscribe = auth.onAuthStateChanged(async (user) => {
+      if (user) {
+        const verified = await checkEmailVerification(user);
+        if (verified) {
+          navigate("/home");
+        }
       }
     });
     return () => unsubscribe();
@@ -41,18 +72,12 @@ function SignIn() {
         password
       );
       const user = userCredential.user;
-      await user.reload();
-      if (!user.emailVerified) {
-        setAlert({
-          message:
-            "Please verify your email before logging in. Please check your email.",
-          type: "error",
-        });
-        await auth.signOut();
-        return;
+      const verified = await checkEmailVerification(user);
+      if (verified) {
+        setAlert({ message: "User logged in successfully!", type: "success" });
+        await logUserAction(user, "SignIn"); // Log the user action
+        navigate("/home"); // Redirect to home page after successful login
       }
-      setAlert({ message: "User logged in successfully!", type: "success" });
-      navigate("/home");
     } catch (error) {
       console.error("Error during email/password sign-in:", error);
       let errorMessage = "Failed to sign in. Please check your credentials.";
@@ -84,8 +109,10 @@ function SignIn() {
         });
         return;
       }
-      if (user.emailVerified) {
+      const verified = await checkEmailVerification(user);
+      if (verified) {
         setAlert({ message: "User logged in successfully!", type: "success" });
+        await logUserAction(user, "GoogleSignIn"); // Log the user action
         navigate("/home");
       } else {
         setAlert({
@@ -151,6 +178,9 @@ function SignIn() {
                 placeholder="Email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
+                autoComplete="email" // Ensure this is set for autofill to work
+                name="email" // Set the name attribute as 'email'
+                id="email" // Optional: use an explicit id for the email input field
                 required
               />
             </div>

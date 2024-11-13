@@ -24,7 +24,7 @@ export const AuthProvider = ({ children }) => {
     );
 
     return () => unsubscribe(); // Cleanup subscription on unmount
-  }, [auth]);
+  }, []); // Only run on mount/unmount
 
   // Include email verification status
   const value = {
@@ -33,12 +33,11 @@ export const AuthProvider = ({ children }) => {
     emailVerified: currentUser?.emailVerified || false,
   };
 
-  // Render loading indicator if loading, else render children
-  return (
-    <AuthContext.Provider value={value}>
-      {loading ? <div>Loading...</div> : children}
-    </AuthContext.Provider>
-  );
+  if (loading) {
+    return <div>Loading...</div>; // You can replace this with a better UI or loading spinner
+  }
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
 // Custom hook to use AuthContext
