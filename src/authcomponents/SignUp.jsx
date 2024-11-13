@@ -137,7 +137,7 @@ function SignUp() {
       <div className="min-h-screen flex flex-col justify-center items-center">
         <form
           onSubmit={handleSignUp}
-          className="max-w-md mx-auto border-2 border-white px-20 mt-32 mb-20 pt-4 pb-6 bg-yellow-400 rounded-lg space-y-4"
+          className="max-w-md mx-auto border-2 border-white px-6 sm:px-12 md:px-20 mt-32 mb-20 pt-4 pb-6 bg-yellow-400 rounded-lg space-y-4 w-full"
         >
           <img
             src="/pubtrackIcon2.png"
@@ -193,9 +193,9 @@ function SignUp() {
               placeholder="Enter email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              autoComplete="email" // Ensure this is set for autofill to work
-              name="email" // Set the name attribute as 'email'
-              id="email" // Optional: use an explicit id for the email input field
+              autoComplete="email"
+              name="email"
+              id="email"
             />
           </div>
 
@@ -246,7 +246,7 @@ function SignUp() {
           <div className="flex justify-center mt-4">
             <button
               type="submit"
-              className="btn btn-primary mt-2 bg-red-700 hover:bg-red-800 active:scale-95 active:bg-red-900 text-white p-2 rounded w-32"
+              className="btn btn-primary mt-2 bg-red-700 hover:bg-red-800 active:scale-95 active:bg-red-900 text-white p-2 rounded w-full sm:w-32"
               disabled={loading}
             >
               {loading ? "Signing Up..." : "Sign Up"}

@@ -96,41 +96,6 @@ function SignIn() {
     }
   };
 
-  const handleGoogleSignIn = async () => {
-    try {
-      const userCredential = await signInWithPopup(auth, provider);
-      const user = userCredential.user;
-      const existingUser = await auth.fetchSignInMethodsForEmail(user.email);
-      if (existingUser.length && existingUser[0] === "password") {
-        setAlert({
-          message:
-            "You already have an account with this email. Please sign in with email and password.",
-          type: "error",
-        });
-        return;
-      }
-      const verified = await checkEmailVerification(user);
-      if (verified) {
-        setAlert({ message: "User logged in successfully!", type: "success" });
-        await logUserAction(user, "GoogleSignIn"); // Log the user action
-        navigate("/home");
-      } else {
-        setAlert({
-          message:
-            "Please verify your email before logging in. Please check your email.",
-          type: "error",
-        });
-        await auth.signOut();
-      }
-    } catch (error) {
-      console.error("Google Sign-In error:", error.message);
-      setAlert({
-        message: "Failed to sign in with Google. Please try again.",
-        type: "error",
-      });
-    }
-  };
-
   return (
     <main className="flex flex-col min-h-screen relative">
       <div
