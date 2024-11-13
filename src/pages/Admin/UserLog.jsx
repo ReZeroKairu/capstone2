@@ -82,15 +82,15 @@ const UserLog = () => {
 
   if (loading && logs.length === 0) {
     return (
-      <div className="flex justify-center items-center min-h-screen">
+      <div className="flex justify-center items-center min-h-screen pt-24">
         <p className="text-center text-xl">Loading user logs...</p>
       </div>
     );
   }
 
   return (
-    <div className="flex justify-center items-center min-h-screen bg-gray-100 p-4">
-      <div className="w-full max-w-5xl bg-white shadow-lg rounded-lg border border-gray-300 overflow-x-auto">
+    <div className="flex justify-center items-center min-h-screen pt-24 bg-gray-100 p-4">
+      <div className="w-full max-w-4xl bg-white shadow-lg rounded-lg border border-gray-300 flex flex-col">
         <h1 className="text-2xl font-bold text-center p-4 text-blue-600">
           User Logs
         </h1>
@@ -99,39 +99,41 @@ const UserLog = () => {
             <p>{error}</p>
           </div>
         )}
-        <table className="w-full border-collapse text-sm md:text-base">
-          <thead>
-            <tr className="bg-gray-200 text-gray-700">
-              <th className="px-4 py-2 text-left">Email</th>
-              <th className="px-4 py-2 text-left">Action</th>
-              <th className="px-4 py-2 text-left">Timestamp</th>
-            </tr>
-          </thead>
-          <tbody>
-            {logs.length > 0 ? (
-              logs.map((log) => (
-                <tr
-                  key={log.id}
-                  className="hover:bg-gray-100 transition-colors duration-200"
-                >
-                  <td className="border px-4 py-3">{log.email}</td>
-                  <td className="border px-4 py-3">{log.action}</td>
-                  <td className="border px-4 py-3">
-                    {log.timestamp ? log.timestamp.toLocaleString() : "N/A"}
+        <div className="overflow-x-auto flex-grow">
+          <table className="w-full border-collapse text-sm md:text-base">
+            <thead>
+              <tr className="bg-gray-200 text-gray-700">
+                <th className="px-4 py-2 text-left">Email</th>
+                <th className="px-4 py-2 text-left">Action</th>
+                <th className="px-4 py-2 text-left">Timestamp</th>
+              </tr>
+            </thead>
+            <tbody>
+              {logs.length > 0 ? (
+                logs.map((log) => (
+                  <tr
+                    key={log.id}
+                    className="hover:bg-gray-100 transition-colors duration-200"
+                  >
+                    <td className="border px-4 py-3">{log.email}</td>
+                    <td className="border px-4 py-3">{log.action}</td>
+                    <td className="border px-4 py-3">
+                      {log.timestamp ? log.timestamp.toLocaleString() : "N/A"}
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan="3" className="border px-4 py-3 text-center">
+                    No logs found
                   </td>
                 </tr>
-              ))
-            ) : (
-              <tr>
-                <td colSpan="3" className="border px-4 py-3 text-center">
-                  No logs found
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+              )}
+            </tbody>
+          </table>
+        </div>
         {hasMore && (
-          <div className="flex justify-center mt-4">
+          <div className="flex justify-center mt-4 mb-4">
             <button
               onClick={handleLoadMore}
               className="bg-blue-500 text-white px-6 py-2 rounded-md shadow hover:bg-blue-400 transition"

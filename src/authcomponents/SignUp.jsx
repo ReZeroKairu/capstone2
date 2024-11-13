@@ -189,7 +189,7 @@ function SignUp() {
             </label>
             <input
               type="email"
-              className="w-full mt-1 p-2 border text-black rounded-lg focus:ring-blue-500 focus:border-blue-500"
+              className="w-full mt-1 p-2 border text-black rounded-lg focus:ring-blue-500 focus:border-blue-500 autofill:bg-transparent"
               placeholder="Enter email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
