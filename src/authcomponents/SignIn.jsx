@@ -1,6 +1,6 @@
 import { signInWithEmailAndPassword, signInWithPopup } from "firebase/auth";
 import React, { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { auth, provider } from "../firebase/firebase";
 import SignInwithGoogle from "./SignInWithGoogle";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
@@ -205,6 +205,14 @@ function SignIn() {
             </a>
           </p>
           <SignInwithGoogle />
+          <div className=" text-center mt-5 ">
+            <Link
+              to="/forgot-password"
+              className="text-red-700 hover:text-red-800  active:text-red-950 underline"
+            >
+              Forgot Password?
+            </Link>
+          </div>
         </form>
 
         {/* Loading Indicator */}
