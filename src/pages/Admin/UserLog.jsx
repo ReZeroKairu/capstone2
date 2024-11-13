@@ -8,7 +8,7 @@ import {
   startAfter,
   Timestamp,
 } from "firebase/firestore";
-import { db } from "../../firebase/firebase"; // Adjust your Firebase import path
+import { db } from "../../firebase/firebase";
 
 const UserLog = () => {
   const [logs, setLogs] = useState([]);
@@ -17,15 +17,10 @@ const UserLog = () => {
   const [hasMore, setHasMore] = useState(true);
   const [error, setError] = useState(null);
 
-  // Function to fetch logs
   const fetchLogs = async (isInitialLoad = false) => {
     try {
-      const logsRef = collection(db, "UserLog"); // Top-level 'UserLogs' collection
-      let logsQuery = query(
-        logsRef,
-        orderBy("timestamp", "desc"), // Order by timestamp in descending order
-        limit(10) // Limit to 10 logs per fetch
-      );
+      const logsRef = collection(db, "UserLog");
+      let logsQuery = query(logsRef, orderBy("timestamp", "desc"), limit(10));
 
       if (!isInitialLoad && lastVisible) {
         logsQuery = query(
@@ -50,7 +45,7 @@ const UserLog = () => {
           timestamp:
             data.timestamp instanceof Timestamp
               ? data.timestamp.toDate()
-              : new Date(data.timestamp.seconds * 1000), // Ensure correct Date conversion
+              : new Date(data.timestamp.seconds * 1000),
           email: data.email || "Unknown Email",
           action: data.action || "No action recorded",
         };
@@ -60,7 +55,7 @@ const UserLog = () => {
         isInitialLoad ? fetchedLogs : [...prevLogs, ...fetchedLogs]
       );
       setLastVisible(logsSnapshot.docs[logsSnapshot.docs.length - 1]);
-      setHasMore(fetchedLogs.length > 0); // Check if there are more logs
+      setHasMore(fetchedLogs.length > 0);
     } catch (error) {
       console.error("Error fetching logs:", error);
       setError("Failed to load logs. Please try again later.");
@@ -69,30 +64,34 @@ const UserLog = () => {
     }
   };
 
-  // Initial fetch of logs when component mounts
   useEffect(() => {
     setLogs([]);
     setLastVisible(null);
     setHasMore(true);
     setLoading(true);
-    setError(null); // Reset error state on mount
+    setError(null);
     fetchLogs(true);
   }, []);
 
   const handleLoadMore = () => {
-    if (hasMore) {
+    if (hasMore && !loading) {
+      setLoading(true);
       fetchLogs();
     }
   };
 
-  if (loading) {
-    return <p className="text-center text-xl">Loading user logs...</p>;
+  if (loading && logs.length === 0) {
+    return (
+      <div className="flex justify-center items-center min-h-screen">
+        <p className="text-center text-xl">Loading user logs...</p>
+      </div>
+    );
   }
 
   return (
-    <div className="flex justify-center items-center min-h-screen bg-gray-100 py-10">
-      <div className="w-full max-w-4xl p-6 bg-white shadow-lg rounded-xl border border-gray-200">
-        <h1 className="text-3xl font-semibold text-center mb-6 text-blue-600">
+    <div className="flex justify-center items-center min-h-screen bg-gray-100 p-4">
+      <div className="w-full max-w-5xl bg-white shadow-lg rounded-lg border border-gray-300 overflow-x-auto">
+        <h1 className="text-2xl font-bold text-center p-4 text-blue-600">
           User Logs
         </h1>
         {error && (
@@ -100,12 +99,12 @@ const UserLog = () => {
             <p>{error}</p>
           </div>
         )}
-        <table className="w-full table-auto border-collapse">
+        <table className="w-full border-collapse text-sm md:text-base">
           <thead>
-            <tr>
-              <th className="px-4 py-2 text-left text-gray-700">Email</th>
-              <th className="px-4 py-2 text-left text-gray-700">Action</th>
-              <th className="px-4 py-2 text-left text-gray-700">Timestamp</th>
+            <tr className="bg-gray-200 text-gray-700">
+              <th className="px-4 py-2 text-left">Email</th>
+              <th className="px-4 py-2 text-left">Action</th>
+              <th className="px-4 py-2 text-left">Timestamp</th>
             </tr>
           </thead>
           <tbody>
@@ -115,23 +114,16 @@ const UserLog = () => {
                   key={log.id}
                   className="hover:bg-gray-100 transition-colors duration-200"
                 >
-                  <td className="border px-4 py-3 text-gray-600">
-                    {log.email}
-                  </td>
-                  <td className="border px-4 py-3 text-gray-600">
-                    {log.action}
-                  </td>
-                  <td className="border px-4 py-3 text-gray-600">
+                  <td className="border px-4 py-3">{log.email}</td>
+                  <td className="border px-4 py-3">{log.action}</td>
+                  <td className="border px-4 py-3">
                     {log.timestamp ? log.timestamp.toLocaleString() : "N/A"}
                   </td>
                 </tr>
               ))
             ) : (
               <tr>
-                <td
-                  colSpan="3"
-                  className="border px-4 py-3 text-center text-gray-600"
-                >
+                <td colSpan="3" className="border px-4 py-3 text-center">
                   No logs found
                 </td>
               </tr>
@@ -139,10 +131,10 @@ const UserLog = () => {
           </tbody>
         </table>
         {hasMore && (
-          <div className="flex justify-center mt-6">
+          <div className="flex justify-center mt-4">
             <button
               onClick={handleLoadMore}
-              className="bg-blue-600 text-white px-6 py-2 rounded-lg shadow-md hover:bg-blue-500 transition-colors"
+              className="bg-blue-500 text-white px-6 py-2 rounded-md shadow hover:bg-blue-400 transition"
             >
               Load More
             </button>

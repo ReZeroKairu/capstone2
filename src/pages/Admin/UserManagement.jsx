@@ -178,7 +178,6 @@ function UserManagement() {
           role="alert"
         >
           <div className="flex items-center">
-            {/* Conditional icon based on message type */}
             {message.includes("success") && (
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -215,9 +214,8 @@ function UserManagement() {
           </div>
         </div>
       )}
-      <div className="flex items-center border border-gray-500 mb-1 w-72">
-        {/* Search icon inside input */}
-        <FaSearch className="text-gray-500 w-8 ml-1" />
+      <div className="relative mb-1 w-full sm:w-72">
+        {/* Input field with icon inside */}
         <input
           type="text"
           placeholder="Search users..."
@@ -226,16 +224,15 @@ function UserManagement() {
             setSearchQuery(e.target.value);
             setCurrentPage(1); // Reset to the first page when searching
           }}
-          className="w-full p-2 " // Add left padding to accommodate the icon
+          className="w-full pl-10 pr-3 py-2 border border-gray-500 rounded-md" // Add left padding to make space for the icon
         />
+        <FaSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500" />
       </div>
+
       {loading ? (
         <p className="text-center text-gray-500">Loading users...</p>
       ) : (
-        <div
-          className="overflow-x-auto shadow-lg rounded-lg"
-          style={{ maxHeight: "500px" }}
-        >
+        <div className="overflow-x-auto shadow-lg rounded-lg max-h-[500px]">
           <table className="table-auto w-full border-collapse bg-white">
             <thead>
               <tr className="bg-indigo-600 text-white">
@@ -272,7 +269,8 @@ function UserManagement() {
             </tbody>
           </table>
         </div>
-      )}{" "}
+      )}
+
       {/* Modal for Delete Confirmation */}
       {deleteUserId && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center">
@@ -293,6 +291,7 @@ function UserManagement() {
           </div>
         </div>
       )}
+
       {/* Modal for Editing User */}
       {isEditing && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center">
@@ -303,7 +302,10 @@ function UserManagement() {
               placeholder="First Name"
               value={editingUser.firstName}
               onChange={(e) =>
-                setEditingUser({ ...editingUser, firstName: e.target.value })
+                setEditingUser({
+                  ...editingUser,
+                  firstName: e.target.value,
+                })
               }
               className="border p-2 w-full mb-2"
             />
@@ -312,14 +314,20 @@ function UserManagement() {
               placeholder="Last Name"
               value={editingUser.lastName}
               onChange={(e) =>
-                setEditingUser({ ...editingUser, lastName: e.target.value })
+                setEditingUser({
+                  ...editingUser,
+                  lastName: e.target.value,
+                })
               }
               className="border p-2 w-full mb-2"
             />
             <select
               value={editingUser.role}
               onChange={(e) =>
-                setEditingUser({ ...editingUser, role: e.target.value })
+                setEditingUser({
+                  ...editingUser,
+                  role: e.target.value,
+                })
               }
               className="border p-2 w-full mb-2"
             >
@@ -342,6 +350,7 @@ function UserManagement() {
           </div>
         </div>
       )}
+
       {/* Fixed Pagination */}
       <div className="fixed bottom-0 left-0 w-full p-2 bg-white shadow-lg">
         <div className="flex justify-between items-center">
