@@ -7,13 +7,14 @@ import { db } from "../firebase/firebase"; // Adjust path to your Firebase confi
 const AdminRoute = ({ children }) => {
   const { currentUser } = useContext(AuthContext);
   const location = useLocation();
-  const [isAdmin, setIsAdmin] = React.useState(null);
-  const [loading, setLoading] = React.useState(true);
+  const [authState, setAuthState] = React.useState({
+    isAdmin: null,
+    loading: true,
+  });
 
   React.useEffect(() => {
     if (!currentUser) {
-      setIsAdmin(false);
-      setLoading(false);
+      setAuthState({ isAdmin: false, loading: false });
       return;
     }
 
@@ -21,29 +22,30 @@ const AdminRoute = ({ children }) => {
       try {
         const userDoc = await getDoc(doc(db, "Users", currentUser.uid));
         if (userDoc.exists() && userDoc.data().role === "admin") {
-          setIsAdmin(true);
+          setAuthState({ isAdmin: true, loading: false });
         } else {
-          setIsAdmin(false);
+          setAuthState({ isAdmin: false, loading: false });
         }
       } catch (error) {
         console.error("Error checking admin role:", error);
-        setIsAdmin(false);
-      } finally {
-        setLoading(false);
+        setAuthState({ isAdmin: false, loading: false });
       }
     };
 
     checkAdmin();
   }, [currentUser]);
 
-  if (loading) {
-    return <p className="text-center">Loading...</p>; // Optional loading state
+  // Show loading message while checking user role
+  if (authState.loading) {
+    return <p className="text-center">Loading...</p>;
   }
 
-  if (!currentUser || !isAdmin) {
+  // If the user is not an admin, redirect to the unauthorized page
+  if (!currentUser || !authState.isAdmin) {
     return <Navigate to="/unauthorized" state={{ from: location }} replace />;
   }
 
+  // Render children if the user is an admin
   return children;
 };
 

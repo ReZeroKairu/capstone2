@@ -9,7 +9,7 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "../firebase/firebase";
-import Notifications from "./Notifications";
+import Notifications from "./Notifications"; // Importing Notifications
 
 const Navbar = ({ onLogout }) => {
   const iconRef = useRef(null);
@@ -19,23 +19,45 @@ const Navbar = ({ onLogout }) => {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [contactDropdownOpen, setContactDropdownOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const auth = getAuth();
-  const user = auth.currentUser;
   const [isAdmin, setIsAdmin] = useState(false);
+  const [user, setUser] = useState(null); // Track the user state
+  const [loading, setLoading] = useState(true); // To manage loading state
   const location = useLocation();
   const navigate = useNavigate();
 
-  const checkAdminStatus = async () => {
-    if (user) {
-      const userDoc = await getDoc(doc(db, "Users", user.uid));
-      if (userDoc.exists()) {
-        const userData = userDoc.data();
-        setIsAdmin(userData.role === "admin");
-      } else {
-        setIsAdmin(false); // Default to non-admin if no user data found
-      }
+  const auth = getAuth();
+
+  // Check if the user is an admin
+  const checkAdminStatus = async (user) => {
+    const userDoc = await getDoc(doc(db, "Users", user.uid));
+    if (userDoc.exists()) {
+      const userData = userDoc.data();
+      setIsAdmin(userData.role === "admin");
+    } else {
+      setIsAdmin(false); // Default to non-admin if no user data found
     }
   };
+
+  // UseEffect to handle user state changes
+  useEffect(() => {
+    const unsubscribe = auth.onAuthStateChanged((user) => {
+      if (user) {
+        // Check if the user is verified
+        if (user.emailVerified) {
+          setUser(user); // Set user when authenticated and verified
+          checkAdminStatus(user); // Check if the user is an admin
+        } else {
+          setUser(null); // Reset user if email is not verified
+        }
+      } else {
+        setUser(null); // Reset user if not authenticated
+        setIsAdmin(false); // Reset admin status
+      }
+      setLoading(false); // Set loading to false once the check is complete
+    });
+
+    return () => unsubscribe(); // Cleanup on component unmount
+  }, [auth]);
 
   const handleLogout = async () => {
     const confirmLogout = window.confirm("Are you sure you want to sign out?");
@@ -44,10 +66,6 @@ const Navbar = ({ onLogout }) => {
       navigate("/signin");
     }
   };
-
-  useEffect(() => {
-    checkAdminStatus();
-  }, [user]);
 
   const toggleDropdown = () => setDropdownOpen((prev) => !prev);
 
@@ -101,6 +119,16 @@ const Navbar = ({ onLogout }) => {
   const isActiveLink = (path) => {
     return location.pathname === path ? "text-red-900" : "text-black";
   };
+
+  // Render a loading state or the navbar content based on user authentication
+  if (loading) {
+    return (
+      <nav>
+        {/* Show a loading spinner or text during authentication check */}
+        <p>Loading...</p>
+      </nav>
+    );
+  }
 
   return (
     <>
@@ -246,6 +274,15 @@ const Navbar = ({ onLogout }) => {
                         User Management
                       </Link>
                     )}
+                    {isAdmin && (
+                      <Link
+                        to="/user-log"
+                        className="block px-4 py-2 text-gray-800 hover:bg-gray-200 active:bg-gray-300"
+                      >
+                        User Logs
+                      </Link>
+                    )}
+
                     <button
                       onClick={handleLogout}
                       className="block w-full text-left rounded-md px-4 py-2 text-red-500 hover:bg-gray-200 active:bg-gray-300"
