@@ -2,6 +2,8 @@ import React, { useState, useEffect } from "react";
 import { db } from "../firebase/firebase"; // Adjust path as needed
 import { doc, getDoc, updateDoc, addDoc, collection } from "firebase/firestore";
 import { useAuth } from "../authcontext/AuthContext"; // Adjust path as needed
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faUser, faEdit } from "@fortawesome/free-solid-svg-icons";
 
 function Profile() {
   const { currentUser } = useAuth();
@@ -102,12 +104,20 @@ function Profile() {
   };
 
   return (
-    <div className="flex justify-center items-center min-h-screen bg-gray-100">
-      <div className="bg-white p-8 rounded-lg shadow-lg w-full mt-28 max-w-md">
-        <h2 className="text-3xl font-semibold mb-6 text-center text-gray-800">
+    <div className="flex justify-center items-center min-h-screen bg-gray-300">
+      <div className="relative bg-red-800 p-8 rounded-lg shadow-lg w-full mt-28 max-w-md pb-14 mb-7">
+        {/* Pencil icon in the top-right corner */}
+        <button
+          className="absolute top-4 right-4 text-white hover:text-yellow-400 transition-all"
+          onClick={handleEdit}
+        >
+          <FontAwesomeIcon icon={faEdit} className="text-2xl" />
+        </button>
+
+        <h2 className="text-3xl font-semibold mb-6 text-center text-white">
           Profile
         </h2>
-
+        {/* Message section with a fixed height to prevent profile shifting */}
         {message && (
           <p
             className={`text-center mb-4 ${
@@ -117,60 +127,89 @@ function Profile() {
             {message}
           </p>
         )}
+        {!message && (
+          <div className="h-8 mb-4"></div> // Add an empty div with the same height as the message
+        )}
 
         {profile ? (
           <div className="space-y-6">
-            <div className="flex justify-center">
-              <img
-                src={profile.photoURL || "https://via.placeholder.com/150"} // Placeholder if no photoURL
-                alt="Profile"
-                className="w-32 h-32 rounded-full object-cover mb-6"
-              />
+            <div className="flex justify-center mb-3">
+              {profile.photoURL ? (
+                <img
+                  src={profile.photoURL}
+                  alt="Profile"
+                  className="w-32 h-32 rounded-full object-cover mb-6"
+                />
+              ) : (
+                <div className="w-32 h-32 rounded-full bg-white flex justify-center items-center text-yellow-400 text-6xl md:text-6xl">
+                  <FontAwesomeIcon icon={faUser} />
+                </div>
+              )}
             </div>
+            <div>
+              <p className="text-white text-2xl text-center">{profile.role}</p>
+            </div>
+
             {/* Display email */}
             <div>
-              <label className="font-semibold text-gray-600">Email:</label>
-              <p className="text-gray-700">{currentUser.email}</p>
+              <label className="font-semibold text-white">Email:</label>
+              <p className="text-white mb-10">{currentUser.email}</p>
             </div>
+
             <div>
-              <label className="font-semibold text-gray-600">First Name:</label>
-              {isEditing ? (
+              <label className="font-semibold text-white">First Name:</label>
+              <div
+                className={`${
+                  isEditing ? "hidden" : "block"
+                } text-white h-10 flex items-center`}
+              >
+                <p>{profile.firstName || "No first name"}</p>{" "}
+                {/* Default text if first name is missing */}
+              </div>
+              <div
+                className={`${
+                  isEditing ? "block" : "hidden"
+                } text-white h-10 flex items-center`}
+              >
                 <input
                   type="text"
-                  value={profile.firstName}
+                  value={profile.firstName || ""}
                   onChange={(e) =>
                     setProfile({ ...profile, firstName: e.target.value })
                   }
-                  className="w-full p-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400"
+                  className="w-full p-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400 h-10 text-black"
                 />
-              ) : (
-                <p className="text-gray-700">{profile.firstName}</p>
-              )}
+              </div>
             </div>
 
             <div>
-              <label className="font-semibold text-gray-600">Last Name:</label>
-              {isEditing ? (
+              <label className="font-semibold text-white">Last Name:</label>
+              <div
+                className={`${
+                  isEditing ? "hidden" : "block"
+                } text-white h-10 flex items-center`}
+              >
+                <p>{profile.lastName || "No last name"}</p>{" "}
+                {/* Default text if last name is missing */}
+              </div>
+              <div
+                className={`${
+                  isEditing ? "block" : "hidden"
+                } text-white h-10 flex items-center`}
+              >
                 <input
                   type="text"
-                  value={profile.lastName}
+                  value={profile.lastName || ""}
                   onChange={(e) =>
                     setProfile({ ...profile, lastName: e.target.value })
                   }
-                  className="w-full p-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400"
+                  className="w-full p-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400 h-10 text-black"
                 />
-              ) : (
-                <p className="text-gray-700">{profile.lastName}</p>
-              )}
-            </div>
-
-            <div>
-              <label className="font-semibold text-gray-600">Role:</label>
-              <p className="text-gray-700">{profile.role}</p>
+              </div>
             </div>
 
             {isEditing ? (
-              <div className="flex justify-between mt-4">
+              <div className="flex justify-between mt-10 h-10">
                 <button
                   className="bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-4 rounded-lg transition-all"
                   onClick={handleUpdateProfile}
@@ -185,16 +224,11 @@ function Profile() {
                 </button>
               </div>
             ) : (
-              <button
-                className="w-full bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-4 rounded-lg transition-all mt-4"
-                onClick={handleEdit}
-              >
-                Edit Profile
-              </button>
+              <div className="mt-10 h-10"></div> // Placeholder div to maintain layout consistency
             )}
           </div>
         ) : (
-          <p className="text-center text-gray-600">Loading profile...</p>
+          <p className="text-center text-gray-100">Loading profile...</p>
         )}
       </div>
     </div>
