@@ -1,6 +1,6 @@
 [
   {
-    "origin": ["http://localhost:5173", "https://your-production-domain.com"],
+    "origin": ["http://localhost:5173", "https://pubtrack.vercel.app/"],
     "method": ["GET", "POST", "PUT", "DELETE"],
     "maxAgeSeconds": 3600
   }
