@@ -1,0 +1,56 @@
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Users collection rules
+    match /Users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+
+      // Admins can read and write any document
+      allow read, write: if request.auth != null &&
+                         get(/databases/$(database)/documents/Users/$(request.auth.uid)).data.role == "admin";
+
+      allow update: if request.auth != null &&
+                    request.auth.uid == userId &&
+                    request.resource.data.keys().hasAny(['firstName', 'lastName', 'photo']) &&
+                    (request.resource.data.photo == null || request.resource.data.photo is string);
+
+      allow update: if request.auth != null &&
+                    get(/databases/$(database)/documents/Users/$(request.auth.uid)).data.role == "admin" &&
+                    request.resource.data.keys().hasOnly(['role']) &&
+                    request.resource.data.role != resource.data.role;
+
+      allow create: if request.auth != null &&
+                    request.resource.data.uid == request.auth.uid &&
+                    request.resource.data.keys().hasAll(['uid', 'email', 'firstName', 'photo']) &&
+                    request.resource.data.email is string &&
+                    request.resource.data.firstName is string &&
+                    request.resource.data.photo is string;
+    }
+
+    // UserLog collection rules
+    match /UserLog/{logId} {
+      // Allow admins to perform all operations on UserLog
+      allow read, write, update, delete: if request.auth != null &&
+                                         get(/databases/$(database)/documents/Users/$(request.auth.uid)).data.role == "admin";
+
+  // Allow authenticated users to write logs
+        allow write: if request.auth != null;
+
+
+    }
+
+    // Content collection rules (e.g., CallForPapers)
+    match /Content/CallForPapers {
+      allow read: if true;
+      allow write: if request.auth != null &&
+                   get(/databases/$(database)/documents/Users/$(request.auth.uid)).data.role == "admin";
+    }
+
+    // Notifications subcollection rules within Users
+    match /Users/{userId}/Notifications/{notificationId} {
+      allow read, update, delete: if request.auth != null && request.auth.uid == userId;
+      allow read, create, update, delete: if request.auth != null &&
+                                           get(/databases/$(database)/documents/Users/$(request.auth.uid)).data.role == "admin";
+    }
+  }
+}
