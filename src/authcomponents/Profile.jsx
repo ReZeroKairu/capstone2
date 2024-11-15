@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { db } from "../firebase/firebase"; // Adjust path as needed
-import { doc, getDoc, updateDoc } from "firebase/firestore";
+import { doc, getDoc, updateDoc, addDoc, collection } from "firebase/firestore";
 import { useAuth } from "../authcontext/AuthContext"; // Adjust path as needed
 
 function Profile() {
@@ -10,6 +10,10 @@ function Profile() {
   const [message, setMessage] = useState("");
   const [messageType, setMessageType] = useState(""); // "success" or "error"
   const [messageTimeout, setMessageTimeout] = useState(null); // Store timeout ID
+
+  // Store original values for firstName and lastName for comparison later
+  const [originalFirstName, setOriginalFirstName] = useState("");
+  const [originalLastName, setOriginalLastName] = useState("");
 
   useEffect(() => {
     if (currentUser) {
@@ -21,7 +25,14 @@ function Profile() {
     try {
       const userDoc = await getDoc(doc(db, "Users", userId));
       if (userDoc.exists()) {
-        setProfile({ id: userDoc.id, ...userDoc.data() });
+        const userData = userDoc.data();
+        setProfile({
+          id: userDoc.id,
+          ...userData,
+          photoURL: currentUser.photoURL,
+        });
+        setOriginalFirstName(userData.firstName); // Set the original first name
+        setOriginalLastName(userData.lastName); // Set the original last name
       } else {
         showMessage("Profile not found.", "error");
       }
@@ -35,12 +46,35 @@ function Profile() {
     setIsEditing(true);
   };
 
+  const logUserAction = async (user, action) => {
+    const userLogRef = collection(db, "UserLog"); // Reference to UserLog collection
+    await addDoc(userLogRef, {
+      userId: user.uid, // User ID
+      action: action, // The action being performed (e.g., "ProfileUpdate")
+      email: user.email, // User email
+      timestamp: new Date(), // Timestamp of the action
+    });
+  };
+
   const handleUpdateProfile = async () => {
+    // Check if there are any changes before updating
+    if (
+      profile.firstName === originalFirstName &&
+      profile.lastName === originalLastName
+    ) {
+      showMessage("No changes to save.", "error");
+      return; // Stop further execution if no changes are made
+    }
+
     try {
       await updateDoc(doc(db, "Users", profile.id), {
         firstName: profile.firstName,
         lastName: profile.lastName,
       });
+
+      // Log the profile update action
+      await logUserAction(currentUser, "ProfileUpdate");
+
       showMessage("Profile updated successfully.", "success");
       setIsEditing(false);
     } catch (error) {
@@ -85,12 +119,19 @@ function Profile() {
         )}
 
         {profile ? (
-          <div className="space-y-4">
+          <div className="space-y-6">
+            <div className="flex justify-center">
+              <img
+                src={profile.photoURL || "https://via.placeholder.com/150"} // Placeholder if no photoURL
+                alt="Profile"
+                className="w-32 h-32 rounded-full object-cover mb-6"
+              />
+            </div>
+            {/* Display email */}
             <div>
               <label className="font-semibold text-gray-600">Email:</label>
-              <p className="text-gray-700">{profile.email}</p>
+              <p className="text-gray-700">{currentUser.email}</p>
             </div>
-
             <div>
               <label className="font-semibold text-gray-600">First Name:</label>
               {isEditing ? (
