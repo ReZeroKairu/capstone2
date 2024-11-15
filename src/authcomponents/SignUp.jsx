@@ -91,15 +91,6 @@ function SignUp() {
       // Step 4: Send verification email
       await sendEmailVerification(user);
 
-      // Log the sign-up action to a top-level "UserLog" collection
-      const userLogRef = collection(db, "UserLog"); // Reference to UserLog top-level collection
-      await addDoc(userLogRef, {
-        userId: user.uid, // Reference to the user document
-        action: "SignUp",
-        email: user.email,
-        timestamp: new Date(),
-      });
-
       setSuccessMessage(
         "User registered successfully! A verification email has been sent. Please check your inbox and verify your email before signing in."
       );
