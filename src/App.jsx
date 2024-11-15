@@ -52,8 +52,7 @@ function App() {
 
   return (
     <AuthProvider value={{ currentUser: user }}>
-      {/* Add both experimental flags here */}
-      <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+      <Router>
         <Navbar user={user} onLogout={() => auth.signOut()} />
         <div className="App">
           <div className="auth-wrapper">
