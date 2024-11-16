@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   FaHome,
   FaBullhorn,
@@ -14,11 +14,26 @@ import { Link } from "react-router-dom";
 const Sidebar = ({ role }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [activeTab, setActiveTab] = useState("Home");
+  const [scrollPosition, setScrollPosition] = useState(0);
 
   // Toggle sidebar visibility
   const toggleSidebar = () => {
     setIsOpen(!isOpen);
   };
+
+  // Update scroll position on scroll
+  const handleScroll = () => {
+    setScrollPosition(window.scrollY);
+  };
+
+  useEffect(() => {
+    window.addEventListener("scroll", handleScroll);
+
+    // Clean up the event listener on unmount
+    return () => {
+      window.removeEventListener("scroll", handleScroll);
+    };
+  }, []);
 
   // Set active tab
   const handleTabClick = (tab) => {
@@ -179,10 +194,15 @@ const Sidebar = ({ role }) => {
         </div>
       </div>
 
-      {/* Toggle Button */}
+      {/* Toggle Button - moves down with scroll */}
       <div
-        className="absolute top-4 left-4 z-30 cursor-pointer text-white"
+        className="absolute z-30 cursor-pointer text-white"
         onClick={toggleSidebar}
+        style={{
+          position: "absolute",
+          top: `${scrollPosition + 20}px`, // Moves with scroll
+          left: "20px",
+        }}
       >
         {isOpen ? (
           <FaTimes className="text-3xl" />

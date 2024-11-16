@@ -183,8 +183,8 @@ function Profile() {
   };
 
   return (
-    <div className="flex justify-center items-center min-h-screen bg-gray-300">
-      <div className="relative bg-red-800 p-8 rounded-lg shadow-lg w-full mt-28 max-w-md pb-5 mb-7">
+    <div className="flex justify-center items-center min-h-screen bg-gradient-to-r from-blue-200 to-purple-300">
+      <div className="relative bg-red-800 p-8 rounded-lg shadow-2xl w-full mt-28 max-w-md pb-5 mb-7">
         {/* Pencil icon in the top-right corner */}
         <button
           className="absolute top-4 right-4 text-white hover:text-yellow-300 active:text-yellow-500 transition-all"
@@ -212,45 +212,52 @@ function Profile() {
         </h2>
         {profile ? (
           <div className="space-y-6">
+            {/* Profile Photo Section */}
             <div className="flex justify-center mb-3">
               {profile.photoURL ? (
                 <img
                   src={profile.photoURL}
                   alt="Profile"
-                  className="w-32 h-32 rounded-full object-cover mb-6"
+                  className="w-32 h-32 rounded-full object-cover mb-6 shadow-md"
                 />
               ) : (
-                <div className="w-32 h-32 rounded-full bg-white flex justify-center items-center text-yellow-400 text-6xl md:text-6xl">
+                <div className="w-32 h-32 rounded-full bg-white flex justify-center items-center text-yellow-400 text-6xl shadow-lg">
                   <FontAwesomeIcon icon={faUser} />
                 </div>
               )}
             </div>
-            <div>
-              <p className="text-white text-2xl font-bold -mt-8 text-center">
+
+            {/* Full Name Section */}
+            <div className="mb-4">
+              <p className="text-white text-3xl font-bold text-center -mt-11 mb-2">
                 {profile.firstName} {profile.lastName}
               </p>
-            </div>
-            <div>
-              <p className="text-white text-2xl font-bold -mt-2 text-center">
+              <p className="text-white text-2xl -mt-1 text-center">
                 {profile.role}
               </p>
             </div>
 
-            {/* Display email */}
-            <div>
-              <label className="font-semibold text-white">Email:</label>
-              <p className="text-white mb-10">{currentUser.email}</p>
+            {/* Email Section */}
+            <div className="border-b-2 border-gray-400 pb-3 mb-6">
+              <label className="font-semibold text-white text-sm mb-2">
+                Email:
+              </label>
+              <p className="text-white mb-4 text-lg">{currentUser.email}</p>
             </div>
 
-            <div>
-              <label className="font-semibold text-white">First Name:</label>
+            {/* First Name Section */}
+            <div className="border-b-2 border-gray-400 pb-3 mb-6">
+              <label className="font-semibold text-white text-sm mb-2">
+                First Name:
+              </label>
               <div
                 className={`${
                   isEditing ? "hidden" : "block"
                 } text-white h-10 flex items-center`}
               >
-                <p>{profile.firstName || "No first name"}</p>{" "}
-                {/* Default text if first name is missing */}
+                <p className="text-lg">
+                  {profile.firstName || "No first name"}
+                </p>
               </div>
               <div
                 className={`${
@@ -264,20 +271,22 @@ function Profile() {
                   onChange={(e) =>
                     setProfile({ ...profile, firstName: e.target.value })
                   }
-                  className="w-full p-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400 h-10 text-black"
+                  className="w-full p-1 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-black shadow-md transition-all ease-in-out duration-300"
                 />
               </div>
             </div>
 
-            <div>
-              <label className="font-semibold text-white">Last Name:</label>
+            {/* Last Name Section */}
+            <div className="border-b-2 border-gray-400 pb-3 mb-6">
+              <label className="font-semibold text-white text-sm mb-2">
+                Last Name:
+              </label>
               <div
                 className={`${
                   isEditing ? "hidden" : "block"
                 } text-white h-10 flex items-center`}
               >
-                <p>{profile.lastName || "No last name"}</p>{" "}
-                {/* Default text if last name is missing */}
+                <p className="text-lg">{profile.lastName || "No last name"}</p>
               </div>
               <div
                 className={`${
@@ -291,21 +300,22 @@ function Profile() {
                   onChange={(e) =>
                     setProfile({ ...profile, lastName: e.target.value })
                   }
-                  className="w-full p-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400 h-10 text-black"
+                  className="w-full p-1 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-black shadow-md transition-all ease-in-out duration-300"
                 />
               </div>
             </div>
 
+            {/* Edit Buttons Section */}
             {isEditing ? (
-              <div className="flex justify-between mt-10 h-10">
+              <div className="flex justify-between mt-6 h-14">
                 <button
-                  className="bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-4 rounded-lg transition-all"
+                  className="bg-blue-500 hover:bg-blue-600 text-white font-semibold py-3 px-6 rounded-lg transition-all shadow-lg"
                   onClick={handleUpdateProfile}
                 >
                   Save Changes
                 </button>
                 <button
-                  className="bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold py-2 px-4 rounded-lg transition-all"
+                  className="bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold py-3 px-6 rounded-lg transition-all shadow-md"
                   onClick={() => setIsEditing(false)}
                 >
                   Cancel

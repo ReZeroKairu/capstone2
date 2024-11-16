@@ -1,6 +1,13 @@
 import React, { useEffect, useState, useRef } from "react";
 import { auth, db } from "../firebase/firebase";
-import { doc, getDoc, updateDoc, onSnapshot } from "firebase/firestore";
+import {
+  doc,
+  getDoc,
+  updateDoc,
+  onSnapshot,
+  setDoc,
+  collection,
+} from "firebase/firestore";
 
 function CallForPapers() {
   const [isAdmin, setIsAdmin] = useState(false);
@@ -10,10 +17,10 @@ function CallForPapers() {
     description: "",
     issues: [""],
   });
+  const [notification, setNotification] = useState({ message: "", type: "" });
   const textareaRef = useRef(null);
   const issueRefs = useRef([]);
 
-  // Check if the current user is an admin
   useEffect(() => {
     const checkAdminRole = async () => {
       const user = auth.currentUser;
@@ -39,7 +46,6 @@ function CallForPapers() {
     return () => unsubscribe();
   }, []);
 
-  // Fetch the content and listen for changes in real-time
   useEffect(() => {
     const fetchContent = async () => {
       const docRef = doc(db, "Content", "CallForPapers");
@@ -63,7 +69,6 @@ function CallForPapers() {
     return () => unsubscribe();
   }, []);
 
-  // Handle resizing of text areas dynamically
   const handleResizeTextarea = () => {
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
@@ -84,16 +89,66 @@ function CallForPapers() {
     handleResizeTextarea();
   }, [content.description]);
 
-  // Save changes to Firestore
+  // Scroll to top when a notification appears
+  useEffect(() => {
+    if (notification.message) {
+      window.scrollTo({
+        top: 0,
+        behavior: "smooth",
+      });
+    }
+  }, [notification.message]);
+
   const handleSaveChanges = async () => {
     try {
       const docRef = doc(db, "Content", "CallForPapers");
-      await updateDoc(docRef, {
-        title: content.title,
-        description: content.description,
-        issues: content.issues,
-      });
-      setIsEditing(false);
+      const originalDoc = await getDoc(docRef);
+
+      // Compare the current content with the original content
+      const hasChanges =
+        JSON.stringify(originalDoc.data()) !== JSON.stringify(content);
+
+      if (hasChanges) {
+        // Save the changes
+        await updateDoc(docRef, {
+          title: content.title,
+          description: content.description,
+          issues: content.issues,
+        });
+
+        setIsEditing(false);
+        setNotification({
+          message: "Changes saved successfully!",
+          type: "success",
+        });
+
+        // Log the change
+        const logRef = collection(db, "UserLog");
+        const logEntry = {
+          action: "Edit Content",
+          userId: auth.currentUser.uid,
+          email: auth.currentUser.email,
+          timestamp: new Date(),
+        };
+
+        await setDoc(doc(logRef), logEntry);
+
+        // Auto-remove the success message after 4 seconds
+        setTimeout(() => {
+          setNotification({ message: "", type: "" });
+        }, 4000); // 4 seconds delay for automatic removal
+      } else {
+        // No changes, show a warning message
+        setNotification({
+          message: "No changes made.",
+          type: "warning",
+        });
+
+        // Auto-remove the warning message after 4 seconds
+        setTimeout(() => {
+          setNotification({ message: "", type: "" });
+        }, 4000);
+      }
     } catch (error) {
       console.error("Failed to save content:", error);
     }
@@ -101,7 +156,6 @@ function CallForPapers() {
 
   return (
     <div className="relative min-h-screen overflow-hidden">
-      {/* Background Image */}
       <div
         className="absolute inset-0 bg-cover bg-center bg-fixed"
         style={{
@@ -109,9 +163,30 @@ function CallForPapers() {
         }}
       ></div>
 
-      {/* Content Section */}
-      <div className="relative z-10 flex flex-col items-center justify-center min-h-screen py-24 w-full">
+      <div className="relative z-10 flex flex-col items-center justify-center min-h-screen mt-11 py-24 w-full">
         <div className="rounded-sm p-6 w-full max-w-2xl mx-auto">
+          {/* Notification Bar */}
+          {notification.message && (
+            <div
+              className={`w-full max-w-md py-3 text-center mt-10 font-semibold rounded-lg text-white z-50 ${
+                notification.type === "success"
+                  ? "bg-green-500"
+                  : notification.type === "warning"
+                  ? "bg-red-500"
+                  : "bg-red-500"
+              }`}
+              style={{
+                position: "absolute",
+                top: "20px",
+                left: "50%",
+                transform: "translateX(-50%)",
+              }}
+            >
+              {notification.message}
+            </div>
+          )}
+
+          {/* Content */}
           <div className="bg-yellow-300 py-2 rounded-t-lg w-full flex items-center justify-center">
             <span className="text-2xl font-bold text-black text-center">
               {content.title}
@@ -156,7 +231,7 @@ function CallForPapers() {
                   ))}
                 </div>
                 <button
-                  className="bg-green-600 text-white px-4 py-2 rounded mr-2"
+                  className="bg-green-600 text-white px-4 py-2 mb-4 rounded mr-2"
                   onClick={handleSaveChanges}
                 >
                   Save Changes
