@@ -93,7 +93,7 @@ const Sidebar = ({ role }) => {
             </li>
 
             {/* Role-specific tabs */}
-            {role === "admin" && (
+            {role === "Admin" && (
               <>
                 <li>
                   <Link

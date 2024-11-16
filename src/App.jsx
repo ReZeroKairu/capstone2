@@ -109,5 +109,5 @@ function App() {
     </AuthProvider>
   );
 }
-
+7;
 export default App;

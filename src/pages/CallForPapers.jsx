@@ -20,7 +20,7 @@ function CallForPapers() {
       if (user) {
         const docRef = doc(db, "Users", user.uid);
         const docSnap = await getDoc(docRef);
-        if (docSnap.exists() && docSnap.data().role === "admin") {
+        if (docSnap.exists() && docSnap.data().role === "Admin") {
           setIsAdmin(true);
         } else {
           setIsAdmin(false);
