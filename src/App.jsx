@@ -4,6 +4,7 @@ import {
   Routes,
   Route,
   Navigate,
+  useLocation,
 } from "react-router-dom";
 import { AuthProvider } from "./authcontext/AuthContext"; // Adjust path as needed
 import Navbar from "./components/Navbar"; // Adjust path as needed
@@ -52,8 +53,7 @@ function App() {
 
   return (
     <AuthProvider value={{ currentUser: user }}>
-      {/* Add both experimental flags here */}
-      <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+      <Router>
         <Navbar user={user} onLogout={() => auth.signOut()} />
         <div className="App">
           <div className="auth-wrapper">
@@ -105,9 +105,22 @@ function App() {
             </div>
           </div>
         </div>
+        <ConditionalFooter />
       </Router>
     </AuthProvider>
   );
 }
-7;
+
+// Separate component for conditional rendering of the footer
+const ConditionalFooter = () => {
+  const location = useLocation(); // Hook to get the current location
+  const excludedRoutes = ["/home", "/user-management", "/user-log"]; // Routes without footer
+
+  // Render Footer only if the current path is not in excludedRoutes
+  if (!excludedRoutes.includes(location.pathname)) {
+    return <Footer />;
+  }
+  return null; // Render nothing for excluded routes
+};
+
 export default App;

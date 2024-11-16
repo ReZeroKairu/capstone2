@@ -4,7 +4,6 @@ import { getAuth, onAuthStateChanged } from "firebase/auth";
 import { getFirestore, doc, getDoc } from "firebase/firestore";
 import Sidebar from "../components/Sidebar"; // Import your Sidebar component
 import Navbar from "../components/Navbar";
-import Footer from "../components/Footer";
 
 function Home() {
   const [user, setUser] = useState(null); // State to hold user information
@@ -67,9 +66,6 @@ function Home() {
           </div>
         </main>
       </div>
-
-      {/* Footer Component */}
-      <Footer />
     </div>
   );
 }

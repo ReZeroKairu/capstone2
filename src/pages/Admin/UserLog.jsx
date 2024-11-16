@@ -7,6 +7,8 @@ import {
   limit,
   startAfter,
   Timestamp,
+  doc,
+  deleteDoc,
 } from "firebase/firestore";
 import { db } from "../../firebase/firebase";
 
@@ -64,6 +66,19 @@ const UserLog = () => {
     }
   };
 
+  const handleDeleteLog = async (logId) => {
+    try {
+      // Delete the log document from Firestore
+      await deleteDoc(doc(db, "UserLog", logId));
+
+      // Remove the deleted log from the state to update the UI
+      setLogs((prevLogs) => prevLogs.filter((log) => log.id !== logId));
+    } catch (error) {
+      console.error("Error deleting log:", error);
+      setError("Failed to delete log. Please try again.");
+    }
+  };
+
   useEffect(() => {
     setLogs([]);
     setLastVisible(null);
@@ -106,6 +121,7 @@ const UserLog = () => {
                 <th className="px-4 py-2 text-left">Email</th>
                 <th className="px-4 py-2 text-left">Action</th>
                 <th className="px-4 py-2 text-left">Timestamp</th>
+                <th className="px-4 py-2 text-left">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -120,11 +136,19 @@ const UserLog = () => {
                     <td className="border px-4 py-3">
                       {log.timestamp ? log.timestamp.toLocaleString() : "N/A"}
                     </td>
+                    <td className="border px-4 py-3 text-center">
+                      <button
+                        onClick={() => handleDeleteLog(log.id)}
+                        className="text-red-500 hover:text-red-700"
+                      >
+                        Delete
+                      </button>
+                    </td>
                   </tr>
                 ))
               ) : (
                 <tr>
-                  <td colSpan="3" className="border px-4 py-3 text-center">
+                  <td colSpan="4" className="border px-4 py-3 text-center">
                     No logs found
                   </td>
                 </tr>
