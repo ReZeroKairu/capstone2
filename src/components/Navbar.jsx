@@ -27,14 +27,14 @@ const Navbar = ({ onLogout }) => {
 
   const auth = getAuth();
 
-  // Check if the user is an admin
+  // Check if the user is an Admin
   const checkAdminStatus = async (user) => {
     const userDoc = await getDoc(doc(db, "Users", user.uid));
     if (userDoc.exists()) {
       const userData = userDoc.data();
-      setIsAdmin(userData.role === "admin");
+      setIsAdmin(userData.role === "Admin");
     } else {
-      setIsAdmin(false); // Default to non-admin if no user data found
+      setIsAdmin(false); // Default to non-Admin if no user data found
     }
   };
 
@@ -45,13 +45,13 @@ const Navbar = ({ onLogout }) => {
         // Check if the user is verified
         if (user.emailVerified) {
           setUser(user); // Set user when authenticated and verified
-          checkAdminStatus(user); // Check if the user is an admin
+          checkAdminStatus(user); // Check if the user is an Admin
         } else {
           setUser(null); // Reset user if email is not verified
         }
       } else {
         setUser(null); // Reset user if not authenticated
-        setIsAdmin(false); // Reset admin status
+        setIsAdmin(false); // Reset Admin status
       }
       setLoading(false); // Set loading to false once the check is complete
     });

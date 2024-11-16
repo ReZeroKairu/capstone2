@@ -21,13 +21,13 @@ const AdminRoute = ({ children }) => {
     const checkAdmin = async () => {
       try {
         const userDoc = await getDoc(doc(db, "Users", currentUser.uid));
-        if (userDoc.exists() && userDoc.data().role === "admin") {
+        if (userDoc.exists() && userDoc.data().role === "Admin") {
           setAuthState({ isAdmin: true, loading: false });
         } else {
           setAuthState({ isAdmin: false, loading: false });
         }
       } catch (error) {
-        console.error("Error checking admin role:", error);
+        console.error("Error checking Admin role:", error);
         setAuthState({ isAdmin: false, loading: false });
       }
     };
@@ -40,12 +40,12 @@ const AdminRoute = ({ children }) => {
     return <p className="text-center">Loading...</p>;
   }
 
-  // If the user is not an admin, redirect to the unauthorized page
+  // If the user is not an Admin, redirect to the unauthorized page
   if (!currentUser || !authState.isAdmin) {
     return <Navigate to="/unauthorized" state={{ from: location }} replace />;
   }
 
-  // Render children if the user is an admin
+  // Render children if the user is an Admin
   return children;
 };
 

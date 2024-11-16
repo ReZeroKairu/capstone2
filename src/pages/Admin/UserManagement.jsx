@@ -29,7 +29,7 @@ function UserManagement() {
 
   const checkAdminStatus = async (userId) => {
     const userDoc = await getDoc(doc(db, "Users", userId));
-    if (userDoc.exists() && userDoc.data().role === "admin") {
+    if (userDoc.exists() && userDoc.data().role === "Admin") {
       setIsAdmin(true);
       fetchUsers();
     } else {
@@ -332,7 +332,7 @@ function UserManagement() {
               className="border p-2 w-full mb-2"
             >
               <option value="Researcher">Researcher</option>
-              <option value="admin">Admin</option>
+              <option value="Admin">Admin</option>
               <option value="Peer Reviewer">Peer Reviewer</option>
             </select>
             <button

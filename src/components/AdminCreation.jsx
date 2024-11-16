@@ -15,12 +15,12 @@ const AdminCreation = () => {
   const navigate = useNavigate();
   const auth = getAuth();
 
-  // Check if the current user is an admin
+  // Check if the current user is an Admin
   const checkAdminStatus = async () => {
     if (currentUser) {
       const userDoc = await getDoc(doc(db, "Users", currentUser.uid));
       if (!userDoc.exists() || userDoc.data().role !== "Admin") {
-        navigate("/unauthorized"); // Redirect if not admin
+        navigate("/unauthorized"); // Redirect if not Admin
       }
     } else {
       navigate("/signin"); // Redirect if no user is logged in
@@ -28,7 +28,7 @@ const AdminCreation = () => {
   };
 
   useEffect(() => {
-    checkAdminStatus(); // Check admin status on component mount
+    checkAdminStatus(); // Check Admin status on component mount
   }, [currentUser, navigate]);
 
   const handleSubmit = async (e) => {
@@ -48,14 +48,14 @@ const AdminCreation = () => {
       // Set user role in Firestore
       await setDoc(doc(db, "Users", user.uid), {
         email: user.email,
-        role: "admin", // Assign admin role
+        role: "Admin", // Assign Admin role
       });
 
       setMessage("Admin created successfully!");
-      navigate("/user-management"); // Redirect to user management or admin dashboard
+      navigate("/user-management"); // Redirect to user management or Admin dashboard
     } catch (error) {
-      console.error("Error creating admin:", error);
-      setMessage("Failed to create admin: " + error.message);
+      console.error("Error creating Admin:", error);
+      setMessage("Failed to create Admin: " + error.message);
     }
     setLoading(false);
   };
