@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { db } from "../firebase/firebase"; // Adjust path as needed
 import { doc, getDoc, updateDoc, addDoc, collection } from "firebase/firestore";
 import { useAuth } from "../authcontext/AuthContext"; // Adjust path as needed
@@ -12,10 +12,41 @@ function Profile() {
   const [message, setMessage] = useState("");
   const [messageType, setMessageType] = useState(""); // "success" or "error"
   const [messageTimeout, setMessageTimeout] = useState(null); // Store timeout ID
-
+  const messageRef = useRef(null); // Reference for the message element
+  const firstNameRef = useRef(null);
+  const lastNameRef = useRef(null);
   // Store original values for firstName and lastName for comparison later
   const [originalFirstName, setOriginalFirstName] = useState("");
   const [originalLastName, setOriginalLastName] = useState("");
+  const smoothScrollTo = (element, offset = 0, duration = 300) => {
+    if (!element) return; // Ensure the element exists
+
+    const start = window.scrollY;
+    const target =
+      element.getBoundingClientRect().top + window.pageYOffset - offset;
+    const change = target - start;
+    const startTime = performance.now();
+
+    // Ease-In-Out cubic function
+    const easeInOut = (t) => {
+      return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+    };
+
+    const scroll = (currentTime) => {
+      const elapsedTime = currentTime - startTime;
+      const progress = Math.min(elapsedTime / duration, 1); // Normalize progress to 1
+      const easedProgress = easeInOut(progress); // Apply easing function
+      const scrollAmount = start + change * easedProgress;
+
+      window.scrollTo(0, scrollAmount);
+
+      if (elapsedTime < duration) {
+        requestAnimationFrame(scroll);
+      }
+    };
+
+    requestAnimationFrame(scroll); // Start the smooth scroll animation
+  };
 
   useEffect(() => {
     if (currentUser) {
@@ -44,8 +75,21 @@ function Profile() {
     }
   };
 
+  useEffect(() => {
+    if (isEditing) {
+      // Scroll to the first input field when editing starts
+      smoothScrollTo(firstNameRef.current, 300);
+    }
+  }, [isEditing]);
+
   const handleEdit = () => {
     setIsEditing(true);
+
+    // Scroll to the first input field when editing starts
+    firstNameRef.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "start", // Align to the top of the container
+    });
   };
 
   const logUserAction = async (user, action) => {
@@ -65,10 +109,18 @@ function Profile() {
       profile.lastName === originalLastName
     ) {
       showMessage("No changes to save.", "error");
+
+      // Scroll to the topmost part of the page
+      window.scrollTo({
+        top: 0,
+        behavior: "smooth",
+      });
+
       return; // Stop further execution if no changes are made
     }
 
     try {
+      // Perform the update to Firestore
       await updateDoc(doc(db, "Users", profile.id), {
         firstName: profile.firstName,
         lastName: profile.lastName,
@@ -77,11 +129,28 @@ function Profile() {
       // Log the profile update action
       await logUserAction(currentUser, "ProfileUpdate");
 
+      // After successful update, reset original values to the updated profile
+      setOriginalFirstName(profile.firstName); // Set to the updated first name
+      setOriginalLastName(profile.lastName); // Set to the updated last name
+
       showMessage("Profile updated successfully.", "success");
+
+      // Scroll to the topmost part of the page
+      window.scrollTo({
+        top: 0,
+        behavior: "smooth",
+      });
+
       setIsEditing(false);
     } catch (error) {
       console.error("Error updating profile:", error);
       showMessage("Failed to update profile.", "error");
+
+      // Scroll to the topmost part of the page
+      window.scrollTo({
+        top: 0,
+        behavior: "smooth",
+      });
     }
   };
 
@@ -94,13 +163,23 @@ function Profile() {
       clearTimeout(messageTimeout);
     }
 
-    // Set a new timeout to clear the message after 3 seconds
+    // Set a new timeout to clear the message after 5 seconds
     const timeout = setTimeout(() => {
       setMessage("");
       setMessageType("");
-    }, 7000);
+    }, 5000);
 
     setMessageTimeout(timeout);
+
+    // Scroll to the message
+    if (messageRef.current) {
+      messageRef.current.scrollIntoView({ behavior: "smooth" });
+    } else {
+      window.scrollTo({
+        top: 100,
+        behavior: "smooth", // Smooth scrolling
+      });
+    }
   };
 
   return (
@@ -113,24 +192,24 @@ function Profile() {
         >
           <FontAwesomeIcon icon={faEdit} className="text-2xl" />
         </button>
-
-        <h2 className="text-3xl font-semibold mb-6 text-center text-white">
-          Profile
-        </h2>
-        {/* Message section with a fixed height to prevent profile shifting */}
         {message && (
-          <p
-            className={`text-center mb-4 ${
-              messageType === "success" ? "text-green-600" : "text-red-600"
+          <div
+            ref={messageRef}
+            className={`${
+              messageType === "success"
+                ? "bg-green-500 text-white border-2 border-white rounded-lg p-2 text-center w-full max-w-xs mx-auto mb-4"
+                : messageType === "error"
+                ? "bg-red-500 text-white border-2 border-white rounded-lg p-2 text-center w-full max-w-xs mx-auto mb-4"
+                : "bg-gray-500 text-white border-2 border-white rounded-lg p-2 text-center w-full max-w-xs mx-auto mb-4"
             }`}
           >
             {message}
-          </p>
+          </div>
         )}
-        {!message && (
-          <div className="h-8 mb-4"></div> // Add an empty div with the same height as the message
-        )}
-
+        {!message && <div className="h-8 mb-4"></div>} {/* Placeholder div */}
+        <h2 className="text-3xl font-semibold mb-6 text-center text-white">
+          Profile
+        </h2>
         {profile ? (
           <div className="space-y-6">
             <div className="flex justify-center mb-3">
@@ -172,6 +251,7 @@ function Profile() {
                 } text-white h-10 flex items-center`}
               >
                 <input
+                  ref={firstNameRef} // Attach ref to input
                   type="text"
                   value={profile.firstName || ""}
                   onChange={(e) =>
@@ -198,6 +278,7 @@ function Profile() {
                 } text-white h-10 flex items-center`}
               >
                 <input
+                  ref={lastNameRef} // Attach ref to input
                   type="text"
                   value={profile.lastName || ""}
                   onChange={(e) =>
