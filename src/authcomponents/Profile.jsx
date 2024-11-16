@@ -184,10 +184,10 @@ function Profile() {
 
   return (
     <div className="flex justify-center items-center min-h-screen bg-gray-300">
-      <div className="relative bg-red-800 p-8 rounded-lg shadow-lg w-full mt-28 max-w-md pb-14 mb-7">
+      <div className="relative bg-red-800 p-8 rounded-lg shadow-lg w-full mt-28 max-w-md pb-5 mb-7">
         {/* Pencil icon in the top-right corner */}
         <button
-          className="absolute top-4 right-4 text-white hover:text-yellow-400 transition-all"
+          className="absolute top-4 right-4 text-white hover:text-yellow-300 active:text-yellow-500 transition-all"
           onClick={handleEdit}
         >
           <FontAwesomeIcon icon={faEdit} className="text-2xl" />
@@ -226,7 +226,14 @@ function Profile() {
               )}
             </div>
             <div>
-              <p className="text-white text-2xl text-center">{profile.role}</p>
+              <p className="text-white text-2xl font-bold -mt-8 text-center">
+                {profile.firstName} {profile.lastName}
+              </p>
+            </div>
+            <div>
+              <p className="text-white text-2xl font-bold -mt-2 text-center">
+                {profile.role}
+              </p>
             </div>
 
             {/* Display email */}
