@@ -183,7 +183,7 @@ function Profile() {
   };
 
   return (
-    <div className="flex justify-center items-center min-h-screen bg-gradient-to-r from-blue-200 to-purple-300">
+    <div className="flex justify-center items-center min-h-screen">
       <div className="relative bg-red-800 p-8 rounded-lg shadow-2xl w-full mt-28 max-w-md pb-5 mb-7">
         {/* Pencil icon in the top-right corner */}
         <button

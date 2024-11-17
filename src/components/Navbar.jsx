@@ -137,7 +137,7 @@ const Navbar = ({ onLogout }) => {
         <div className="flex items-center px-4 py-1">
           {/* Logo Section */}
           <div className="flex items-center">
-            <Link to="/Home">
+            <Link to="/home">
               <img
                 src="/pubtrackIcon.jpg"
                 alt="PubTrack Icon"

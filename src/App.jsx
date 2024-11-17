@@ -53,7 +53,7 @@ function App() {
 
   return (
     <AuthProvider value={{ currentUser: user }}>
-      <Router future={{ v7_startTransition: true }}>
+      <Router future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
         <Navbar user={user} onLogout={() => auth.signOut()} />
         <div className="App">
           <div className="auth-wrapper">
