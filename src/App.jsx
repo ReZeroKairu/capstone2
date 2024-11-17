@@ -53,7 +53,7 @@ function App() {
 
   return (
     <AuthProvider value={{ currentUser: user }}>
-      <Router>
+      <Router future={{ v7_startTransition: true }}>
         <Navbar user={user} onLogout={() => auth.signOut()} />
         <div className="App">
           <div className="auth-wrapper">
@@ -114,7 +114,7 @@ function App() {
 // Separate component for conditional rendering of the footer
 const ConditionalFooter = () => {
   const location = useLocation(); // Hook to get the current location
-  const excludedRoutes = ["/home", "/user-management", "/user-log"]; // Routes without footer
+  const excludedRoutes = ["/user-management", "/user-log"]; // Routes without footer
 
   // Render Footer only if the current path is not in excludedRoutes
   if (!excludedRoutes.includes(location.pathname)) {
