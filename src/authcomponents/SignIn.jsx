@@ -75,7 +75,7 @@ function SignIn() {
       const verified = await checkEmailVerification(user);
       if (verified) {
         setAlert({ message: "User logged in successfully!", type: "success" });
-        await logUserAction(user, "SignIn"); // Log the user action
+        await logUserAction(user, "Sign In"); // Log the user action
         navigate("/home"); // Redirect to home page after successful login
       }
     } catch (error) {

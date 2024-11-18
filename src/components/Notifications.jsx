@@ -157,7 +157,7 @@ const Notifications = ({ user }) => {
   // Handle notification click (navigate to relevant page)
   const handleNotificationClick = (notification) => {
     markAsRead(notification.id);
-    if (notification.message.includes("admin")) {
+    if (notification.message.includes("Admin")) {
       navigate("/profile");
     } else if (notification.message.includes("Peer Reviewer")) {
       navigate("/profile");

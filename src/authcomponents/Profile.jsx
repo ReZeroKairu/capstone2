@@ -127,7 +127,7 @@ function Profile() {
       });
 
       // Log the profile update action
-      await logUserAction(currentUser, "ProfileUpdate");
+      await logUserAction(currentUser, "Profile Update");
 
       // After successful update, reset original values to the updated profile
       setOriginalFirstName(profile.firstName); // Set to the updated first name
