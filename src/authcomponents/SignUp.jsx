@@ -37,7 +37,8 @@ function SignUp() {
     const unsubscribe = auth.onAuthStateChanged((user) => {
       if (user && !successMessage) {
         setIsCheckingAuth(false);
-        // If user is logged in but not seeing the success message, stay on the signup page
+        // Redirect user to the home or another page if already signed in
+        navigate("/home"); // or the path you want to redirect to
       } else {
         setIsCheckingAuth(false);
       }

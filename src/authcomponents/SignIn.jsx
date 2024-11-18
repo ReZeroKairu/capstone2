@@ -20,6 +20,7 @@ function SignIn() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [isAppReady, setIsAppReady] = useState(false); // Track if app is ready to render
 
   const togglePasswordVisibility = () => {
     setShowPassword((prev) => !prev);
@@ -53,14 +54,31 @@ function SignIn() {
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged(async (user) => {
       if (user) {
-        const verified = await checkEmailVerification(user);
-        if (verified) {
-          navigate("/home");
-        }
+        // User is signed in, so navigate to home
+        navigate("/home");
+      } else {
+        // User is not signed in, show the sign-in form
+        setLoading(false); // Stop loading when auth state is ready
       }
+      setIsAppReady(true); // Set app ready to true after auth state is checked
     });
-    return () => unsubscribe();
+
+    return () => unsubscribe(); // Cleanup on unmount
   }, [navigate]);
+
+  // While the app is not ready, show nothing or a loading spinner
+  if (!isAppReady) {
+    return null; // This prevents the SignIn page from showing while the auth state is being checked
+  }
+
+  if (loading) {
+    return (
+      <div className="flex justify-center items-center min-h-screen">
+        <span>Loading...</span>{" "}
+        {/* Replace with a custom loading spinner if desired */}
+      </div>
+    );
+  }
 
   const handleSubmit = async (e) => {
     e.preventDefault();
