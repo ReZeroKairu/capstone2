@@ -41,7 +41,7 @@ function SignInwithGoogle() {
             timestamp: serverTimestamp(),
           });
           console.log("Log entry added to UserLog collection.");
-          navigate("/Home");
+          navigate("/home");
         } else {
           // New user, store user details in Firestore
           console.log(
@@ -70,7 +70,7 @@ function SignInwithGoogle() {
             console.error("Error saving document to Firestore:", error);
           }
 
-          navigate("/Home");
+          navigate("/home");
         }
       }
     } catch (error) {
