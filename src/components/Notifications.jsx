@@ -212,18 +212,23 @@ const Notifications = ({ user }) => {
       : activeTab === "read"
       ? notifications.filter((notif) => notif.seen)
       : notifications;
+
   return (
     <div className="relative">
       {/* Notification Icon */}
       <button
         onClick={toggleNotificationDropdown}
-        ref={buttonRef} // Attach ref to the button
         className="relative focus:outline-none"
       >
         <FontAwesomeIcon
           icon={faBell}
           className="text-gray-700 text-3xl hover:text-red-600 active:text-red-900"
         />
+        {notifications.filter((notif) => !notif.seen).length > 0 && (
+          <span className="absolute -top-1 -right-1 bg-red-600 text-white rounded-full px-1.5 text-xs">
+            {notifications.filter((notif) => !notif.seen).length}
+          </span>
+        )}
       </button>
 
       {/* Dropdown */}
