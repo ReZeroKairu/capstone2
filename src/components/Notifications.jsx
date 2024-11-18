@@ -24,7 +24,9 @@ const Notifications = ({ user }) => {
   const dropdownRef = useRef(null); // Create a ref for the dropdown
   const navigate = useNavigate();
   const auth = getAuth();
+  const buttonRef = useRef(null); // Ref for the button to prevent closing when the button is clicked
   // Fetch notifications from Firestore
+
   const fetchNotifications = async (userId) => {
     setLoading(true);
     try {
@@ -173,22 +175,32 @@ const Notifications = ({ user }) => {
     }
   }, [user]);
 
-  // Handle notification dropdown toggle
+  // Toggle dropdown visibility when icon is clicked
   const toggleNotificationDropdown = (event) => {
-    event.stopPropagation(); // Stop click propagation to prevent the outside listener from closing it
-    setNotificationDropdownOpen((prev) => !prev);
+    event.stopPropagation(); // Prevent outside click handler from closing dropdown
+    setNotificationDropdownOpen((prev) => !prev); // Toggle dropdown open/close
   };
 
   // Close dropdown if clicking outside of it
+  // Close dropdown when clicking outside of it
   useEffect(() => {
     const handleClickOutside = (event) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
-        setNotificationDropdownOpen(false);
+      // Check if the click is outside both the dropdown and the button
+      if (
+        dropdownRef.current &&
+        !dropdownRef.current.contains(event.target) &&
+        buttonRef.current &&
+        !buttonRef.current.contains(event.target)
+      ) {
+        setNotificationDropdownOpen(false); // Close dropdown
       }
     };
 
+    // Add event listener to close dropdown on outside click
     document.addEventListener("mousedown", handleClickOutside);
+
     return () => {
+      // Cleanup event listener on component unmount
       document.removeEventListener("mousedown", handleClickOutside);
     };
   }, []);
@@ -205,17 +217,13 @@ const Notifications = ({ user }) => {
       {/* Notification Icon */}
       <button
         onClick={toggleNotificationDropdown}
+        ref={buttonRef} // Attach ref to the button
         className="relative focus:outline-none"
       >
         <FontAwesomeIcon
           icon={faBell}
           className="text-gray-700 text-3xl hover:text-red-600 active:text-red-900"
         />
-        {notifications.filter((notif) => !notif.seen).length > 0 && (
-          <span className="absolute -top-1 -right-1 bg-red-600 text-white rounded-full px-1.5 text-xs">
-            {notifications.filter((notif) => !notif.seen).length}
-          </span>
-        )}
       </button>
 
       {/* Dropdown */}
