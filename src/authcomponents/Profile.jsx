@@ -15,9 +15,12 @@ function Profile() {
   const messageRef = useRef(null); // Reference for the message element
   const firstNameRef = useRef(null);
   const lastNameRef = useRef(null);
+
   // Store original values for firstName and lastName for comparison later
   const [originalFirstName, setOriginalFirstName] = useState("");
   const [originalLastName, setOriginalLastName] = useState("");
+
+  // Smooth scroll helper function
   const smoothScrollTo = (element, offset = 0, duration = 300) => {
     if (!element) return; // Ensure the element exists
 
@@ -27,15 +30,14 @@ function Profile() {
     const change = target - start;
     const startTime = performance.now();
 
-    // Ease-In-Out cubic function
     const easeInOut = (t) => {
       return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
     };
 
     const scroll = (currentTime) => {
       const elapsedTime = currentTime - startTime;
-      const progress = Math.min(elapsedTime / duration, 1); // Normalize progress to 1
-      const easedProgress = easeInOut(progress); // Apply easing function
+      const progress = Math.min(elapsedTime / duration, 1);
+      const easedProgress = easeInOut(progress);
       const scrollAmount = start + change * easedProgress;
 
       window.scrollTo(0, scrollAmount);
@@ -85,20 +87,45 @@ function Profile() {
   const handleEdit = () => {
     setIsEditing(true);
 
-    // Scroll to the first input field when editing starts
     firstNameRef.current?.scrollIntoView({
       behavior: "smooth",
-      block: "start", // Align to the top of the container
+      block: "start",
     });
   };
 
-  const logUserAction = async (user, action) => {
+  // Log the user action with the current and previous first/last names
+  const logUserAction = async (
+    user,
+    action,
+    previousFirstName,
+    previousLastName,
+    newFirstName,
+    newLastName
+  ) => {
     const userLogRef = collection(db, "UserLog"); // Reference to UserLog collection
+
+    const timestamp = new Date(); // Get current timestamp
+
     await addDoc(userLogRef, {
       userId: user.uid, // User ID
-      action: action, // The action being performed (e.g., "ProfileUpdate")
+      action: action, // The action being performed (e.g., "Profile Update")
       email: user.email, // User email
-      timestamp: new Date(), // Timestamp of the action
+      previousFirstName: previousFirstName, // Previous first name
+      previousLastName: previousLastName, // Previous last name
+      newFirstName: newFirstName, // Current first name
+      newLastName: newLastName, // Current last name
+      timestamp: timestamp, // Timestamp of the action
+    });
+
+    console.log("Action logged:", {
+      userId: user.uid,
+      action,
+      email: user.email,
+      previousFirstName,
+      previousLastName,
+      newFirstName,
+      newLastName,
+      timestamp,
     });
   };
 
@@ -110,7 +137,6 @@ function Profile() {
     ) {
       showMessage("No changes to save.", "error");
 
-      // Scroll to the topmost part of the page
       window.scrollTo({
         top: 0,
         behavior: "smooth",
@@ -126,16 +152,33 @@ function Profile() {
         lastName: profile.lastName,
       });
 
-      // Log the profile update action
-      await logUserAction(currentUser, "Profile Update");
+      // Log the profile update action with the previous and current names
+      await logUserAction(
+        currentUser,
+        "Profile Update",
+        originalFirstName, // previous first name
+        originalLastName, // previous last name
+        profile.firstName, // current first name
+        profile.lastName // current last name
+      );
 
-      // After successful update, reset original values to the updated profile
-      setOriginalFirstName(profile.firstName); // Set to the updated first name
-      setOriginalLastName(profile.lastName); // Set to the updated last name
+      // Fetch the updated user data from Firestore
+      const updatedUserDoc = await getDoc(doc(db, "Users", profile.id));
+
+      if (updatedUserDoc.exists()) {
+        // Update the local state with the latest values
+        const updatedUserData = updatedUserDoc.data();
+        setProfile((prevProfile) => ({
+          ...prevProfile,
+          firstName: updatedUserData.firstName,
+          lastName: updatedUserData.lastName,
+        }));
+        setOriginalFirstName(updatedUserData.firstName);
+        setOriginalLastName(updatedUserData.lastName);
+      }
 
       showMessage("Profile updated successfully.", "success");
 
-      // Scroll to the topmost part of the page
       window.scrollTo({
         top: 0,
         behavior: "smooth",
@@ -144,9 +187,10 @@ function Profile() {
       setIsEditing(false);
     } catch (error) {
       console.error("Error updating profile:", error);
+
+      // Handle error (similar to how errors are handled in logUserAction)
       showMessage("Failed to update profile.", "error");
 
-      // Scroll to the topmost part of the page
       window.scrollTo({
         top: 0,
         behavior: "smooth",

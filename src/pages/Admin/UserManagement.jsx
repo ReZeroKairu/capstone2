@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { db } from "../../firebase/firebase";
+import { db, app } from "../../firebase/firebase";
 import {
   collection,
   getDocs,
@@ -12,6 +12,7 @@ import { useAuth } from "../../authcontext/AuthContext";
 import { useNavigate } from "react-router-dom";
 import { deleteDoc, updateDoc } from "firebase/firestore";
 import { FaSearch } from "react-icons/fa"; // Importing the search icon
+import { getAuth } from "firebase/auth";
 
 function UserManagement() {
   const { currentUser, loading: authLoading } = useAuth();
@@ -26,6 +27,7 @@ function UserManagement() {
   const [currentPage, setCurrentPage] = useState(1);
   const [usersPerPage, setUsersPerPage] = useState(5);
   const [searchQuery, setSearchQuery] = useState("");
+  const auth = getAuth(app); // Initialize Firebase Authentication
 
   const checkAdminStatus = async (userId) => {
     const userDoc = await getDoc(doc(db, "Users", userId));
@@ -72,6 +74,8 @@ function UserManagement() {
         const userDocRef = doc(db, "Users", editingUser.id);
         const userSnapshot = await getDoc(userDocRef);
         const previousRole = userSnapshot.data().role;
+        const previousFirstName = userSnapshot.data().firstName;
+        const previousLastName = userSnapshot.data().lastName;
 
         // Check if role has changed
         if (previousRole !== editingUser.role) {
@@ -82,14 +86,45 @@ function UserManagement() {
             role: editingUser.role,
           });
 
+          // Log role change in UserLogs collection
+          // Fetch admin details
+          const adminDoc = await getDoc(doc(db, "Users", auth.currentUser.uid));
+          const adminName = `${adminDoc.data().firstName} ${
+            adminDoc.data().lastName
+          }`;
+
+          // Fetch user details
+          const userDoc = await getDoc(doc(db, "Users", editingUser.id));
+          const userName = `${userDoc.data().firstName} ${
+            userDoc.data().lastName
+          }`;
+
+          // Determine if there is a role change
+          let action;
+          if (previousRole !== editingUser.role) {
+            action = `${adminName} updated ${userName}'s role from ${previousRole} to ${editingUser.role}`;
+          } else {
+            action = `${adminName} updated ${userName}'s information without changing the role`;
+          }
+
+          // Add log with detailed action description
+          await addDoc(collection(db, "UserLog"), {
+            userId: editingUser.id, // User whose log is being created
+            action: action, // Detailed action description
+            previousRole: previousRole, // Previous role
+            newRole: editingUser.role, // New role
+            timestamp: serverTimestamp(), // Use Firestore server timestamp
+            adminId: auth.currentUser.uid, // Admin who made the change
+          });
+
           // Send a notification if the role has changed
           await addDoc(
             collection(db, "Users", editingUser.id, "Notifications"),
             {
               message: `Your role has been changed to ${editingUser.role}`,
               timestamp: serverTimestamp(), // Use serverTimestamp here
-              seen: false, // You can use this to mark if the notification has been read
-              status: "new", // Add the status field, for example "new"
+              seen: false, // Mark as unread
+              status: "new", // Example status
             }
           );
         } else {
@@ -98,6 +133,46 @@ function UserManagement() {
             firstName: editingUser.firstName,
             lastName: editingUser.lastName,
             role: editingUser.role,
+          });
+        }
+
+        // Log profile change in UserLogs collection if first name or last name changes
+        if (
+          previousFirstName !== editingUser.firstName ||
+          previousLastName !== editingUser.lastName
+        ) {
+          // Fetch admin details
+          const adminDoc = await getDoc(doc(db, "Users", auth.currentUser.uid));
+          const adminFullName = `${adminDoc.data().firstName} ${
+            adminDoc.data().lastName
+          }`;
+
+          // Determine the specific changes
+          let changes = [];
+          if (previousFirstName !== editingUser.firstName) {
+            changes.push(
+              `first name from "${previousFirstName}" to "${editingUser.firstName}"`
+            );
+          }
+          if (previousLastName !== editingUser.lastName) {
+            changes.push(
+              `last name from "${previousLastName}" to "${editingUser.lastName}"`
+            );
+          }
+
+          // Construct the action description
+          const action = `${adminFullName} updated ${changes.join(" and ")}`;
+
+          // Add log to Firestore
+          await addDoc(collection(db, "UserLog"), {
+            userId: editingUser.id,
+            action: action, // Detailed action description
+            previousFirstName: previousFirstName,
+            newFirstName: editingUser.firstName,
+            previousLastName: previousLastName,
+            newLastName: editingUser.lastName,
+            timestamp: serverTimestamp(),
+            adminId: auth.currentUser.uid, // Log the admin who made the change
           });
         }
 
