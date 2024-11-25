@@ -12,7 +12,7 @@ import {
 } from "firebase/firestore";
 import { db } from "../../firebase/firebase";
 
-const UserLog = () => {
+const UserLog = ({ onLogsUpdated }) => {
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [lastVisible, setLastVisible] = useState(null);
@@ -64,6 +64,11 @@ const UserLog = () => {
       );
       setLastVisible(logsSnapshot.docs[logsSnapshot.docs.length - 1]);
       setHasMore(fetchedLogs.length > 0);
+
+      // Notify Navbar of log updates
+      if (onLogsUpdated) {
+        onLogsUpdated(fetchedLogs);
+      }
     } catch (error) {
       console.error("Error fetching logs:", error);
       setError("Failed to load logs. Please try again later.");
@@ -125,16 +130,10 @@ const UserLog = () => {
         )}
         <div className="overflow-x-auto flex-grow">
           <table className="w-full border-collapse text-xs md:text-sm">
-            {" "}
-            {/* Smaller font sizes */}
             <thead>
               <tr className="bg-gray-200 text-gray-700">
                 <th className="px-4 py-2 text-left">Email</th>
-                <th className="px-4 py-2 text-left w-[250px]">
-                  {" "}
-                  {/* Larger width for the Action column */}
-                  Action
-                </th>
+                <th className="px-4 py-2 text-left w-[250px]">Action</th>
                 <th className="px-4 py-2 text-left">Admin ID</th>
                 <th className="px-4 py-2 text-left">New First Name</th>
                 <th className="px-4 py-2 text-left">New Last Name</th>
@@ -154,8 +153,6 @@ const UserLog = () => {
                   >
                     <td className="border px-4 py-3">{log.email}</td>
                     <td className="border px-4 py-3 w-[250px] truncate">
-                      {" "}
-                      {/* Truncate long text */}
                       {log.action}
                     </td>
                     <td className="border px-4 py-3">{log.adminId}</td>
@@ -166,7 +163,7 @@ const UserLog = () => {
                     </td>
                     <td className="border px-4 py-3">{log.previousLastName}</td>
                     <td className="border px-4 py-3">
-                      {log.timestamp ? log.timestamp.toLocaleString() : "N/A"}
+                      {log.timestamp?.toLocaleString() || "N/A"}
                     </td>
                     <td className="border px-4 py-3">{log.userId}</td>
                     <td className="border px-4 py-3 text-center">

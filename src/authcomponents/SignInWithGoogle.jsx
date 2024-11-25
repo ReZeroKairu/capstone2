@@ -31,15 +31,32 @@ function SignInwithGoogle() {
         const userDocRef = doc(db, "Users", user.uid);
         const userDoc = await getDoc(userDocRef);
 
+        const userId = user.uid; // Always log the user ID
+        let adminId = null; // Default to null unless the user is an admin
+
         if (userDoc.exists()) {
-          // User already exists, navigate to Home
+          const userData = userDoc.data();
+          if (userData.role === "Admin") {
+            adminId = userId; // Set adminId to userId if the user is an admin
+          }
+
+          // Log the sign-in event
           console.log("User already exists. Logging sign-in event...");
           await addDoc(collection(db, "UserLog"), {
-            uid: user.uid,
+            userId: user.uid, // User ID: userId, // Always log the user ID
             email: user.email,
             action: "Signed in with Google",
+            adminId, // Log adminId if available (null otherwise)
             timestamp: serverTimestamp(),
           });
+
+          // Debugging output
+          console.log(
+            adminId
+              ? `Admin signed in: User ID: ${userId}, Admin ID: ${adminId}`
+              : `User signed in: User ID: ${userId}`
+          );
+
           console.log("Log entry added to UserLog collection.");
           navigate("/home");
         } else {
@@ -49,7 +66,7 @@ function SignInwithGoogle() {
           );
           try {
             await setDoc(userDocRef, {
-              uid: user.uid,
+              uid: userId,
               email: user.email,
               firstName: user.displayName,
               lastName: "",
@@ -60,11 +77,14 @@ function SignInwithGoogle() {
 
             // Log sign-up event
             await addDoc(collection(db, "UserLog"), {
-              uid: user.uid,
+              uid: userId,
               email: user.email,
               action: "Signed up with Google",
+              adminId: null, // New user, no admin ID
               timestamp: serverTimestamp(),
             });
+
+            console.log(`New user signed up: User ID: ${userId}`);
             console.log("Sign-up event logged in UserLog collection.");
           } catch (error) {
             console.error("Error saving document to Firestore:", error);
