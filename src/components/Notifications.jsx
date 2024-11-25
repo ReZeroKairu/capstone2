@@ -181,16 +181,15 @@ const Notifications = ({ user }) => {
     setNotificationDropdownOpen((prev) => !prev); // Toggle dropdown open/close
   };
 
-  // Close dropdown if clicking outside of it
   // Close dropdown when clicking outside of it
   useEffect(() => {
     const handleClickOutside = (event) => {
       // Check if the click is outside both the dropdown and the button
       if (
         dropdownRef.current &&
-        !dropdownRef.current.contains(event.target) &&
+        !dropdownRef.current.contains(event.target) && // Click is outside dropdown
         buttonRef.current &&
-        !buttonRef.current.contains(event.target)
+        !buttonRef.current.contains(event.target) // Click is outside button
       ) {
         setNotificationDropdownOpen(false); // Close dropdown
       }
@@ -218,12 +217,14 @@ const Notifications = ({ user }) => {
       {/* Notification Icon */}
       <button
         onClick={toggleNotificationDropdown}
+        ref={buttonRef} // Attach ref to the button
         className="relative focus:outline-none"
       >
         <FontAwesomeIcon
           icon={faBell}
           className="text-gray-700 text-3xl hover:text-red-600 active:text-red-900"
         />
+
         {notifications.filter((notif) => !notif.seen).length > 0 && (
           <span className="absolute -top-1 -right-1 bg-red-600 text-white rounded-full px-1.5 text-xs">
             {notifications.filter((notif) => !notif.seen).length}
@@ -234,7 +235,7 @@ const Notifications = ({ user }) => {
       {/* Dropdown */}
       {notificationDropdownOpen && (
         <div
-          ref={dropdownRef}
+          ref={dropdownRef} // Ref for dropdown to detect outside click
           className="absolute right-0 mt-2 w-72 bg-white border border-gray-300 rounded-lg shadow-lg overflow-hidden"
         >
           {/* Header */}
