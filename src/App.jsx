@@ -25,6 +25,7 @@ import ProtectedRoute from "./authcontext/ProtectedRoute"; // Import ProtectedRo
 import AdminRoute from "./authcontext/AdminRoute"; // Import AdminRoute
 import { getAuth, onAuthStateChanged } from "firebase/auth"; // Import getAuth and onAuthStateChanged from Firebase
 import UserLog from "./pages/Admin/UserLog";
+import NotFound from "./pages/NotFound"; // Adjust path as needed
 
 function App() {
   const [loading, setLoading] = useState(true); // To track if auth state is being loaded
@@ -69,6 +70,7 @@ function App() {
                 <Route path="/pub-ethics" element={<PubEthics />} />
                 <Route path="/guidelines" element={<Guidelines />} />
                 <Route path="/unauthorized" element={<Unauthorized />} />
+                <Route path="*" element={<NotFound />} />
                 <Route
                   path="/user-log"
                   element={
