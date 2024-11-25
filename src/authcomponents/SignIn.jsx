@@ -3,7 +3,7 @@ import React, { useEffect, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { auth, provider } from "../firebase/firebase";
 import { db } from "../firebase/firebase"; // Make sure to import Firestore
-import { collection, addDoc } from "firebase/firestore"; // Firestore methods
+import { collection, addDoc, doc, getDoc } from "firebase/firestore"; // Firestore methods
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faLock,
@@ -43,8 +43,20 @@ function SignIn() {
   // Log user action function
   const logUserAction = async (user, action) => {
     const userLogRef = collection(db, "UserLog"); // Reference to UserLog collection
+    const userDocRef = doc(db, "Users", user.uid);
+    const userDoc = await getDoc(userDocRef);
+    let adminId = null;
+
+    if (userDoc.exists()) {
+      const userData = userDoc.data();
+      if (userData.role === "Admin") {
+        adminId = user.uid; // Set adminId to the user's UID if they are an admin
+      }
+    }
+    // Log the user action with the appropriate adminId
     await addDoc(userLogRef, {
       userId: user.uid, // User ID
+      adminId: adminId, // Admin ID (null or user ID if admin)
       action: action, // The action being performed (e.g., "SignIn" or "GoogleSignIn")
       email: user.email, // User email
       timestamp: new Date(), // Timestamp of the action

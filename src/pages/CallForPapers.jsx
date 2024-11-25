@@ -126,6 +126,7 @@ function CallForPapers() {
         const logRef = collection(db, "UserLog");
         const logEntry = {
           action: "Edit Content",
+          adminId: auth.currentUser.uid,
           userId: auth.currentUser.uid,
           email: auth.currentUser.email,
           timestamp: new Date(),
