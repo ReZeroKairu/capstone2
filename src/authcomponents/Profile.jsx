@@ -100,14 +100,17 @@ function Profile() {
     previousFirstName,
     previousLastName,
     newFirstName,
-    newLastName
+    newLastName,
+    adminId // Include adminId as a parameter
   ) => {
     const userLogRef = collection(db, "UserLog"); // Reference to UserLog collection
 
     const timestamp = new Date(); // Get current timestamp
 
+    // Add the log entry to the Firestore collection
     await addDoc(userLogRef, {
       userId: user.uid, // User ID
+      adminId: adminId || null, // Admin ID (if available)
       action: action, // The action being performed (e.g., "Profile Update")
       email: user.email, // User email
       previousFirstName: previousFirstName, // Previous first name
@@ -117,8 +120,10 @@ function Profile() {
       timestamp: timestamp, // Timestamp of the action
     });
 
+    // Log the action for debugging
     console.log("Action logged:", {
       userId: user.uid,
+      adminId,
       action,
       email: user.email,
       previousFirstName,
@@ -146,6 +151,9 @@ function Profile() {
     }
 
     try {
+      // Fetch admin ID if required (replace with your admin-fetching logic if necessary)
+      const adminId = currentUser.uid; // Assuming the current user is the admin
+
       // Perform the update to Firestore
       await updateDoc(doc(db, "Users", profile.id), {
         firstName: profile.firstName,
@@ -159,7 +167,8 @@ function Profile() {
         originalFirstName, // previous first name
         originalLastName, // previous last name
         profile.firstName, // current first name
-        profile.lastName // current last name
+        profile.lastName, // current last name
+        adminId // Pass admin ID
       );
 
       // Fetch the updated user data from Firestore
@@ -197,7 +206,6 @@ function Profile() {
       });
     }
   };
-
   const showMessage = (text, type) => {
     setMessage(text);
     setMessageType(type);
