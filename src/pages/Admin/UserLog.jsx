@@ -132,15 +132,15 @@ const UserLog = ({ onLogsUpdated }) => {
           <table className="w-full border-collapse text-xs md:text-sm">
             <thead>
               <tr className="bg-gray-200 text-gray-700">
+                <th className="px-4 py-2 text-left">Timestamp</th>
                 <th className="px-4 py-2 text-left">Email</th>
                 <th className="px-4 py-2 text-left w-[250px]">Action</th>
-                <th className="px-4 py-2 text-left">Admin ID</th>
+                <th className="px-4 py-2 text-left">User ID</th>
                 <th className="px-4 py-2 text-left">New First Name</th>
                 <th className="px-4 py-2 text-left">New Last Name</th>
                 <th className="px-4 py-2 text-left">Previous First Name</th>
                 <th className="px-4 py-2 text-left">Previous Last Name</th>
-                <th className="px-4 py-2 text-left">Timestamp</th>
-                <th className="px-4 py-2 text-left">User ID</th>
+                <th className="px-4 py-2 text-left">Admin ID</th>
                 <th className="px-4 py-2 text-left">Actions</th>
               </tr>
             </thead>
@@ -151,21 +151,22 @@ const UserLog = ({ onLogsUpdated }) => {
                     key={log.id}
                     className="hover:bg-gray-100 transition-colors duration-200"
                   >
+                    <td className="border px-4 py-3">
+                      {log.timestamp?.toLocaleString() || "N/A"}
+                    </td>
                     <td className="border px-4 py-3">{log.email}</td>
                     <td className="border px-4 py-3 w-[250px] truncate">
                       {log.action}
                     </td>
-                    <td className="border px-4 py-3">{log.adminId}</td>
+                    <td className="border px-4 py-3">{log.userId}</td>
                     <td className="border px-4 py-3">{log.newFirstName}</td>
                     <td className="border px-4 py-3">{log.newLastName}</td>
                     <td className="border px-4 py-3">
                       {log.previousFirstName}
                     </td>
                     <td className="border px-4 py-3">{log.previousLastName}</td>
-                    <td className="border px-4 py-3">
-                      {log.timestamp?.toLocaleString() || "N/A"}
-                    </td>
-                    <td className="border px-4 py-3">{log.userId}</td>
+
+                    <td className="border px-4 py-3">{log.adminId}</td>
                     <td className="border px-4 py-3 text-center">
                       <button
                         onClick={() => handleDeleteLog(log.id)}
