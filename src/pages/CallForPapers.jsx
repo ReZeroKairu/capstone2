@@ -125,7 +125,7 @@ function CallForPapers() {
         // Log the change
         const logRef = collection(db, "UserLog");
         const logEntry = {
-          action: "Edit Content",
+          action: "Edited Call for Papers",
           adminId: auth.currentUser.uid,
           userId: auth.currentUser.uid,
           email: auth.currentUser.email,
