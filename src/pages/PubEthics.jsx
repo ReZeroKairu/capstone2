@@ -1,297 +1,258 @@
-import React, { useEffect, useState } from "react";
-import { db, auth } from "../firebase/firebase";
-import { doc, getDoc, setDoc, onSnapshot, updateDoc } from "firebase/firestore";
+import React, { useState, useEffect } from "react";
+import { doc, setDoc, getDoc, updateDoc, onSnapshot } from "firebase/firestore";
+import { auth, db } from "../firebase/firebase";
 import { onAuthStateChanged } from "firebase/auth";
+import { FaEdit } from "react-icons/fa";
 
-// EditableHeader Component
-const EditableHeader = ({ headerData, onSave, isEditable, sectionType }) => {
-  const [header, setHeader] = useState(headerData || "");
-  const [isEditing, setIsEditing] = useState(false);
-
-  const handleSave = () => {
-    onSave(header);
-    setIsEditing(false);
-  };
-
-  const handleCancel = () => {
-    setHeader(headerData);
-    setIsEditing(false);
-  };
-
-  useEffect(() => {
-    setHeader(headerData);
-  }, [headerData]);
-
-  const editButtonText =
-    sectionType === "header" ? "Edit Header" : "Edit Footer";
-
-  // Conditional text size classes based on sectionType
-  const textSizeClass = sectionType === "header" ? "text-base" : "text-sm";
-
-  return (
-    <div className="mb-6">
-      {isEditing && isEditable ? (
-        <>
-          <label className="block text-lg font-medium text-gray-700">
-            {sectionType === "header" ? "Header" : "Footer"} Content
-          </label>
-          <textarea
-            value={header}
-            onChange={(e) => setHeader(e.target.value)}
-            className="w-full mt-2 p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring- resize-y"
-            placeholder={`Enter ${
-              sectionType === "header" ? "header" : "footer"
-            } content`}
-            rows="4"
-          />
-          <div className="mt-4 flex space-x-4">
-            <button
-              onClick={handleSave}
-              className="bg-blue-600 text-white px-6 py-2 rounded-md transition duration-300 hover:bg-blue-700"
-            >
-              Save {sectionType === "header" ? "Header" : "Footer"}
-            </button>
-            <button
-              onClick={handleCancel}
-              className="bg-gray-600 text-white px-6 py-2 rounded-md transition duration-300 hover:bg-gray-700"
-            >
-              Cancel
-            </button>
-          </div>
-        </>
-      ) : (
-        <>
-          <h2 className={`${textSizeClass} text-gray-800`}>{header}</h2>
-          {isEditable && (
-            <button
-              onClick={() => setIsEditing(true)}
-              className="bg-yellow-500 text-white px-4 py-2 rounded-md mt-4 transition duration-300 hover:bg-yellow-600"
-            >
-              {editButtonText}
-            </button>
-          )}
-        </>
-      )}
-    </div>
-  );
-};
-
-// EditableSection Component
-const EditableSection = ({
-  sectionKey,
-  sectionData,
-  onSave,
-  onRemove,
-  isEditable,
-}) => {
-  const [section, setSection] = useState(sectionData);
-  const [isEditing, setIsEditing] = useState(false);
-
-  const handleSave = () => {
-    onSave(sectionKey, section);
-    setIsEditing(false);
-  };
-
-  const handleRemove = () => {
-    if (window.confirm("Are you sure you want to delete this section?")) {
-      onRemove(sectionKey);
-    }
-  };
-
-  return (
-    <div className="mb-6 p-6 bg-white rounded-lg shadow-lg border border-gray-200 w-full">
-      {isEditing && isEditable ? (
-        <>
-          <textarea
-            value={section.text}
-            onChange={(e) => setSection({ ...section, text: e.target.value })}
-            className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring- resize-none"
-            rows="6"
-            placeholder="Enter section content"
-          />
-          <div className="mt-4 flex space-x-4">
-            <button
-              onClick={handleSave}
-              className="bg-blue-600 text-white px-6 py-2 rounded-md transition duration-300 hover:bg-blue-700"
-            >
-              Save
-            </button>
-            <button
-              onClick={() => setIsEditing(false)}
-              className="bg-gray-600 text-white px-6 py-2 rounded-md transition duration-300 hover:bg-gray-700"
-            >
-              Cancel
-            </button>
-          </div>
-        </>
-      ) : (
-        <>
-          <p className="text-gray-700 break-words">{section.text}</p>
-          {isEditable && (
-            <div className="mt-4 flex space-x-4">
-              <button
-                onClick={() => setIsEditing(true)}
-                className="bg-yellow-500 text-white px-6 py-2 rounded-md transition duration-300 hover:bg-yellow-600"
-              >
-                Edit Section
-              </button>
-              <button
-                onClick={handleRemove}
-                className="bg-red-500 text-white px-6 py-2 rounded-md transition duration-300 hover:bg-red-600"
-              >
-                Delete
-              </button>
-            </div>
-          )}
-        </>
-      )}
-    </div>
-  );
-};
-
-// Main PubEthics Component
 const PubEthics = () => {
-  const [content, setContent] = useState([]);
   const [isAdmin, setIsAdmin] = useState(false);
-  const [headerAboveSections, setHeaderAboveSections] = useState("");
-  const [footerBelowSections, setFooterBelowSections] = useState("");
-  const [previewMode, setPreviewMode] = useState(false);
+  const [headerText, setHeaderText] = useState("");
+  const [footerText, setFooterText] = useState("");
+  const [sections, setSections] = useState([]);
 
   useEffect(() => {
-    const docRef = doc(db, "Content", "PubEthics");
+    const fetchContent = async () => {
+      const docRef = doc(db, "Content", "PubEthics");
 
-    // Real-time listener for content
-    const unsubscribeContent = onSnapshot(docRef, (docSnap) => {
-      if (docSnap.exists()) {
-        const fetchedData = docSnap.data();
-        setContent(fetchedData.content || []);
-        setHeaderAboveSections(fetchedData.headerAboveSections || "");
-        setFooterBelowSections(fetchedData.footerBelowSections || "");
-      }
-    });
+      const unsubscribe = onSnapshot(docRef, (docSnap) => {
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          setHeaderText(data.header || "");
+          setFooterText(data.footer || "");
+          setSections(data.sections || []);
+        } else {
+          console.error("Document does not exist.");
+        }
+      });
 
-    const checkUserRole = () => {
+      return unsubscribe;
+    };
+
+    const checkUserRole = async () => {
       onAuthStateChanged(auth, async (user) => {
         if (user) {
-          const userRef = doc(db, "Users", user.uid);
-          const userSnap = await getDoc(userRef);
-          if (userSnap.exists()) {
-            const userRole = userSnap.data().role;
-            setIsAdmin(userRole === "Admin");
+          try {
+            const userDoc = doc(db, "Users", user.uid);
+            const userSnap = await getDoc(userDoc);
+            if (userSnap.exists()) {
+              setIsAdmin(userSnap.data().role === "Admin");
+            } else {
+              console.error("User document does not exist.");
+            }
+          } catch (error) {
+            console.error("Error checking user role:", error);
           }
         }
       });
     };
 
+    fetchContent();
     checkUserRole();
-
-    return () => {
-      unsubscribeContent(); // Cleanup listener on unmount
-    };
   }, []);
 
-  const handleSaveAboveHeader = async (newHeader) => {
-    await setDoc(
-      doc(db, "Content", "PubEthics"),
-      { headerAboveSections: newHeader },
-      { merge: true }
-    );
+  const handleSaveHeader = async (newHeader) => {
+    try {
+      await setDoc(
+        doc(db, "Content", "PubEthics"),
+        { header: newHeader },
+        { merge: true }
+      );
+    } catch (error) {
+      console.error("Error saving header:", error);
+    }
   };
 
   const handleSaveFooter = async (newFooter) => {
-    await setDoc(
-      doc(db, "Content", "PubEthics"),
-      { footerBelowSections: newFooter },
-      { merge: true }
+    try {
+      await setDoc(
+        doc(db, "Content", "PubEthics"),
+        { footer: newFooter },
+        { merge: true }
+      );
+    } catch (error) {
+      console.error("Error saving footer:", error);
+    }
+  };
+
+  const handleAddSection = async () => {
+    const newSection = {
+      id: Date.now().toString(),
+      title: "New Section",
+      text: "Content here",
+    };
+    const updatedSections = [...sections, newSection];
+    setSections(updatedSections);
+    try {
+      await updateDoc(doc(db, "Content", "PubEthics"), {
+        sections: updatedSections,
+      });
+    } catch (error) {
+      console.error("Error adding section:", error);
+    }
+  };
+
+  const handleSaveSection = async (id, updatedData) => {
+    const updatedSections = sections.map((section) =>
+      section.id === id ? { ...section, ...updatedData } : section
+    );
+    setSections(updatedSections);
+    try {
+      await updateDoc(doc(db, "Content", "PubEthics"), {
+        sections: updatedSections,
+      });
+    } catch (error) {
+      console.error("Error saving section:", error);
+    }
+  };
+
+  const handleRemoveSection = async (id) => {
+    const updatedSections = sections.filter((section) => section.id !== id);
+    setSections(updatedSections);
+    try {
+      await updateDoc(doc(db, "Content", "PubEthics"), {
+        sections: updatedSections,
+      });
+    } catch (error) {
+      console.error("Error removing section:", error);
+    }
+  };
+
+  const EditableSection = ({
+    sectionKey,
+    sectionData,
+    onSave,
+    onRemove,
+    isEditable,
+    hasTitle = true,
+  }) => {
+    const [isEditing, setIsEditing] = useState(false);
+    const [section, setSection] = useState({
+      title: sectionData?.title || "",
+      text: sectionData?.text || "",
+    });
+
+    useEffect(() => {
+      setSection({
+        title: sectionData?.title || "",
+        text: sectionData?.text || "",
+      });
+    }, [sectionData]);
+
+    const handleSave = () => {
+      if (hasTitle && !section.title.trim()) {
+        alert("Title is required.");
+        return;
+      }
+      if (!section.text.trim()) {
+        alert("Content cannot be empty.");
+        return;
+      }
+      onSave(sectionKey, section);
+      setIsEditing(false);
+    };
+
+    const handleRemove = () => {
+      if (window.confirm("Are you sure you want to delete this section?")) {
+        onRemove(sectionKey);
+      }
+    };
+
+    return (
+      <div className="mb-6 relative">
+        {isEditable && !isEditing && (
+          <FaEdit
+            onClick={() => setIsEditing(true)}
+            className="absolute top-0 right-0 text-gray-600 cursor-pointer hover:text-gray-800"
+          />
+        )}
+        {isEditing ? (
+          <>
+            {hasTitle && (
+              <input
+                type="text"
+                value={section.title}
+                onChange={(e) =>
+                  setSection({ ...section, title: e.target.value })
+                }
+                className="w-full mb-2 p-2 border border-gray-300 rounded"
+                placeholder="Enter section title"
+              />
+            )}
+            <textarea
+              value={section.text}
+              onChange={(e) => setSection({ ...section, text: e.target.value })}
+              className="w-full p-2 border border-gray-300 rounded resize-none"
+              rows="4"
+              placeholder="Enter section content"
+            />
+            <div className="mt-2 flex space-x-2">
+              <button
+                onClick={handleSave}
+                className="bg-blue-600 text-white px-4 py-2 rounded"
+              >
+                Save
+              </button>
+              <button
+                onClick={() => setIsEditing(false)}
+                className="bg-gray-600 text-white px-4 py-2 rounded"
+              >
+                Cancel
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            {hasTitle && (
+              <h2 className="text-2xl font-semibold mb-2">{section.title}</h2>
+            )}
+            <p>{section.text}</p>
+          </>
+        )}
+      </div>
     );
   };
 
-  const handleAddSection = () => {
-    const newSection = { id: Date.now().toString(), text: "New Section" };
-    setContent((prev) => {
-      const newContent = [...prev, newSection];
-      setDoc(
-        doc(db, "Content", "PubEthics"),
-        { content: newContent },
-        { merge: true }
-      );
-      return newContent;
-    });
-  };
-
-  const handleRemoveSection = (sectionKey) => {
-    const newContent = content.filter((sec) => sec.id !== sectionKey);
-    setContent(newContent);
-    updateDoc(doc(db, "Content", "PubEthics"), {
-      content: newContent,
-    });
-  };
-
   return (
-    <div className="min-h-screen py-40 bg-gray-50 px-4 sm:px-6 lg:px-8 relative">
-      {/* Background Image */}
-      <div
-        className="absolute inset-0 bg-cover bg-center bg-fixed"
-        style={{
-          backgroundImage: "url('/bg.jpg')",
-        }}
-      ></div>
-
-      <div className="max-w-5xl mx-auto bg-white rounded-lg shadow-xl p-8 relative z-10">
-        <h1 className="text-4xl font-extrabold text-center text-gray-800 mb-8">
+    <div className="min-h-screen py-20 bg-gray-50 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-4xl mx-auto">
+        <h1 className="text-4xl font-bold text-center mb-8">
           Publication Ethics
         </h1>
 
-        <button
-          onClick={() => setPreviewMode((prev) => !prev)}
-          className="bg-gray-800 text-white px-6 py-3 rounded-md mb-8 transition duration-300 hover:bg-gray-700"
-        >
-          {previewMode ? "Switch to Admin View" : "Preview as User"}
-        </button>
-
-        {/* Editable Header Above Sections */}
-        <EditableHeader
-          headerData={headerAboveSections}
-          onSave={handleSaveAboveHeader}
-          isEditable={isAdmin && !previewMode}
-          sectionType="header" // Pass "header" here
+        <EditableSection
+          sectionKey="header"
+          sectionData={{ text: headerText }}
+          onSave={(key, data) => handleSaveHeader(data.text)}
+          isEditable={isAdmin}
+          hasTitle={false}
         />
 
-        {/* Main Content */}
-        {content.map((section) => (
+        {sections.map((section) => (
           <EditableSection
             key={section.id}
             sectionKey={section.id}
             sectionData={section}
-            onSave={(id, data) =>
-              setContent((prev) =>
-                prev.map((sec) =>
-                  sec.id === id ? { ...sec, text: data } : sec
-                )
-              )
-            }
+            onSave={handleSaveSection}
             onRemove={handleRemoveSection}
-            isEditable={isAdmin && !previewMode}
+            isEditable={isAdmin}
           />
         ))}
 
-        {/* Editable Footer Below Sections */}
-        <EditableHeader
-          headerData={footerBelowSections}
-          onSave={handleSaveFooter}
-          isEditable={isAdmin && !previewMode}
-          sectionType="footer" // Pass "footer" here
+        <EditableSection
+          sectionKey="footer"
+          sectionData={{ text: footerText }}
+          onSave={(key, data) => handleSaveFooter(data.text)}
+          isEditable={isAdmin}
+          hasTitle={false}
         />
 
-        {isAdmin && !previewMode && (
-          <div className="mt-6">
-            <button
-              onClick={handleAddSection}
-              className="bg-green-600 text-white px-6 py-2 rounded-md transition duration-300 hover:bg-green-700"
-            >
-              Add Section
-            </button>
-          </div>
+        {isAdmin && (
+          <button
+            onClick={handleAddSection}
+            className="bg-blue-600 text-white px-6 py-2 rounded mt-6"
+          >
+            Add New Section
+          </button>
         )}
       </div>
     </div>
