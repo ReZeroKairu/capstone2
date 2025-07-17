@@ -6,7 +6,7 @@ const journals = [
     discipline: "Multidisciplinary Studies",
     publisher: "Misamis University",
     publisherLink: "https://mu.edu.ph",
-    image: "public/journals/homepageImage_en_US.jpg",
+    image: "./journals/homepageImage_en_US.jpg",
     link: "https://asianscientificjournals.com/new/publication/index_php/jmds/",
   },
   {
@@ -42,7 +42,8 @@ const journals = [
     link: "/journals/asian-journal-of-medical-sciences",
   },
   {
-    title: "SCHOOL OF GRADUATE STUDIES RESEARCH JOURNAL LICEO DE CAGAYAN UNIVERSITY",
+    title:
+      "SCHOOL OF GRADUATE STUDIES RESEARCH JOURNAL LICEO DE CAGAYAN UNIVERSITY",
     discipline: "Multidisciplinary Studies",
     publisher: "Liceo de Cagayan University",
     publisherLink: "https://liceo.edu.ph",
