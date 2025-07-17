@@ -290,7 +290,7 @@ function Profile() {
             </div>
 
             {/* Email Section */}
-            <div className="border-b-2 border-gray-400 pb-3 mb-6">
+            <div className="border-b-2 border-white pb-3 mb-6">
               <label className="font-semibold text-white text-sm mb-2">
                 Email:
               </label>
@@ -298,7 +298,7 @@ function Profile() {
             </div>
 
             {/* First Name Section */}
-            <div className="border-b-2 border-gray-400 pb-3 mb-6">
+            <div className="border-b-2 border-white pb-3 mb-6">
               <label className="font-semibold text-white text-sm mb-2">
                 First Name:
               </label>
@@ -329,7 +329,7 @@ function Profile() {
             </div>
 
             {/* Last Name Section */}
-            <div className="border-b-2 border-gray-400 pb-3 mb-6">
+            <div className="border-b-2 border-white pb-3 mb-6">
               <label className="font-semibold text-white text-sm mb-2">
                 Last Name:
               </label>
@@ -361,13 +361,13 @@ function Profile() {
             {isEditing ? (
               <div className="flex justify-between mt-6 h-14">
                 <button
-                  className="bg-blue-500 hover:bg-blue-600 text-white font-semibold py-3 px-6 rounded-lg transition-all shadow-lg"
+                  className="bg-blue-500 hover:bg-blue-600 active:bg-blue-700 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-200 shadow-lg"
                   onClick={handleUpdateProfile}
                 >
                   Save Changes
                 </button>
                 <button
-                  className="bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold py-3 px-6 rounded-lg transition-all shadow-md"
+                  className="bg-gray-300 hover:bg-gray-400 active:bg-gray-500 text-gray-800 font-semibold py-3 px-6 rounded-lg transition-all duration-200 shadow-md"
                   onClick={() => setIsEditing(false)}
                 >
                   Cancel
