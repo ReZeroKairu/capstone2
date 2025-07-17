@@ -222,7 +222,7 @@ const Notifications = ({ user }) => {
       >
         <FontAwesomeIcon
           icon={faBell}
-          className="text-gray-700 text-3xl hover:text-red-600 active:text-red-900"
+          className="text-white text-3xl hover:text-red-600 active:text-red-900"
         />
 
         {notifications.filter((notif) => !notif.seen).length > 0 && (
