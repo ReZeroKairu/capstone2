@@ -26,7 +26,10 @@ import AdminRoute from "./authcontext/AdminRoute"; // Import AdminRoute
 import { getAuth, onAuthStateChanged } from "firebase/auth"; // Import getAuth and onAuthStateChanged from Firebase
 import UserLog from "./pages/Admin/UserLog";
 import NotFound from "./pages/NotFound"; // Adjust path as needed
-
+import Manuscripts from "./components/Manuscripts";
+import SubmitManuscript from "./pages/Researcher/SubmitManuscript";
+import ManuscriptSubmissionFormBuilder from "./pages/Admin/ManuscriptSubmissionFormBuilder";
+import { SortableItem } from "./pages/Admin/SortableItem";
 function App() {
   const [loading, setLoading] = useState(true); // To track if auth state is being loaded
   const [user, setUser] = useState(null); // To store authenticated user
@@ -52,6 +55,8 @@ function App() {
     return <p className="text-center">Loading...</p>; // Optionally add a loading spinner or message
   }
 
+  const formId = ""; // Make sure formId is available
+
   return (
     <AuthProvider value={{ currentUser: user }}>
       <Router future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
@@ -70,6 +75,13 @@ function App() {
                 <Route path="/pub-ethics" element={<PubEthics />} />
                 <Route path="/guidelines" element={<Guidelines />} />
                 <Route path="/unauthorized" element={<Unauthorized />} />
+                <Route path="/manuscripts" element={<Manuscripts />} />
+                <Route path="/sortable-item" element={<SortableItem />} />
+                {/* Pass formId to RenderForm */}
+                <Route
+                  path="/submit-manuscript"
+                  element={<SubmitManuscript />}
+                />
                 <Route path="*" element={<NotFound />} />
                 <Route
                   path="/user-log"
@@ -92,6 +104,14 @@ function App() {
                   element={
                     <AdminRoute>
                       <UserManagement />
+                    </AdminRoute>
+                  }
+                />
+                <Route
+                  path="/manuscript-submission-form-builder"
+                  element={
+                    <AdminRoute>
+                      <ManuscriptSubmissionFormBuilder />
                     </AdminRoute>
                   }
                 />
