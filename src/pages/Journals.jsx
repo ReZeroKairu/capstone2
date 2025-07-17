@@ -6,7 +6,7 @@ const journals = [
     discipline: "Multidisciplinary Studies",
     publisher: "Misamis University",
     publisherLink: "https://mu.edu.ph",
-    image: "/journals/homepageImage_en_US.jpg",
+    image: "journals/homepageImage_en_US.jpg",
     link: "https://asianscientificjournals.com/new/publication/index_php/jmds/",
   },
   {
@@ -14,7 +14,7 @@ const journals = [
     discipline: "Multidisciplinary Studies",
     publisher: "Liceo de Cagayan University",
     publisherLink: "https://liceo.edu.ph",
-    image: "/journals/ldcuj1.jpg",
+    image: "journals/ldcuj1.jpg",
     link: "/journals/advancing-biology-research",
   },
   {
