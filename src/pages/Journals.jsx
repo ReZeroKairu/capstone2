@@ -6,7 +6,7 @@ const journals = [
     discipline: "Multidisciplinary Studies",
     publisher: "Misamis University",
     publisherLink: "https://mu.edu.ph",
-    image: "./journals/homepageImage_en_US.jpg",
+    image: "/journals/homepageImage_en_US.jpg",
     link: "https://asianscientificjournals.com/new/publication/index_php/jmds/",
   },
   {
@@ -14,7 +14,7 @@ const journals = [
     discipline: "Multidisciplinary Studies",
     publisher: "Liceo de Cagayan University",
     publisherLink: "https://liceo.edu.ph",
-    image: "public/journals/ldcuj1.jpg",
+    image: "/journals/ldcuj1.jpg",
     link: "/journals/advancing-biology-research",
   },
   {
@@ -22,7 +22,7 @@ const journals = [
     discipline: "Biodiversity; Ecology",
     publisher: "Liceo de Cagayan University",
     publisherLink: "https://liceo.edu.ph",
-    image: "public/journals/ldcuj2.jpg",
+    image: "/journals/ldcuj2.jpg",
     link: "/journals/advancing-pharmacy-research",
   },
   {
@@ -30,7 +30,7 @@ const journals = [
     discipline: "Health Sciences",
     publisher: "Liceo de Cagayan University",
     publisherLink: "https://liceo.edu.ph",
-    image: "public/journals/ldcuj3.jpg",
+    image: "/journals/ldcuj3.jpg",
     link: "/journals/advancing-radiologic-technology-research",
   },
   {
@@ -38,7 +38,7 @@ const journals = [
     discipline: "Business Magement And Education; Technology",
     publisher: "Liceo de Cagayan University",
     publisherLink: "https://liceo.edu.ph",
-    image: "public/journals/ldcuj4.jpg",
+    image: "/journals/ldcuj4.jpg",
     link: "/journals/asian-journal-of-medical-sciences",
   },
   {
@@ -47,7 +47,7 @@ const journals = [
     discipline: "Multidisciplinary Studies",
     publisher: "Liceo de Cagayan University",
     publisherLink: "https://liceo.edu.ph",
-    image: "public/journals/ldcuj5.jpg",
+    image: "/journals/ldcuj5.jpg",
     link: "/journals/international-journal-of-education",
   },
   {
@@ -55,7 +55,7 @@ const journals = [
     discipline: "Business & Accountancy",
     publisher: "Liceo de Cagayan University",
     publisherLink: "https://liceo.edu.ph",
-    image: "public/journals/ldcuj6.jpg",
+    image: "/journals/ldcuj6.jpg",
     link: "/journals/philippine-journal-of-law",
   },
   {
@@ -63,7 +63,7 @@ const journals = [
     discipline: "Management",
     publisher: "Liceo de Cagayan University",
     publisherLink: "https://liceo.edu.ph",
-    image: "public/journals/ldcuj7.jpg",
+    image: "/journals/ldcuj7.jpg",
     link: "/journals/innovations-in-technology-and-engineering",
   },
   {
@@ -71,7 +71,7 @@ const journals = [
     discipline: "Biology",
     publisher: "Liceo de Cagayan University",
     publisherLink: "https://liceo.edu.ph",
-    image: "public/journals/ldcuj8.jpg",
+    image: "/journals/ldcuj8.jpg",
     link: "/journals/journal-of-nursing-research",
   },
   {
@@ -79,7 +79,7 @@ const journals = [
     discipline: "Education",
     publisher: "Liceo de Cagayan University",
     publisherLink: "https://liceo.edu.ph",
-    image: "public/journals/ldcuj9.jpg",
+    image: "/journals/ldcuj9.jpg",
     link: "/journals/asian-journal-of-social-sciences",
   },
 ];
