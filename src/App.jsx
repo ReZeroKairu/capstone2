@@ -10,14 +10,15 @@ import { AuthProvider } from "./authcontext/AuthContext"; // Adjust path as need
 import Navbar from "./components/Navbar"; // Adjust path as needed
 import Footer from "./components/Footer"; // Adjust path as needed
 import Home from "./pages/Home"; // Adjust path as needed
+import Announcements from "./pages/Announcements"; // Adjust path as needed
 import Profile from "./authcomponents/Profile"; // Adjust path as needed
 import SignUp from "./authcomponents/SignUp"; // Adjust path as needed
 import SignIn from "./authcomponents/SignIn"; // Adjust path as needed
 import ForgotPassword from "./authcomponents/ForgotPassword";
-import Journals from "./pages/Journals"; // Adjust path as needed
-import CallForPapers from "./pages/CallForPapers"; // Adjust path as needed
-import PubEthics from "./pages/PubEthics"; // Adjust path as needed
-import Guidelines from "./pages/Guidelines"; // Adjust path as needed
+import Journals from "./components/Journals"; // Adjust path as needed
+import CallForPapers from "./components/CallForPapers"; // Adjust path as needed
+import PubEthics from "./components/PubEthics"; // Adjust path as needed
+import Guidelines from "./components/Guidelines"; // Adjust path as needed
 import Unauthorized from "./pages/Unauthorized"; // Adjust path as needed
 import UserManagement from "./pages/Admin/UserManagement"; // Adjust path as needed
 import AdminCreation from "./components/AdminCreation"; // Adjust path as needed
@@ -70,6 +71,7 @@ function App() {
                 <Route path="/signup" element={<SignUp />} />
                 <Route path="/signin" element={<SignIn />} />
                 <Route path="/forgot-password" element={<ForgotPassword />} />
+                <Route path="/announcements" element={<Announcements />} />
                 <Route path="/journals" element={<Journals />} />
                 <Route path="/call-for-papers" element={<CallForPapers />} />
                 <Route path="/pub-ethics" element={<PubEthics />} />
