@@ -227,10 +227,7 @@ function Announcement() {
   // ...existing code...
   return (
     <div className="relative min-h-screen overflow-hidden">
-      <div
-        className="absolute inset-0 bg-cover bg-center bg-fixed"
-        style={{ backgroundImage: "url('/bg.jpg')" }}
-      />
+      <div className="absolute inset-0 bg-cover bg-center bg-fixed" />
 
       <div className="relative z-10 flex flex-col items-center justify-center min-h-screen mt-11 py-24 w-full">
         <div className="rounded-sm p-6 w-full max-w-2xl mx-auto">
