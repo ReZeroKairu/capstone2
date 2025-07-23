@@ -80,10 +80,10 @@ const Sidebar = ({ role }) => {
             </li>
             <li>
               <Link
-                to="/announcements"
-                onClick={() => handleTabClick("Announcements")}
+                to="/announcement"
+                onClick={() => handleTabClick("Announcement")}
                 className={`flex items-center w-52 ml-8 px-3 py-3 ${
-                  activeTab === "Announcements"
+                  activeTab === "Announcement"
                     ? "bg-white text-black font-bold"
                     : "text-white"
                 } hover:bg-white hover:text-black hover:font-bold rounded-lg`}
