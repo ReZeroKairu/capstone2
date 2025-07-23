@@ -54,7 +54,7 @@ const HomepageSidebar = ({ role }) => {
           </li>
           <li>
             <Link
-              to="/announcements"
+              to="/announcement"
               onClick={() => handleTabClick("Announcements")}
               className={`flex items-center w-52 ml-8 px-3 py-3 ${
                 activeTab === "Announcements"
