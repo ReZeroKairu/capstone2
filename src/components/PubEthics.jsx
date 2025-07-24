@@ -1,16 +1,21 @@
 import React, { useState, useEffect, useRef } from "react";
-import {
-  doc,
-  updateDoc,
-  getDoc,
-  setDoc,
-  onSnapshot,
-  arrayUnion,
-  arrayRemove,
-} from "firebase/firestore";
+import ReactQuill from "react-quill";
+import "react-quill/dist/quill.snow.css";
+import { doc, updateDoc, getDoc, setDoc, onSnapshot } from "firebase/firestore";
 import { auth, db } from "../firebase/firebase";
 import { onAuthStateChanged } from "firebase/auth";
 import { FaEdit, FaTrashAlt } from "react-icons/fa";
+
+const quillModules = {
+  toolbar: [
+    [{ header: [1, 2, false] }],
+    ["bold", "italic", "underline", "strike"],
+    [{ color: [] }, { background: [] }],
+    [{ font: [] }, { size: [] }],
+    [{ align: [] }],
+    ["clean"],
+  ],
+};
 
 const PubEthics = () => {
   const [isAdmin, setIsAdmin] = useState(false);
@@ -23,17 +28,16 @@ const PubEthics = () => {
   const [notification, setNotification] = useState({ message: "", type: "" });
   const notificationTimeoutRef = useRef(null);
   const notificationBarRef = useRef(null);
-  // Store original content for cancel
   const [original, setOriginal] = useState({
     header: "",
     footer: "",
     sections: [],
   });
-  // Compare current state with original to detect changes
+  const [viewMode, setViewMode] = useState("admin");
+
   const hasChanges = () => {
     if (headerText !== original.header) return true;
     if (footerText !== original.footer) return true;
-    // Compare sections (shallow)
     if (sections.length !== original.sections.length) return true;
     for (let i = 0; i < sections.length; i++) {
       if (
@@ -55,7 +59,6 @@ const PubEthics = () => {
     }
   }, [notification.message]);
 
-  // Fetch content and user role
   useEffect(() => {
     const docRef = doc(db, "Content", "PubEthics");
     const unsubscribe = onSnapshot(docRef, (docSnap) => {
@@ -97,7 +100,6 @@ const PubEthics = () => {
     };
   }, []);
 
-  // Notification utility
   const showNotification = (message, type) => {
     setNotification({ message, type });
     if (notificationTimeoutRef.current) {
@@ -108,7 +110,6 @@ const PubEthics = () => {
     }, 4000);
   };
 
-  // Save all changes
   const handleSaveAll = async () => {
     try {
       const docRef = doc(db, "Content", "PubEthics");
@@ -125,7 +126,6 @@ const PubEthics = () => {
     }
   };
 
-  // Cancel editing and revert to original
   const handleCancelEdit = () => {
     setHeaderText(original.header);
     setFooterText(original.footer);
@@ -135,7 +135,6 @@ const PubEthics = () => {
     setIsEditing(false);
   };
 
-  // Add a new section
   const handleAddSection = async () => {
     if (newSectionTitle.trim() && newSectionContent.trim()) {
       const newSection = {
@@ -149,7 +148,6 @@ const PubEthics = () => {
       setNewSectionContent("");
       showNotification("Section added.", "success");
 
-      // Save immediately to Firestore
       try {
         const docRef = doc(db, "Content", "PubEthics");
         await updateDoc(docRef, {
@@ -166,19 +164,6 @@ const PubEthics = () => {
     }
   };
 
-  // Edit a section (inline editing)
-  const handleEditSection = (id, updatedTitle, updatedContent) => {
-    setSections((prev) =>
-      prev.map((section) =>
-        section.id === id
-          ? { ...section, title: updatedTitle, content: updatedContent }
-          : section
-      )
-    );
-    showNotification("Section updated. Don't forget to Save All!", "success");
-  };
-
-  // Remove a section
   const handleRemoveSection = (id) => {
     setSections((prev) => prev.filter((section) => section.id !== id));
     showNotification("Section removed. Don't forget to Save All!", "success");
@@ -186,33 +171,41 @@ const PubEthics = () => {
 
   return (
     <div
-      className="min-h-screen bg-cover bg-center py-40 px-4 sm:px-6 lg:px-8"
+      className="min-h-screen bg-cover bg-center py-20 px-2 sm:px-8 lg:px-32 flex items-center justify-center"
       style={{ backgroundImage: "url('/bg.jpg')" }}
     >
-      <div className="max-w-4xl mx-auto rounded-lg shadow-lg relative">
+      <div className="w-full max-w-4xl mx-auto rounded-lg shadow-lg my-8">
         {/* Notification Bar */}
         {notification.message && (
           <div
             ref={notificationBarRef}
-            className={`w-full max-w-md mx-auto mb-4 py-3 text-center font-semibold rounded-lg text-white z-50 transition-all duration-300 ${
-              notification.type === "success"
-                ? "bg-green-500"
-                : notification.type === "warning"
-                ? "bg-yellow-500"
-                : "bg-red-500"
-            }`}
+            className={`fixed left-1/2 top-6 transform -translate-x-1/2
+              px-4 py-3 text-center font-semibold rounded-lg text-white z-[9999] shadow-lg transition-all duration-300
+              ${
+                notification.type === "success"
+                  ? "bg-green-500"
+                  : notification.type === "warning"
+                  ? "bg-yellow-500"
+                  : "bg-red-500"
+              }`}
+            style={{
+              width: "90vw",
+              maxWidth: "400px",
+              wordBreak: "break-word",
+              pointerEvents: "auto",
+            }}
           >
             {notification.message}
           </div>
         )}
 
         <div className="bg-yellow-300 py-2 rounded-t-lg w-full flex items-center justify-center">
-          <h1 className="text-3xl font-bold text-black text-center">
+          <h1 className="text-2xl sm:text-3xl font-bold text-black text-center">
             Publication Ethics
           </h1>
         </div>
 
-        <div className="bg-red-800 bg-opacity-95 text-white p-8 rounded-b-lg">
+        <div className="bg-red-800 bg-opacity-95 text-white p-3 sm:p-8 rounded-b-lg">
           {/* Header */}
           <div className="mb-6">
             {isEditing ? (
@@ -220,34 +213,29 @@ const PubEthics = () => {
                 <label className="block text-lg font-semibold mb-2 text-yellow-200">
                   Title:
                 </label>
-                <textarea
+                <ReactQuill
                   value={headerText}
-                  onChange={(e) => setHeaderText(e.target.value)}
-                  className="w-full p-3 border-2 border-gray-300 rounded resize-none text-black text-lg"
-                  rows="3"
-                  placeholder="Enter header content"
+                  onChange={setHeaderText}
+                  modules={quillModules}
+                  theme="snow"
+                  className="bg-white text-black rounded mb-2"
                 />
               </>
             ) : (
-              <h2 className="text-2xl font-semibold mb-2">{headerText}</h2>
+              <div dangerouslySetInnerHTML={{ __html: headerText }} />
             )}
           </div>
 
           {/* Sections */}
           <div className="mb-6">
-            {isEditing && (
-              <label className="block text-lg font-semibold mb-2 text-yellow-200">
-                Sections:
-              </label>
-            )}
             {sections.map((section) => (
               <div
                 key={section.id}
-                className="my-4 bg-red-900 rounded p-4 shadow"
+                className="my-6 bg-red-900 rounded p-4 shadow"
               >
                 {isEditing ? (
                   <>
-                    <label className="block text-base font-semibold mb-1 text-yellow-100">
+                    <label className="block text-base font-semibold mb-2 text-yellow-100">
                       Section Title:
                     </label>
                     <input
@@ -262,28 +250,26 @@ const PubEthics = () => {
                           )
                         )
                       }
-                      className="w-full p-2 mb-2 text-black rounded border-2 border-gray-300"
+                      className="w-full p-2 mb-3 text-black rounded border-2 border-gray-300"
                       placeholder="Section Title"
                     />
-                    <label className="block text-base font-semibold mb-1 text-yellow-100">
+                    <label className="block text-base font-semibold mb-2 text-yellow-100">
                       Section Content:
                     </label>
-                    <textarea
+                    <ReactQuill
                       value={section.content}
-                      onChange={(e) =>
+                      onChange={(value) =>
                         setSections((prev) =>
                           prev.map((s) =>
-                            s.id === section.id
-                              ? { ...s, content: e.target.value }
-                              : s
+                            s.id === section.id ? { ...s, content: value } : s
                           )
                         )
                       }
-                      className="w-full p-2 mb-2 text-black rounded border-2 border-gray-300 resize-none"
-                      rows="3"
-                      placeholder="Section Content"
+                      modules={quillModules}
+                      theme="snow"
+                      className="bg-white text-black rounded mb-2"
                     />
-                    <div className="flex space-x-2 mt-2">
+                    <div className="flex space-x-2 mt-3">
                       <button
                         onClick={() => handleRemoveSection(section.id)}
                         className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded font-semibold flex items-center gap-2"
@@ -294,9 +280,13 @@ const PubEthics = () => {
                   </>
                 ) : (
                   <>
-                    <h3 className="text-xl font-bold">{section.title}</h3>
-                    <p className="text-lg">{section.content}</p>
-                    {!isEditing && isAdmin && (
+                    <h3 className="text-xl font-bold mb-2">{section.title}</h3>
+                    <div
+                      className="mb-2"
+                      dangerouslySetInnerHTML={{ __html: section.content }}
+                    />
+                    {/* Only show Edit/Remove in admin mode and not editing */}
+                    {viewMode === "admin" && isAdmin && !isEditing && (
                       <div className="flex space-x-2 mt-2">
                         <button
                           onClick={() => setIsEditing(true)}
@@ -316,34 +306,33 @@ const PubEthics = () => {
                 )}
               </div>
             ))}
-
             {/* Add Section form below existing sections */}
             {isEditing ? (
-              <div className="mb-8">
-                <label className="block text-base font-semibold mb-1 text-yellow-100">
+              <div className="mb-6">
+                <label className="block text-base font-semibold mb-2 text-yellow-100">
                   Section Title:
                 </label>
                 <input
                   type="text"
                   value={newSectionTitle}
                   onChange={(e) => setNewSectionTitle(e.target.value)}
-                  className="w-full p-3 border-2 border-gray-300 rounded mb-2 text-black"
+                  className="w-full p-3 border-2 border-gray-300 rounded mb-3 text-black"
                   placeholder="Enter section title"
                 />
-                <label className="block text-base font-semibold mb-1 text-yellow-100">
+                <label className="block text-base font-semibold mb-2 text-yellow-100">
                   Section Content:
                 </label>
-                <textarea
+                <ReactQuill
                   value={newSectionContent}
-                  onChange={(e) => setNewSectionContent(e.target.value)}
-                  className="w-full p-3 border-2 border-gray-300 rounded resize-none text-black"
-                  rows="3"
-                  placeholder="Enter section content"
+                  onChange={setNewSectionContent}
+                  modules={quillModules}
+                  theme="snow"
+                  className="bg-white text-black rounded mb-2"
                 />
-                <div className="flex justify-end">
+                <div className="flex justify-end mt-3">
                   <button
                     onClick={handleAddSection}
-                    className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded mt-4 font-semibold"
+                    className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded font-semibold"
                   >
                     Add Section
                   </button>
@@ -359,29 +348,54 @@ const PubEthics = () => {
                 <label className="block text-lg font-semibold mb-2 text-yellow-200">
                   Footer:
                 </label>
-                <textarea
+                <ReactQuill
                   value={footerText}
-                  onChange={(e) => setFooterText(e.target.value)}
-                  className="w-full p-3 border-2 border-gray-300 rounded resize-none text-black text-lg"
-                  rows="3"
-                  placeholder="Enter footer content"
+                  onChange={setFooterText}
+                  modules={quillModules}
+                  theme="snow"
+                  className="bg-white text-black rounded mb-2"
                 />
               </>
             ) : (
-              <p className="text-lg">{footerText}</p>
+              <div dangerouslySetInnerHTML={{ __html: footerText }} />
             )}
           </div>
 
           {/* Move Edit button below content */}
-          {!isEditing && isAdmin && (
-            <div className="text-center mt-8">
+          {isAdmin && !isEditing && (
+            <div className="text-center mt-8 flex justify-center gap-4">
               <button
-                onClick={() => setIsEditing(true)}
-                className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded font-semibold transition-colors"
+                onClick={() =>
+                  setViewMode(viewMode === "admin" ? "user" : "admin")
+                }
+                className={`${
+                  viewMode === "admin"
+                    ? "bg-gray-600 hover:bg-gray-700"
+                    : "bg-blue-600 hover:bg-blue-700"
+                } text-white px-6 py-3 rounded font-semibold transition-colors`}
               >
-                <FaEdit className="inline-block mr-2" />
-                Edit Publication Ethics
+                {viewMode === "admin"
+                  ? "Switch to User Mode"
+                  : "Switch to Admin Mode"}
               </button>
+            </div>
+          )}
+
+          {viewMode === "admin" && isAdmin && (
+            <div className="text-center mt-8 flex justify-center gap-4">
+              {!isEditing ? (
+                <>
+                  <button
+                    onClick={() => setIsEditing(true)}
+                    className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded font-semibold transition-colors"
+                  >
+                    <FaEdit className="inline-block mr-2" />
+                    Edit Publication Ethics
+                  </button>
+                </>
+              ) : (
+                <></>
+              )}
             </div>
           )}
 
