@@ -29,7 +29,7 @@ import UserLog from "./pages/Admin/UserLog";
 import NotFound from "./pages/NotFound"; // Adjust path as needed
 import Manuscripts from "./components/Manuscripts";
 import SubmitManuscript from "./pages/Researcher/SubmitManuscript";
-import ManuscriptSubmissionFormBuilder from "./pages/Admin/ManuscriptSubmissionFormBuilder";
+import DynamicForm from "./formcomponents/DynamicForm";
 import { SortableItem } from "./pages/Admin/SortableItem";
 function App() {
   const [loading, setLoading] = useState(true); // To track if auth state is being loaded
@@ -53,7 +53,7 @@ function App() {
   }, [auth]);
 
   if (loading) {
-    return <p className="text-center">Loading...</p>; // Optionally add a loading spinner or message
+    return <p className="text-center">Loading...</p>; // Optionally add a load  ing spinner or message
   }
 
   const formId = ""; // Make sure formId is available
@@ -78,6 +78,7 @@ function App() {
                 <Route path="/guidelines" element={<Guidelines />} />
                 <Route path="/unauthorized" element={<Unauthorized />} />
                 <Route path="/manuscripts" element={<Manuscripts />} />
+                <Route path="/dynamicform" element={<DynamicForm />} />
                 <Route path="/sortable-item" element={<SortableItem />} />
                 {/* Pass formId to RenderForm */}
                 <Route
@@ -109,14 +110,7 @@ function App() {
                     </AdminRoute>
                   }
                 />
-                <Route
-                  path="/manuscript-submission-form-builder"
-                  element={
-                    <AdminRoute>
-                      <ManuscriptSubmissionFormBuilder />
-                    </AdminRoute>
-                  }
-                />
+
                 <Route
                   path="/create-admin"
                   element={
