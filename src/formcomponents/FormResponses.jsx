@@ -42,7 +42,7 @@ export default function FormResponses() {
     return () => unsub();
   }, []);
 
-  // Fetch all forms
+  // Fetch forms
   useEffect(() => {
     const fetchForms = async () => {
       const formSnapshot = await getDocs(collection(db, "forms"));
@@ -51,16 +51,16 @@ export default function FormResponses() {
     fetchForms();
   }, []);
 
-  // Fetch responses with pagination
+  // Fetch responses
   const fetchResponses = async (direction = "next") => {
     if (!selectedFormId || !currentUser) return;
     setLoading(true);
 
-    // Base constraints
     let constraints = [where("formId", "==", selectedFormId)];
-    if (!isAdmin) constraints.push(where("userId", "==", currentUser.uid));
+    if (!isAdmin) {
+      constraints.push(where("userId", "==", currentUser.uid));
+    }
 
-    // Date filter
     if (startDate && endDate) {
       const start = Timestamp.fromDate(new Date(startDate + "T00:00:00"));
       const end = Timestamp.fromDate(new Date(endDate + "T23:59:59"));
@@ -68,7 +68,6 @@ export default function FormResponses() {
       constraints.push(where("submittedAt", "<=", end));
     }
 
-    // Build Firestore query
     let q = query(
       collection(db, "form_responses"),
       ...constraints,
@@ -76,41 +75,51 @@ export default function FormResponses() {
       limit(PAGE_SIZE)
     );
 
-    if (direction === "next" && lastVisible && !searchTerm) {
+    if (!searchTerm && direction === "next" && lastVisible) {
       q = query(q, startAfter(lastVisible));
     }
 
     const snapshot = await getDocs(q);
     const data = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
 
-    // Update pagination stack for Firestore paging
+    // Update prevStack for previous page
     if (!searchTerm) {
-      if (direction === "next" && lastVisible)
+      if (direction === "next" && lastVisible) {
         setPrevStack((prev) => [...prev, lastVisible]);
-      if (direction === "prev") setPrevStack((prev) => prev.slice(0, -1));
+      } else if (direction === "prev" && prevStack.length > 0) {
+        setPrevStack((prev) => prev.slice(0, -1));
+      }
+      setLastVisible(snapshot.docs[snapshot.docs.length - 1] || null);
     }
 
-    // Apply in-memory search if searchTerm exists
-    let filtered = data;
+    // For search, fetch all matching results across all pages
     if (searchTerm.trim() !== "") {
       const term = searchTerm.toLowerCase();
-      filtered = data.filter(
-        (r) =>
-          `${r.firstName || ""} ${r.lastName || ""}`
-            .toLowerCase()
-            .includes(term) || r.email?.toLowerCase().includes(term)
+
+      // Firestore can't do full-text search, so fetch all filtered by constraints
+      // and then in-memory filter for search term
+      let fullQuery = query(
+        collection(db, "form_responses"),
+        ...constraints,
+        orderBy("submittedAt", "desc")
       );
-      // Reset pagination for search
-      setPrevStack([]);
+      const fullSnapshot = await getDocs(fullQuery);
+      const fullData = fullSnapshot.docs
+        .map((doc) => ({ id: doc.id, ...doc.data() }))
+        .filter(
+          (r) =>
+            `${r.firstName || ""} ${r.lastName || ""}`
+              .toLowerCase()
+              .includes(term) || r.email?.toLowerCase().includes(term)
+        );
+      setResponses(fullData);
       setLastVisible(null);
+      setPrevStack([]);
+    } else {
+      // normal pagination
+      setResponses(data);
     }
 
-    setResponses(
-      direction === "prev"
-        ? filtered
-        : [...(direction === "next" ? responses : []), ...filtered]
-    );
-    setLastVisible(snapshot.docs[snapshot.docs.length - 1] || null);
     setLoading(false);
   };
 
@@ -119,8 +128,23 @@ export default function FormResponses() {
     setLastVisible(null);
     setPrevStack([]);
     setResponses([]);
-    fetchResponses(true);
-  }, [selectedFormId, startDate, endDate, searchTerm, currentUser, isAdmin]);
+    if (selectedFormId) fetchResponses("next");
+  }, [selectedFormId, startDate, endDate, currentUser, isAdmin, searchTerm]);
+
+  // Highlighting search term
+  const highlightText = (text) => {
+    if (!searchTerm) return text;
+    const parts = text.split(new RegExp(`(${searchTerm})`, "gi"));
+    return parts.map((part, i) =>
+      part.toLowerCase() === searchTerm.toLowerCase() ? (
+        <mark key={i} className="bg-yellow-200">
+          {part}
+        </mark>
+      ) : (
+        <span key={i}>{part}</span>
+      )
+    );
+  };
 
   if (!isAdmin && !currentUser) {
     return (
@@ -168,7 +192,7 @@ export default function FormResponses() {
         </label>
       </div>
 
-      {/* Search */}
+      {/* Search input */}
       <div className="mb-4">
         <input
           type="text"
@@ -183,44 +207,19 @@ export default function FormResponses() {
         <p>No responses found.</p>
       )}
 
-      {/* Responses */}
+      {/* Response list */}
       {responses.map((res) => {
         const fullName = `${res.firstName || ""} ${res.lastName || ""}`;
         return (
           <div key={res.id} className="mb-4 border p-3 rounded bg-gray-50">
             <p className="text-sm text-gray-500 mb-2">
-              User:{" "}
-              {searchTerm
-                ? fullName
-                    .split(new RegExp(`(${searchTerm})`, "gi"))
-                    .map((part, i) =>
-                      part.toLowerCase() === searchTerm.toLowerCase() ? (
-                        <mark key={i} className="bg-yellow-200">
-                          {part}
-                        </mark>
-                      ) : (
-                        <span key={i}>{part}</span>
-                      )
-                    )
-                : fullName}{" "}
-              | Email:{" "}
-              {searchTerm
-                ? res.email
-                    .split(new RegExp(`(${searchTerm})`, "gi"))
-                    .map((part, i) =>
-                      part.toLowerCase() === searchTerm.toLowerCase() ? (
-                        <mark key={i} className="bg-yellow-200">
-                          {part}
-                        </mark>
-                      ) : (
-                        <span key={i}>{part}</span>
-                      )
-                    )
-                : res.email}{" "}
-              | Role: {res.role || "N/A"} | Submitted at:{" "}
+              User: {highlightText(fullName)} | Email:{" "}
+              {highlightText(res.email)} | Role: {res.role || "N/A"} | Submitted
+              at:{" "}
               {res.submittedAt?.toDate?.()?.toLocaleString() ||
                 new Date(res.submittedAt.seconds * 1000).toLocaleString()}
             </p>
+
             <div className="mb-2">
               {res.answeredQuestions?.map((q, idx) => (
                 <p key={idx}>
@@ -228,9 +227,11 @@ export default function FormResponses() {
                 </p>
               ))}
             </div>
+
             <div>
               <strong>Status:</strong> {res.status || "Pending"}
             </div>
+
             <div>
               <strong>History:</strong>
               {res.history?.map((h, i) => (
@@ -244,7 +245,7 @@ export default function FormResponses() {
         );
       })}
 
-      {/* Pagination */}
+      {/* Pagination buttons */}
       {!searchTerm && responses.length > 0 && (
         <div className="flex justify-center mt-4 gap-2">
           <button
