@@ -42,7 +42,7 @@ export default function FormResponses() {
     return () => unsub();
   }, []);
 
-  // Fetch forms
+  // Fetch all forms
   useEffect(() => {
     const fetchForms = async () => {
       const formSnapshot = await getDocs(collection(db, "forms"));
@@ -51,15 +51,12 @@ export default function FormResponses() {
     fetchForms();
   }, []);
 
-  // Fetch responses
   const fetchResponses = async (direction = "next") => {
     if (!selectedFormId || !currentUser) return;
     setLoading(true);
 
     let constraints = [where("formId", "==", selectedFormId)];
-    if (!isAdmin) {
-      constraints.push(where("userId", "==", currentUser.uid));
-    }
+    if (!isAdmin) constraints.push(where("userId", "==", currentUser.uid));
 
     if (startDate && endDate) {
       const start = Timestamp.fromDate(new Date(startDate + "T00:00:00"));
@@ -72,7 +69,7 @@ export default function FormResponses() {
       collection(db, "form_responses"),
       ...constraints,
       orderBy("submittedAt", "desc"),
-      limit(PAGE_SIZE)
+      limit(searchTerm ? 1000 : PAGE_SIZE)
     );
 
     if (!searchTerm && direction === "next" && lastVisible) {
@@ -82,59 +79,63 @@ export default function FormResponses() {
     const snapshot = await getDocs(q);
     const data = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
 
-    // Update prevStack for previous page
-    if (!searchTerm) {
-      if (direction === "next" && lastVisible) {
-        setPrevStack((prev) => [...prev, lastVisible]);
-      } else if (direction === "prev" && prevStack.length > 0) {
-        setPrevStack((prev) => prev.slice(0, -1));
-      }
-      setLastVisible(snapshot.docs[snapshot.docs.length - 1] || null);
-    }
+    let filtered = data;
 
-    // For search, fetch all matching results across all pages
     if (searchTerm.trim() !== "") {
       const term = searchTerm.toLowerCase();
-
-      // Firestore can't do full-text search, so fetch all filtered by constraints
-      // and then in-memory filter for search term
-      let fullQuery = query(
-        collection(db, "form_responses"),
-        ...constraints,
-        orderBy("submittedAt", "desc")
+      filtered = data.filter(
+        (r) =>
+          `${r.firstName || ""} ${r.lastName || ""}`
+            .toLowerCase()
+            .includes(term) || r.email?.toLowerCase().includes(term)
       );
-      const fullSnapshot = await getDocs(fullQuery);
-      const fullData = fullSnapshot.docs
-        .map((doc) => ({ id: doc.id, ...doc.data() }))
-        .filter(
-          (r) =>
-            `${r.firstName || ""} ${r.lastName || ""}`
-              .toLowerCase()
-              .includes(term) || r.email?.toLowerCase().includes(term)
-        );
-      setResponses(fullData);
       setLastVisible(null);
       setPrevStack([]);
     } else {
-      // normal pagination
-      setResponses(data);
+      if (direction === "next" && lastVisible)
+        setPrevStack((prev) => [...prev, lastVisible]);
+      else if (direction === "prev") {
+        const prevPage = prevStack[prevStack.length - 1];
+        setPrevStack((prev) => prev.slice(0, -1));
+        setLastVisible(prevPage || null);
+      }
     }
 
+    setResponses(
+      direction === "prev"
+        ? filtered
+        : [...(direction === "next" ? responses : []), ...filtered]
+    );
+    setLastVisible(snapshot.docs[snapshot.docs.length - 1] || null);
     setLoading(false);
   };
 
-  // Reset pagination when filters change
+  // Trigger fetch when filters/search change
   useEffect(() => {
     setLastVisible(null);
     setPrevStack([]);
     setResponses([]);
-    if (selectedFormId) fetchResponses("next");
-  }, [selectedFormId, startDate, endDate, currentUser, isAdmin, searchTerm]);
+    fetchResponses(true);
+  }, [selectedFormId, startDate, endDate, currentUser, isAdmin]);
 
-  // Highlighting search term
+  // Handle Enter key for search/filter
+  const handleKeyDown = (e) => {
+    if (e.key === "Enter") fetchResponses(true);
+  };
+
+  if (!isAdmin && !currentUser) {
+    return (
+      <p className="p-28 text-red-500">
+        You do not have permission to view responses.
+      </p>
+    );
+  }
+
+  // Safe text highlighting function
   const highlightText = (text) => {
     if (!searchTerm) return text;
-    const parts = text.split(new RegExp(`(${searchTerm})`, "gi"));
+    const escaped = searchTerm.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const parts = text.split(new RegExp(`(${escaped})`, "gi"));
     return parts.map((part, i) =>
       part.toLowerCase() === searchTerm.toLowerCase() ? (
         <mark key={i} className="bg-yellow-200">
@@ -145,14 +146,6 @@ export default function FormResponses() {
       )
     );
   };
-
-  if (!isAdmin && !currentUser) {
-    return (
-      <p className="p-28 text-red-500">
-        You do not have permission to view responses.
-      </p>
-    );
-  }
 
   return (
     <div className="p-28 max-w-5xl mx-auto">
@@ -180,6 +173,7 @@ export default function FormResponses() {
             type="date"
             value={startDate}
             onChange={(e) => setStartDate(e.target.value)}
+            onKeyDown={handleKeyDown}
           />
         </label>
         <label>
@@ -188,6 +182,7 @@ export default function FormResponses() {
             type="date"
             value={endDate}
             onChange={(e) => setEndDate(e.target.value)}
+            onKeyDown={handleKeyDown}
           />
         </label>
       </div>
@@ -199,6 +194,7 @@ export default function FormResponses() {
           placeholder="Search by name or email..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
+          onKeyDown={handleKeyDown}
           className="border p-2 w-full"
         />
       </div>
@@ -214,8 +210,8 @@ export default function FormResponses() {
           <div key={res.id} className="mb-4 border p-3 rounded bg-gray-50">
             <p className="text-sm text-gray-500 mb-2">
               User: {highlightText(fullName)} | Email:{" "}
-              {highlightText(res.email)} | Role: {res.role || "N/A"} | Submitted
-              at:{" "}
+              {highlightText(res.email || "")} | Role: {res.role || "N/A"} |
+              Submitted at:{" "}
               {res.submittedAt?.toDate?.()?.toLocaleString() ||
                 new Date(res.submittedAt.seconds * 1000).toLocaleString()}
             </p>
@@ -245,7 +241,7 @@ export default function FormResponses() {
         );
       })}
 
-      {/* Pagination buttons */}
+      {/* Pagination */}
       {!searchTerm && responses.length > 0 && (
         <div className="flex justify-center mt-4 gap-2">
           <button
