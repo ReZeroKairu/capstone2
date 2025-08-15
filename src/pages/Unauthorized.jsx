@@ -16,7 +16,7 @@ function Unauthorized() {
 
         <button
           onClick={() => navigate("/home")} // Redirects to the homepage
-          className="bg-red-700 text-white px-6 py-2 rounded-mdbg-red-700 hover:bg-red-800 active:scale-95 active:bg-red-900"
+          className="bg-red-700 text-white px-6 py-2 rounded-md hover:bg-red-800 active:scale-95 active:bg-red-900"
         >
           Go to Homepage
         </button>

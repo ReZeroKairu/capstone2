@@ -5,8 +5,6 @@ import {
   getDocs,
   doc,
   getDoc,
-  addDoc,
-  serverTimestamp,
   deleteDoc,
   updateDoc,
 } from "firebase/firestore";
@@ -30,17 +28,25 @@ function UserManagement() {
   const [searchQuery, setSearchQuery] = useState("");
   const auth = getAuth(app);
 
+  // Check if current user is admin
   const checkAdminStatus = async (userId) => {
-    const userDoc = await getDoc(doc(db, "Users", userId));
-    if (userDoc.exists() && userDoc.data().role === "Admin") {
-      setIsAdmin(true);
-      fetchUsers();
-    } else {
-      navigate("/unauthorized");
+    try {
+      const userDoc = await getDoc(doc(db, "Users", userId));
+      if (userDoc.exists() && userDoc.data().role === "Admin") {
+        setIsAdmin(true);
+        await fetchUsers();
+      } else {
+        navigate("/unauthorized");
+      }
+    } catch (error) {
+      console.error("Check admin status error:", error);
+      setMessage("Failed to verify admin status.");
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
+  // Fetch all users
   const fetchUsers = async () => {
     setLoading(true);
     try {
@@ -50,10 +56,12 @@ function UserManagement() {
         ...doc.data(),
       }));
       setUsers(usersList);
-    } catch {
+    } catch (error) {
+      console.error("Fetch users error:", error);
       setMessage("Failed to fetch users.");
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   useEffect(() => {
@@ -72,10 +80,11 @@ function UserManagement() {
   const handleDelete = async () => {
     try {
       await deleteDoc(doc(db, "Users", deleteUserId));
+      setUsers((prev) => prev.filter((u) => u.id !== deleteUserId));
       setMessage("User deleted successfully.");
-      fetchUsers();
       setDeleteUserId(null);
-    } catch {
+    } catch (error) {
+      console.error("Delete user error:", error);
       setMessage("Failed to delete user.");
     }
   };
@@ -89,20 +98,30 @@ function UserManagement() {
         lastName: editingUser.lastName,
         role: editingUser.role,
       });
+      setUsers((prev) =>
+        prev.map((u) =>
+          u.id === editingUser.id ? { ...u, ...editingUser } : u
+        )
+      );
       setMessage("User updated successfully.");
-      fetchUsers();
       setIsEditing(false);
       setEditingUser(null);
-    } catch {
+    } catch (error) {
+      console.error("Update user error:", error);
       setMessage("Failed to update user.");
     }
   };
 
-  const filteredUsers = users.filter((user) =>
-    ["email", "firstName", "lastName", "role"].some((key) =>
-      user[key]?.toLowerCase().includes(searchQuery.toLowerCase())
-    )
-  );
+  // Improved search for firstName, lastName, email, or role
+  const filteredUsers = users.filter((user) => {
+    if (!searchQuery) return true; // show all if empty
+    const queryWords = searchQuery.toLowerCase().split(" ");
+    return queryWords.every((word) =>
+      [user.firstName, user.lastName, user.email, user.role].some((field) =>
+        field?.toLowerCase().includes(word)
+      )
+    );
+  });
 
   const indexOfLastUser = currentPage * usersPerPage;
   const indexOfFirstUser = indexOfLastUser - usersPerPage;
@@ -110,7 +129,7 @@ function UserManagement() {
   const totalPages = Math.ceil(filteredUsers.length / usersPerPage);
 
   return (
-    <div className="p-4 sm:p-8 bg-gray-50 min-h-screen relative mb-11">
+    <div className="p-4 sm:p-8 bg-gray-50 min-h-screen pt-28 md:pt-24 relative mb-11">
       <h2 className="text-2xl sm:text-3xl font-bold text-center mb-6 sm:mb-10 text-gray-800">
         Manage Users
       </h2>
@@ -291,6 +310,13 @@ function UserManagement() {
         </div>
         <div className="flex items-center flex-wrap gap-1 text-sm">
           <button
+            onClick={() => setCurrentPage(1)}
+            disabled={currentPage === 1}
+            className="px-2 py-1 bg-blue-600 text-white rounded disabled:bg-gray-300"
+          >
+            First
+          </button>
+          <button
             onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
             disabled={currentPage === 1}
             className="px-2 py-1 bg-blue-600 text-white rounded disabled:bg-gray-300"
@@ -318,6 +344,13 @@ function UserManagement() {
             className="px-2 py-1 bg-blue-600 text-white rounded disabled:bg-gray-300"
           >
             Next
+          </button>
+          <button
+            onClick={() => setCurrentPage(totalPages)}
+            disabled={currentPage === totalPages}
+            className="px-2 py-1 bg-blue-600 text-white rounded disabled:bg-gray-300"
+          >
+            Last
           </button>
         </div>
       </div>
