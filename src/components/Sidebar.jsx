@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import {
   FaHome,
   FaBullhorn,
@@ -9,208 +9,119 @@ import {
   FaBars,
   FaTimes,
 } from "react-icons/fa";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 
 const Sidebar = ({ role }) => {
   const [isOpen, setIsOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState("Home");
-  const [scrollPosition, setScrollPosition] = useState(0);
+  const location = useLocation();
 
-  // Toggle sidebar visibility
-  const toggleSidebar = () => {
-    setIsOpen(!isOpen);
+  const toggleSidebar = () => setIsOpen(!isOpen);
+
+  const handleLinkClick = () => {
+    if (window.innerWidth < 768) setIsOpen(false);
   };
 
-  // Update scroll position on scroll
-  const handleScroll = () => {
-    setScrollPosition(window.scrollY);
-  };
+  const links = [
+    { name: "Home", path: "/home", icon: <FaHome className="text-2xl" /> },
+    {
+      name: "Announcements",
+      path: "/announcement",
+      icon: <FaBullhorn className="text-xl" />,
+    },
+    {
+      name: "Dashboard",
+      path: "/dashboard",
+      icon: <FaTachometerAlt className="text-xl" />,
+    },
+  ];
 
-  useEffect(() => {
-    window.addEventListener("scroll", handleScroll);
+  const adminLinks = [
+    {
+      name: "User Management",
+      path: "/user-management",
+      icon: <FaUsers className="text-xl" />,
+    },
+    {
+      name: "Manuscripts",
+      path: "/manuscripts",
+      icon: <FaBook className="text-xl" />,
+    },
+  ];
 
-    // Clean up the event listener on unmount
-    return () => {
-      window.removeEventListener("scroll", handleScroll);
-    };
-  }, []);
+  const researcherLinks = [
+    {
+      name: "Submit Manuscript",
+      path: "/submit-manuscript",
+      icon: <FaFileUpload className="text-xl" />,
+    },
+    {
+      name: "Manuscripts",
+      path: "/manuscripts",
+      icon: <FaBook className="text-xl" />,
+    },
+  ];
 
-  // Set active tab
-  const handleTabClick = (tab) => {
-    setActiveTab(tab);
-  };
+  const peerReviewerLinks = [
+    {
+      name: "Review Manuscript",
+      path: "/review-manuscript",
+      icon: <FaFileUpload className="text-xl" />,
+    },
+  ];
+
+  const renderLinks = (linkArray, mobile = false) =>
+    linkArray.map((link) => (
+      <li key={link.name} className={mobile ? "flex-1 text-center" : ""}>
+        <Link
+          to={link.path}
+          onClick={handleLinkClick}
+          className={`flex items-center justify-center md:justify-start px-4 py-3 mb-1 rounded-lg ${
+            location.pathname === link.path
+              ? "bg-white text-black font-bold"
+              : "text-white hover:bg-white hover:text-black hover:font-bold"
+          }`}
+        >
+          {link.icon}
+          {!mobile && <span className="ml-3">{link.name}</span>}
+        </Link>
+      </li>
+    ));
 
   return (
-    <div className="relative flex mt-20">
-      {/* Sidebar */}
+    <>
+      {/* Overlay for mobile */}
       <div
-        className={`transition-all duration-300 ease-in-out mt-16 sm:mt-20 ${
-          isOpen ? "w-64" : "w-0"
-        } bg-red-800 text-white fixed inset-y-0 left-0 z-30 overflow-hidden`}
-        style={{
-          height: "100vh",
-          backgroundSize: "cover",
-          backgroundPosition: "center",
-        }}
-      >
-        <div className="bg-red-800 text-white text-center py-4 px-6 text-xl font-semibold">
+        className={`fixed inset-0 bg-black bg-opacity-50 z-20 transition-opacity duration-300 md:hidden ${
+          isOpen ? "opacity-100 visible" : "opacity-0 invisible"
+        }`}
+        onClick={toggleSidebar}
+      ></div>
+
+      {/* Desktop Sidebar */}
+      <div className="hidden md:block fixed top-0 left-0 h-full w-64 bg-red-800 text-white z-30 overflow-y-auto">
+        <div className="text-center py-4 px-6 text-xl font-semibold sticky top-0">
           Menu
         </div>
-
-        <div
-          className={`relative z-10 ${
-            isOpen ? "opacity-100" : "opacity-0"
-          } transition-opacity duration-300 delay-150`}
-        >
-          <ul className={`${isOpen ? "block" : "hidden"}`}>
-            {/* Tabs common to all roles */}
-            <li>
-              <Link
-                to="/home"
-                onClick={() => handleTabClick("Home")}
-                className={`flex items-center w-52 ml-8 px-3 py-3 ${
-                  activeTab === "Home"
-                    ? "bg-white text-black font-bold"
-                    : "text-white"
-                } hover:bg-white hover:text-black hover:font-bold rounded-lg`}
-              >
-                <FaHome className="mr-3 text-2xl" />
-                Home
-              </Link>
-            </li>
-            <li>
-              <Link
-                to="/announcement"
-                onClick={() => handleTabClick("Announcement")}
-                className={`flex items-center w-52 ml-8 px-3 py-3 ${
-                  activeTab === "Announcement"
-                    ? "bg-white text-black font-bold"
-                    : "text-white"
-                } hover:bg-white hover:text-black hover:font-bold rounded-lg`}
-              >
-                <FaBullhorn className="mr-3 text-xl" />
-                Announcements
-              </Link>
-            </li>
-            <li>
-              <Link
-                to="/dashboard"
-                onClick={() => handleTabClick("Dashboard")}
-                className={`flex items-center w-52 ml-8 px-3 py-3 ${
-                  activeTab === "Dashboard"
-                    ? "bg-white text-black font-bold"
-                    : "text-white"
-                } hover:bg-white hover:text-black hover:font-bold rounded-lg`}
-              >
-                <FaTachometerAlt className="mr-3 text-xl" />
-                Dashboard
-              </Link>
-            </li>
-
-            {/* Role-specific tabs */}
-            {role === "Admin" && (
-              <>
-                <li>
-                  <Link
-                    to="/user-management"
-                    onClick={() => handleTabClick("User Management")}
-                    className={`flex items-center w-52 ml-8 px-3 py-3 ${
-                      activeTab === "User Management"
-                        ? "bg-white text-black font-bold"
-                        : "text-white"
-                    } hover:bg-white hover:text-black hover:font-bold rounded-lg`}
-                  >
-                    <FaUsers className="mr-3 text-xl" />
-                    User Management
-                  </Link>
-                </li>
-                <li>
-                  <Link
-                    to="/manuscripts"
-                    onClick={() => handleTabClick("Manuscripts")}
-                    className={`flex items-center w-52 ml-8 px-3 py-3 ${
-                      activeTab === "Manuscripts"
-                        ? "bg-white text-black font-bold"
-                        : "text-white"
-                    } hover:bg-white hover:text-black hover:font-bold rounded-lg`}
-                  >
-                    <FaBook className="mr-3 text-xl" />
-                    Manuscripts
-                  </Link>
-                </li>
-              </>
-            )}
-
-            {role === "Researcher" && (
-              <>
-                <li>
-                  <Link
-                    to="/submit-manuscript"
-                    onClick={() => handleTabClick("Submit Manuscript")}
-                    className={`flex items-center w-52 ml-8 px-3 py-3 ${
-                      activeTab === "Submit Manuscript"
-                        ? "bg-white text-black font-bold"
-                        : "text-white"
-                    } hover:bg-white hover:text-black hover:font-bold rounded-lg`}
-                  >
-                    <FaFileUpload className="mr-3 text-xl" />
-                    Submit Manuscript
-                  </Link>
-                </li>
-                <li>
-                  <Link
-                    to="/manuscripts"
-                    onClick={() => handleTabClick("Manuscripts")}
-                    className={`flex items-center w-52 ml-8 px-3 py-3 ${
-                      activeTab === "Manuscripts"
-                        ? "bg-white text-black font-bold"
-                        : "text-white"
-                    } hover:bg-white hover:text-black hover:font-bold rounded-lg`}
-                  >
-                    <FaBook className="mr-3 text-xl" />
-                    Manuscripts
-                  </Link>
-                </li>
-              </>
-            )}
-
-            {role === "Peer Reviewer" && (
-              <li>
-                <Link
-                  to="/review-manuscript"
-                  onClick={() => handleTabClick("Review Manuscript")}
-                  className={`flex items-center w-52 ml-8 px-3 py-3 ${
-                    activeTab === "Review Manuscript"
-                      ? "bg-white text-black font-bold"
-                      : "text-white"
-                  } hover:bg-white hover:text-black hover:font-bold rounded-lg`}
-                >
-                  <FaFileUpload className="mr-3 text-xl" />
-                  Review Manuscript
-                </Link>
-              </li>
-            )}
-          </ul>
-        </div>
+        <ul className="mt-4">
+          {renderLinks(links)}
+          {role === "Admin" && renderLinks(adminLinks)}
+          {role === "Researcher" && renderLinks(researcherLinks)}
+          {role === "Peer Reviewer" && renderLinks(peerReviewerLinks)}
+        </ul>
       </div>
 
-      {/* Toggle Button - moves down with scroll */}
+      {/* Mobile bottom nav */}
       <div
-        className="absolute z-30 cursor-pointer text-white"
-        onClick={toggleSidebar}
-        style={{
-          position: "absolute",
-          top: `${scrollPosition + 20}px`, // Moves with scroll
-          left: "20px",
-        }}
+        className={`fixed bottom-0 left-0 w-full bg-red-800 text-white z-30 md:hidden flex justify-around p-2 ${
+          isOpen ? "h-48 flex-col" : "h-16"
+        } transition-all duration-300`}
       >
-        {isOpen ? (
-          <FaTimes className="text-3xl" />
-        ) : (
-          <FaBars className="text-3xl" />
-        )}
+        {renderLinks(links, true)}
+        {role === "Admin" && renderLinks(adminLinks, true)}
+        {role === "Researcher" && renderLinks(researcherLinks, true)}
+        {role === "Peer Reviewer" && renderLinks(peerReviewerLinks, true)}
       </div>
-    </div>
+    </>
   );
 };
 

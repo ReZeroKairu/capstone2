@@ -12,6 +12,7 @@ import {
   orderBy,
   limit,
 } from "firebase/firestore";
+import { DragDropContext, Droppable, Draggable } from "react-beautiful-dnd";
 
 export default function CreateForm() {
   const [title, setTitle] = useState("");
@@ -20,6 +21,7 @@ export default function CreateForm() {
   const [formId, setFormId] = useState(null);
   const [previewMode, setPreviewMode] = useState(false);
 
+  // Load latest form for admin
   useEffect(() => {
     const checkAdminAndFetch = async () => {
       auth.onAuthStateChanged(async (user) => {
@@ -36,78 +38,81 @@ export default function CreateForm() {
               limit(1)
             );
             const snapshot = await getDocs(q);
-
             if (!snapshot.empty) {
               const latestForm = snapshot.docs[0];
               setFormId(latestForm.id);
               setTitle(latestForm.data().title);
               setQuestions(latestForm.data().questions || []);
-            } else {
-              setTitle("");
-              setQuestions([]);
             }
           }
         }
       });
     };
-
     checkAdminAndFetch();
   }, []);
 
-  const addQuestion = () => {
+  // Add / remove / update questions
+  const addQuestion = () =>
     setQuestions([
       ...questions,
       { text: "", type: "text", required: false, options: [] },
     ]);
-  };
-
-  const removeQuestion = (index) => {
-    const updated = [...questions];
-    updated.splice(index, 1);
-    setQuestions(updated);
-  };
-
+  const removeQuestion = (index) =>
+    setQuestions(questions.filter((_, i) => i !== index));
   const updateQuestion = (index, field, value) => {
     const updated = [...questions];
     updated[index][field] = value;
     setQuestions(updated);
   };
 
+  // Multiple choice / radio options
   const addOption = (qIndex) => {
     const updated = [...questions];
-    if (!updated[qIndex].options) updated[qIndex].options = [];
+    updated[qIndex].options = updated[qIndex].options || [];
     updated[qIndex].options.push("");
     setQuestions(updated);
   };
-
   const updateOption = (qIndex, oIndex, value) => {
     const updated = [...questions];
     updated[qIndex].options[oIndex] = value;
     setQuestions(updated);
   };
-
   const removeOption = (qIndex, oIndex) => {
     const updated = [...questions];
     updated[qIndex].options.splice(oIndex, 1);
     setQuestions(updated);
   };
 
+  // Drag-and-drop reordering
+  const onDragEnd = (result) => {
+    if (!result.destination) return;
+    const reordered = Array.from(questions);
+    const [removed] = reordered.splice(result.source.index, 1);
+    reordered.splice(result.destination.index, 0, removed);
+    setQuestions(reordered);
+  };
+
+  // Save form
   const saveForm = async () => {
     if (!title.trim()) return alert("Form title is required!");
     if (questions.some((q) => !q.text.trim()))
       return alert("All questions must have text!");
+    if (
+      questions.some(
+        (q) => q.required && q.type === "multiple" && q.options.length === 0
+      )
+    )
+      return alert(
+        "All required multiple-choice questions must have at least one option!"
+      );
 
+    const data = { title, questions, updatedAt: new Date() };
     if (formId) {
-      await updateDoc(doc(db, "forms", formId), {
-        title,
-        questions,
-        updatedAt: new Date(),
-      });
+      await updateDoc(doc(db, "forms", formId), data);
       alert("Form updated successfully!");
     } else {
       const docRef = await addDoc(collection(db, "forms"), {
-        title,
-        questions,
+        ...data,
         createdAt: new Date(),
       });
       setFormId(docRef.id);
@@ -115,16 +120,15 @@ export default function CreateForm() {
     }
   };
 
-  if (!isAdmin) {
+  if (!isAdmin)
     return (
       <p className="p-6 sm:p-12 md:p-28 text-red-500">
         You do not have permission to create forms.
       </p>
     );
-  }
 
   return (
-    <div className="p-6 sm:p-12 md:p-28 max-w-5xl mx-auto">
+    <div className="p-4 sm:p-6 md:p-8 lg:p-12 max-w-full sm:max-w-xl md:max-w-3xl lg:max-w-5xl mx-auto">
       <h1 className="text-2xl font-bold mb-4">
         {formId ? "Edit Form" : "Create a Form"}
       </h1>
@@ -133,122 +137,166 @@ export default function CreateForm() {
         placeholder="Form title"
         value={title}
         onChange={(e) => setTitle(e.target.value)}
-        className="border p-2 w-full mb-4"
+        className="border p-2 w-full mb-4 rounded"
       />
 
       <button
-        onClick={() => setPreviewMode((prev) => !prev)}
-        className="bg-gray-500 text-white px-4 py-2 rounded mb-4"
+        onClick={() => setPreviewMode(!previewMode)}
+        className="bg-gray-500 text-white px-4 py-2 rounded mb-4 w-full sm:w-auto"
       >
         {previewMode ? "Edit Mode" : "Preview Mode"}
       </button>
 
-      {!previewMode &&
-        questions.map((q, index) => (
-          <div key={index} className="mb-4 border p-4 rounded">
-            <input
-              type="text"
-              placeholder="Question text"
-              value={q.text}
-              onChange={(e) => updateQuestion(index, "text", e.target.value)}
-              className="border p-2 w-full mb-2"
-            />
-            <select
-              value={q.type}
-              onChange={(e) => updateQuestion(index, "type", e.target.value)}
-              className="border p-2 w-full mb-2"
-            >
-              <option value="text">Short Answer</option>
-              <option value="textarea">Paragraph</option>
-              <option value="multiple">Multiple Choice</option>
-            </select>
+      {!previewMode && (
+        <DragDropContext onDragEnd={onDragEnd}>
+          <Droppable droppableId="questions">
+            {(provided) => (
+              <div
+                {...provided.droppableProps}
+                ref={provided.innerRef}
+                className="flex flex-col gap-4"
+              >
+                {questions.map((q, index) => (
+                  <Draggable
+                    key={index}
+                    draggableId={`q-${index}`}
+                    index={index}
+                  >
+                    {(provided) => (
+                      <div
+                        ref={provided.innerRef}
+                        {...provided.draggableProps}
+                        {...provided.dragHandleProps}
+                        className="border p-4 rounded flex flex-col gap-2 bg-gray-50"
+                      >
+                        <input
+                          type="text"
+                          placeholder="Question text"
+                          value={q.text}
+                          onChange={(e) =>
+                            updateQuestion(index, "text", e.target.value)
+                          }
+                          className="border p-2 w-full rounded"
+                        />
+                        <select
+                          value={q.type}
+                          onChange={(e) =>
+                            updateQuestion(index, "type", e.target.value)
+                          }
+                          className="border p-2 w-full rounded"
+                        >
+                          <option value="text">Short Answer</option>
+                          <option value="textarea">Paragraph</option>
+                          <option value="multiple">Multiple Choice</option>
+                          <option value="radio">Radio</option>
+                        </select>
 
-            <label className="flex items-center gap-2 mb-2">
-              <input
-                type="checkbox"
-                checked={q.required || false}
-                onChange={(e) =>
-                  updateQuestion(index, "required", e.target.checked)
-                }
-              />
-              Required
-            </label>
+                        <label className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={q.required || false}
+                            onChange={(e) =>
+                              updateQuestion(
+                                index,
+                                "required",
+                                e.target.checked
+                              )
+                            }
+                          />
+                          Required
+                        </label>
 
-            {q.type === "multiple" && (
-              <div className="mb-2">
-                {q.options?.map((opt, oIndex) => (
-                  <div key={oIndex} className="flex flex-wrap gap-2 mb-1">
-                    <input
-                      type="text"
-                      value={opt}
-                      onChange={(e) =>
-                        updateOption(index, oIndex, e.target.value)
-                      }
-                      className="border p-2 flex-1 min-w-[120px]"
-                    />
-                    <button
-                      onClick={() => removeOption(index, oIndex)}
-                      className="bg-red-500 text-white px-2 rounded"
-                    >
-                      Remove
-                    </button>
-                  </div>
+                        {(q.type === "multiple" || q.type === "radio") && (
+                          <div className="flex flex-col gap-2">
+                            {q.options?.map((opt, oIndex) => (
+                              <div
+                                key={oIndex}
+                                className="flex flex-wrap gap-2"
+                              >
+                                <input
+                                  type="text"
+                                  value={opt}
+                                  onChange={(e) =>
+                                    updateOption(index, oIndex, e.target.value)
+                                  }
+                                  className="border p-2 flex-1 min-w-[120px] rounded"
+                                />
+                                <button
+                                  onClick={() => removeOption(index, oIndex)}
+                                  className="bg-red-500 text-white px-2 rounded"
+                                >
+                                  Remove
+                                </button>
+                              </div>
+                            ))}
+                            <button
+                              onClick={() => addOption(index)}
+                              className="bg-blue-500 text-white px-3 py-1 rounded mt-1 w-full sm:w-auto"
+                            >
+                              Add Option
+                            </button>
+                          </div>
+                        )}
+
+                        <button
+                          onClick={() => removeQuestion(index)}
+                          className="bg-red-500 text-white px-3 py-1 rounded mt-2 w-full sm:w-auto"
+                        >
+                          Remove Question
+                        </button>
+                      </div>
+                    )}
+                  </Draggable>
                 ))}
-                <button
-                  onClick={() => addOption(index)}
-                  className="bg-blue-500 text-white px-3 py-1 rounded mt-1"
-                >
-                  Add Option
-                </button>
+                {provided.placeholder}
               </div>
             )}
-
-            <button
-              onClick={() => removeQuestion(index)}
-              className="bg-red-500 text-white px-3 py-1 rounded mt-2"
-            >
-              Remove Question
-            </button>
-          </div>
-        ))}
+          </Droppable>
+        </DragDropContext>
+      )}
 
       {previewMode && (
         <div className="mb-4">
-          <h2 className="text-xl font-semibold mb-2">Preview</h2>
+          <h2 className="text-xl font-semibold mb-4 text-center sm:text-left">
+            Preview
+          </h2>
           {questions.map((q, idx) => (
-            <div key={idx} className="mb-2">
-              <p>
-                {q.text} {q.required ? "*" : ""}
+            <div key={idx} className="mb-4 border p-3 rounded bg-gray-50">
+              <p className="font-medium mb-2 break-words">
+                {q.text} {q.required && <span className="text-red-500">*</span>}
               </p>
               {q.type === "text" && (
-                <input type="text" className="border p-1 w-full" />
+                <input type="text" className="border p-2 w-full rounded mb-2" />
               )}
               {q.type === "textarea" && (
-                <textarea className="border p-1 w-full" />
+                <textarea className="border p-2 w-full rounded mb-2" />
               )}
-              {q.type === "multiple" &&
+              {(q.type === "multiple" || q.type === "radio") &&
                 q.options?.map((opt, i) => (
-                  <div key={i}>
-                    <label>
-                      <input type="radio" name={`q${idx}`} /> {opt}
-                    </label>
-                  </div>
+                  <label key={i} className="flex items-center gap-2">
+                    <input
+                      type={q.type === "radio" ? "radio" : "checkbox"}
+                      name={`q${idx}`}
+                      className="accent-blue-500"
+                    />
+                    <span className="break-words">{opt}</span>
+                  </label>
                 ))}
             </div>
           ))}
         </div>
       )}
 
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap gap-2 mt-4">
         <button
           onClick={addQuestion}
-          className="bg-blue-500 text-white px-4 py-2 rounded"
+          className="bg-blue-500 text-white px-4 py-2 rounded w-full sm:w-auto"
         >
           Add Question
         </button>
         <button
           onClick={saveForm}
-          className="bg-green-500 text-white px-4 py-2 rounded"
+          className="bg-green-500 text-white px-4 py-2 rounded w-full sm:w-auto"
         >
           {formId ? "Update Form" : "Save Form"}
         </button>

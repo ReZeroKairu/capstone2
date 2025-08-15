@@ -1,7 +1,15 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import ReactQuill from "react-quill";
 import "react-quill/dist/quill.snow.css";
-import { doc, updateDoc, getDoc, setDoc, onSnapshot } from "firebase/firestore";
+import {
+  doc,
+  updateDoc,
+  getDoc,
+  setDoc,
+  onSnapshot,
+  collection,
+  addDoc,
+} from "firebase/firestore";
 import { auth, db } from "../firebase/firebase";
 import { onAuthStateChanged } from "firebase/auth";
 import { FaEdit, FaTrashAlt } from "react-icons/fa";
@@ -17,6 +25,22 @@ const quillModules = {
   ],
 };
 
+const Toast = ({ message, type, onClose }) => (
+  <div
+    className={`fixed top-6 left-1/2 transform -translate-x-1/2 px-4 py-3 rounded shadow text-white z-[9999] transition-all duration-300 ${
+      type === "success"
+        ? "bg-green-500"
+        : type === "warning"
+        ? "bg-yellow-500"
+        : "bg-red-500"
+    }`}
+    style={{ maxWidth: "400px", width: "90vw" }}
+    onClick={onClose}
+  >
+    {message}
+  </div>
+);
+
 const PubEthics = () => {
   const [isAdmin, setIsAdmin] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -25,40 +49,20 @@ const PubEthics = () => {
   const [sections, setSections] = useState([]);
   const [newSectionTitle, setNewSectionTitle] = useState("");
   const [newSectionContent, setNewSectionContent] = useState("");
-  const [notification, setNotification] = useState({ message: "", type: "" });
-  const notificationTimeoutRef = useRef(null);
-  const notificationBarRef = useRef(null);
-  const [original, setOriginal] = useState({
-    header: "",
-    footer: "",
-    sections: [],
-  });
+  const [notifications, setNotifications] = useState([]);
+  const notificationIdRef = useRef(0);
   const [viewMode, setViewMode] = useState("admin");
 
-  const hasChanges = () => {
-    if (headerText !== original.header) return true;
-    if (footerText !== original.footer) return true;
-    if (sections.length !== original.sections.length) return true;
-    for (let i = 0; i < sections.length; i++) {
-      if (
-        sections[i].title !== original.sections[i]?.title ||
-        sections[i].content !== original.sections[i]?.content
-      ) {
-        return true;
-      }
-    }
-    return false;
-  };
+  // Notification helper
+  const showNotification = useCallback((message, type = "success") => {
+    const id = notificationIdRef.current++;
+    setNotifications((prev) => [...prev, { id, message, type }]);
+    setTimeout(() => {
+      setNotifications((prev) => prev.filter((n) => n.id !== id));
+    }, 4000);
+  }, []);
 
-  useEffect(() => {
-    if (notification.message && notificationBarRef.current) {
-      notificationBarRef.current.scrollIntoView({
-        behavior: "smooth",
-        block: "center",
-      });
-    }
-  }, [notification.message]);
-
+  // Load initial data
   useEffect(() => {
     const docRef = doc(db, "Content", "PubEthics");
     const unsubscribe = onSnapshot(docRef, (docSnap) => {
@@ -67,16 +71,6 @@ const PubEthics = () => {
         setHeaderText(data.header || "");
         setFooterText(data.footer || "");
         setSections(data.sections || []);
-        setOriginal({
-          header: data.header || "",
-          footer: data.footer || "",
-          sections: data.sections || [],
-        });
-      } else {
-        setHeaderText("");
-        setFooterText("");
-        setSections([]);
-        setOriginal({ header: "", footer: "", sections: [] });
       }
     });
 
@@ -84,14 +78,8 @@ const PubEthics = () => {
       if (user) {
         const userDoc = doc(db, "Users", user.uid);
         const userSnap = await getDoc(userDoc);
-        if (userSnap.exists()) {
-          setIsAdmin(userSnap.data().role === "Admin");
-        } else {
-          setIsAdmin(false);
-        }
-      } else {
-        setIsAdmin(false);
-      }
+        setIsAdmin(userSnap.exists() && userSnap.data().role === "Admin");
+      } else setIsAdmin(false);
     });
 
     return () => {
@@ -100,73 +88,73 @@ const PubEthics = () => {
     };
   }, []);
 
-  const showNotification = (message, type) => {
-    setNotification({ message, type });
-    if (notificationTimeoutRef.current) {
-      clearTimeout(notificationTimeoutRef.current);
-    }
-    notificationTimeoutRef.current = setTimeout(() => {
-      setNotification({ message: "", type: "" });
-    }, 4000);
-  };
-
-  const handleSaveAll = async () => {
+  // Save header/footer
+  const saveContent = async (field, value) => {
     try {
       const docRef = doc(db, "Content", "PubEthics");
-      await setDoc(docRef, {
-        header: headerText,
-        footer: footerText,
-        sections: sections,
-      });
-      setIsEditing(false);
-      showNotification("All changes saved successfully!", "success");
-    } catch (error) {
-      console.error("Error saving all changes:", error);
-      showNotification("There was an error saving the content.", "error");
+      await updateDoc(docRef, { [field]: value });
+      showNotification(`${field} saved successfully!`, "success");
+    } catch (err) {
+      console.error(err);
+      showNotification(`Error saving ${field}`, "error");
     }
   };
 
-  const handleCancelEdit = () => {
-    setHeaderText(original.header);
-    setFooterText(original.footer);
-    setSections(original.sections);
+  // Section update helper
+  const updateSection = async (id, field, value) => {
+    setSections((prev) =>
+      prev.map((s) => (s.id === id ? { ...s, [field]: value } : s))
+    );
+    try {
+      const docRef = doc(db, "Content", "PubEthics");
+      const updatedSections = sections.map((s) =>
+        s.id === id ? { ...s, [field]: value } : s
+      );
+      await updateDoc(docRef, { sections: updatedSections });
+      showNotification("Section updated!", "success");
+    } catch (err) {
+      console.error(err);
+      showNotification("Error updating section", "error");
+    }
+  };
+
+  // Add new section
+  const addSection = async () => {
+    if (!newSectionTitle.trim() || !newSectionContent.trim()) {
+      showNotification("Both title and content are required", "warning");
+      return;
+    }
+    const docRef = doc(db, "Content", "PubEthics");
+    const newSection = {
+      id: Date.now(),
+      title: newSectionTitle,
+      content: newSectionContent,
+    };
+    const updatedSections = [...sections, newSection];
+    setSections(updatedSections);
     setNewSectionTitle("");
     setNewSectionContent("");
-    setIsEditing(false);
-  };
-
-  const handleAddSection = async () => {
-    if (newSectionTitle.trim() && newSectionContent.trim()) {
-      const newSection = {
-        id: Date.now(),
-        title: newSectionTitle.trim(),
-        content: newSectionContent.trim(),
-      };
-      const updatedSections = [...sections, newSection];
-      setSections(updatedSections);
-      setNewSectionTitle("");
-      setNewSectionContent("");
-      showNotification("Section added.", "success");
-
-      try {
-        const docRef = doc(db, "Content", "PubEthics");
-        await updateDoc(docRef, {
-          sections: updatedSections,
-        });
-      } catch (error) {
-        showNotification("Error saving section to database.", "error");
-      }
-    } else {
-      showNotification(
-        "Both title and content are required for the section.",
-        "warning"
-      );
+    try {
+      await updateDoc(docRef, { sections: updatedSections });
+      showNotification("Section added!", "success");
+    } catch (err) {
+      console.error(err);
+      showNotification("Error adding section", "error");
     }
   };
 
-  const handleRemoveSection = (id) => {
-    setSections((prev) => prev.filter((section) => section.id !== id));
-    showNotification("Section removed. Don't forget to Save All!", "success");
+  // Remove section
+  const removeSection = async (id) => {
+    const updatedSections = sections.filter((s) => s.id !== id);
+    setSections(updatedSections);
+    try {
+      const docRef = doc(db, "Content", "PubEthics");
+      await updateDoc(docRef, { sections: updatedSections });
+      showNotification("Section removed!", "success");
+    } catch (err) {
+      console.error(err);
+      showNotification("Error removing section", "error");
+    }
   };
 
   return (
@@ -175,29 +163,17 @@ const PubEthics = () => {
       style={{ backgroundImage: "url('/bg.jpg')" }}
     >
       <div className="w-full max-w-4xl mx-auto rounded-lg shadow-lg my-8">
-        {/* Notification Bar */}
-        {notification.message && (
-          <div
-            ref={notificationBarRef}
-            className={`fixed left-1/2 top-6 transform -translate-x-1/2
-              px-4 py-3 text-center font-semibold rounded-lg text-white z-[9999] shadow-lg transition-all duration-300
-              ${
-                notification.type === "success"
-                  ? "bg-green-500"
-                  : notification.type === "warning"
-                  ? "bg-yellow-500"
-                  : "bg-red-500"
-              }`}
-            style={{
-              width: "90vw",
-              maxWidth: "400px",
-              wordBreak: "break-word",
-              pointerEvents: "auto",
-            }}
-          >
-            {notification.message}
-          </div>
-        )}
+        {/* Toast Notifications */}
+        {notifications.map((n) => (
+          <Toast
+            key={n.id}
+            message={n.message}
+            type={n.type}
+            onClose={() =>
+              setNotifications((prev) => prev.filter((x) => x.id !== n.id))
+            }
+          />
+        ))}
 
         <div className="bg-yellow-300 py-2 rounded-t-lg w-full flex items-center justify-center">
           <h1 className="text-2xl sm:text-3xl font-bold text-black text-center">
@@ -209,18 +185,16 @@ const PubEthics = () => {
           {/* Header */}
           <div className="mb-6">
             {isEditing ? (
-              <>
-                <label className="block text-lg font-semibold mb-2 text-yellow-200">
-                  Title:
-                </label>
-                <ReactQuill
-                  value={headerText}
-                  onChange={setHeaderText}
-                  modules={quillModules}
-                  theme="snow"
-                  className="bg-white text-black rounded mb-2"
-                />
-              </>
+              <ReactQuill
+                value={headerText}
+                onChange={(value) => {
+                  setHeaderText(value);
+                  saveContent("header", value);
+                }}
+                modules={quillModules}
+                theme="snow"
+                className="bg-white text-black rounded mb-2"
+              />
             ) : (
               <div dangerouslySetInnerHTML={{ __html: headerText }} />
             )}
@@ -235,93 +209,59 @@ const PubEthics = () => {
               >
                 {isEditing ? (
                   <>
-                    <label className="block text-base font-semibold mb-2 text-yellow-100">
-                      Section Title:
-                    </label>
                     <input
                       type="text"
                       value={section.title}
                       onChange={(e) =>
-                        setSections((prev) =>
-                          prev.map((s) =>
-                            s.id === section.id
-                              ? { ...s, title: e.target.value }
-                              : s
-                          )
-                        )
+                        updateSection(section.id, "title", e.target.value)
                       }
-                      className="w-full p-2 mb-3 text-black rounded border-2 border-gray-300"
+                      className="w-full p-2 mb-2 text-black rounded"
                       placeholder="Section Title"
                     />
-                    <label className="block text-base font-semibold mb-2 text-yellow-100">
-                      Section Content:
-                    </label>
                     <ReactQuill
                       value={section.content}
-                      onChange={(value) =>
-                        setSections((prev) =>
-                          prev.map((s) =>
-                            s.id === section.id ? { ...s, content: value } : s
-                          )
-                        )
+                      onChange={(val) =>
+                        updateSection(section.id, "content", val)
                       }
                       modules={quillModules}
                       theme="snow"
                       className="bg-white text-black rounded mb-2"
                     />
-                    <div className="flex space-x-2 mt-3">
-                      <button
-                        onClick={() => handleRemoveSection(section.id)}
-                        className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded font-semibold flex items-center gap-2"
-                      >
-                        <FaTrashAlt /> Remove
-                      </button>
-                    </div>
+                    <button
+                      onClick={() => removeSection(section.id)}
+                      className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded font-semibold flex items-center gap-2 mt-2"
+                    >
+                      <FaTrashAlt /> Remove
+                    </button>
                   </>
                 ) : (
                   <>
                     <h3 className="text-xl font-bold mb-2">{section.title}</h3>
                     <div
-                      className="mb-2"
                       dangerouslySetInnerHTML={{ __html: section.content }}
                     />
-                    {/* Only show Edit/Remove in admin mode and not editing */}
-                    {viewMode === "admin" && isAdmin && !isEditing && (
-                      <div className="flex space-x-2 mt-2">
-                        <button
-                          onClick={() => setIsEditing(true)}
-                          className="bg-yellow-600 hover:bg-yellow-700 text-white px-4 py-2 rounded font-semibold"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          onClick={() => handleRemoveSection(section.id)}
-                          className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded font-semibold flex items-center gap-2"
-                        >
-                          <FaTrashAlt /> Remove
-                        </button>
-                      </div>
+                    {viewMode === "admin" && isAdmin && (
+                      <button
+                        onClick={() => setIsEditing(true)}
+                        className="bg-yellow-600 hover:bg-yellow-700 text-white px-4 py-2 rounded font-semibold mt-2"
+                      >
+                        <FaEdit /> Edit
+                      </button>
                     )}
                   </>
                 )}
               </div>
             ))}
-            {/* Add Section form below existing sections */}
-            {isEditing ? (
+
+            {isEditing && (
               <div className="mb-6">
-                <label className="block text-base font-semibold mb-2 text-yellow-100">
-                  Section Title:
-                </label>
                 <input
                   type="text"
                   value={newSectionTitle}
                   onChange={(e) => setNewSectionTitle(e.target.value)}
-                  className="w-full p-3 border-2 border-gray-300 rounded mb-3 text-black"
-                  placeholder="Enter section title"
+                  className="w-full p-3 mb-2 rounded text-black"
+                  placeholder="New Section Title"
                 />
-                <label className="block text-base font-semibold mb-2 text-yellow-100">
-                  Section Content:
-                </label>
                 <ReactQuill
                   value={newSectionContent}
                   onChange={setNewSectionContent}
@@ -329,92 +269,56 @@ const PubEthics = () => {
                   theme="snow"
                   className="bg-white text-black rounded mb-2"
                 />
-                <div className="flex justify-end mt-3">
-                  <button
-                    onClick={handleAddSection}
-                    className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded font-semibold"
-                  >
-                    Add Section
-                  </button>
-                </div>
+                <button
+                  onClick={addSection}
+                  className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded font-semibold"
+                >
+                  Add Section
+                </button>
               </div>
-            ) : null}
+            )}
           </div>
 
           {/* Footer */}
           <div className="mb-6">
             {isEditing ? (
-              <>
-                <label className="block text-lg font-semibold mb-2 text-yellow-200">
-                  Footer:
-                </label>
-                <ReactQuill
-                  value={footerText}
-                  onChange={setFooterText}
-                  modules={quillModules}
-                  theme="snow"
-                  className="bg-white text-black rounded mb-2"
-                />
-              </>
+              <ReactQuill
+                value={footerText}
+                onChange={(value) => {
+                  setFooterText(value);
+                  saveContent("footer", value);
+                }}
+                modules={quillModules}
+                theme="snow"
+                className="bg-white text-black rounded mb-2"
+              />
             ) : (
               <div dangerouslySetInnerHTML={{ __html: footerText }} />
             )}
           </div>
 
-          {/* Move Edit button below content */}
-          {isAdmin && !isEditing && (
+          {/* Controls */}
+          {viewMode === "admin" && isAdmin && (
             <div className="text-center mt-8 flex justify-center gap-4">
+              {!isEditing && (
+                <button
+                  onClick={() => setIsEditing(true)}
+                  className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded font-semibold"
+                >
+                  <FaEdit className="inline mr-2" /> Edit Publication Ethics
+                </button>
+              )}
               <button
                 onClick={() =>
                   setViewMode(viewMode === "admin" ? "user" : "admin")
                 }
                 className={`${
-                  viewMode === "admin"
-                    ? "bg-gray-600 hover:bg-gray-700"
-                    : "bg-blue-600 hover:bg-blue-700"
-                } text-white px-6 py-3 rounded font-semibold transition-colors`}
+                  viewMode === "admin" ? "bg-gray-600" : "bg-blue-600"
+                } text-white px-6 py-3 rounded font-semibold`}
               >
                 {viewMode === "admin"
                   ? "Switch to User Mode"
                   : "Switch to Admin Mode"}
-              </button>
-            </div>
-          )}
-
-          {viewMode === "admin" && isAdmin && (
-            <div className="text-center mt-8 flex justify-center gap-4">
-              {!isEditing ? (
-                <>
-                  <button
-                    onClick={() => setIsEditing(true)}
-                    className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded font-semibold transition-colors"
-                  >
-                    <FaEdit className="inline-block mr-2" />
-                    Edit Publication Ethics
-                  </button>
-                </>
-              ) : (
-                <></>
-              )}
-            </div>
-          )}
-
-          {isEditing && (
-            <div className="flex justify-between mt-8">
-              <button
-                onClick={handleCancelEdit}
-                className="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded shadow font-semibold"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleSaveAll}
-                className={`bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded shadow font-semibold ${
-                  !hasChanges() ? "opacity-50 cursor-not-allowed" : ""
-                }`}
-                disabled={!hasChanges()}
-              >
-                Save All
               </button>
             </div>
           )}
