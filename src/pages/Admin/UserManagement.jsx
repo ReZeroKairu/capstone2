@@ -7,11 +7,12 @@ import {
   getDoc,
   addDoc,
   serverTimestamp,
+  deleteDoc,
+  updateDoc,
 } from "firebase/firestore";
 import { useAuth } from "../../authcontext/AuthContext";
 import { useNavigate } from "react-router-dom";
-import { deleteDoc, updateDoc } from "firebase/firestore";
-import { FaSearch } from "react-icons/fa"; // Importing the search icon
+import { FaSearch } from "react-icons/fa";
 import { getAuth } from "firebase/auth";
 
 function UserManagement() {
@@ -21,13 +22,13 @@ function UserManagement() {
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
   const [isAdmin, setIsAdmin] = useState(false);
-  const [isEditing, setIsEditing] = useState(false); // Editing state
-  const [editingUser, setEditingUser] = useState(null); // User being edited
-  const [deleteUserId, setDeleteUserId] = useState(null); // User ID for deletion confirmation
+  const [isEditing, setIsEditing] = useState(false);
+  const [editingUser, setEditingUser] = useState(null);
+  const [deleteUserId, setDeleteUserId] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [usersPerPage, setUsersPerPage] = useState(5);
   const [searchQuery, setSearchQuery] = useState("");
-  const auth = getAuth(app); // Initialize Firebase Authentication
+  const auth = getAuth(app);
 
   const checkAdminStatus = async (userId) => {
     const userDoc = await getDoc(doc(db, "Users", userId));
@@ -39,153 +40,6 @@ function UserManagement() {
     }
     setLoading(false);
   };
-  const handleEdit = (user) => {
-    setEditingUser(user);
-    setIsEditing(true); // Open the editing modal
-  };
-
-  const handleDeleteConfirmation = (userId) => {
-    setDeleteUserId(userId); // Set the user ID for deletion
-  };
-
-  const handleDelete = async () => {
-    try {
-      await deleteDoc(doc(db, "Users", deleteUserId)); // Delete the user document from Firestore
-      setMessage("User deleted successfully.");
-      fetchUsers(); // Refresh the user list after deletion
-      setDeleteUserId(null); // Close the modal
-    } catch (error) {
-      setMessage("Failed to delete user.");
-    }
-  };
-
-  useEffect(() => {
-    if (authLoading) return;
-    if (currentUser) {
-      checkAdminStatus(currentUser.uid);
-    } else {
-      navigate("/signin");
-    }
-  }, [currentUser, authLoading, navigate]);
-
-  const handleUpdateUser = async () => {
-    if (editingUser) {
-      try {
-        const userDocRef = doc(db, "Users", editingUser.id);
-        const userSnapshot = await getDoc(userDocRef);
-        const previousRole = userSnapshot.data().role;
-        const previousFirstName = userSnapshot.data().firstName;
-        const previousLastName = userSnapshot.data().lastName;
-
-        // Check if role has changed
-        if (previousRole !== editingUser.role) {
-          // Update the user's role
-          await updateDoc(userDocRef, {
-            firstName: editingUser.firstName,
-            lastName: editingUser.lastName,
-            role: editingUser.role,
-          });
-
-          // Log role change in UserLogs collection
-          // Fetch admin details
-          const adminDoc = await getDoc(doc(db, "Users", auth.currentUser.uid));
-          const adminName = `${adminDoc.data().firstName} ${
-            adminDoc.data().lastName
-          }`;
-
-          // Fetch user details
-          const userDoc = await getDoc(doc(db, "Users", editingUser.id));
-          const userName = `${userDoc.data().firstName} ${
-            userDoc.data().lastName
-          }`;
-
-          // Determine if there is a role change
-          let action;
-          if (previousRole !== editingUser.role) {
-            action = `${adminName} updated ${userName}'s role from ${previousRole} to ${editingUser.role}`;
-          } else {
-            action = `${adminName} updated ${userName}'s information without changing the role`;
-          }
-
-          // Add log with detailed action description
-          await addDoc(collection(db, "UserLog"), {
-            userId: editingUser.id, // User whose log is being created
-            action: action, // Detailed action description
-            previousRole: previousRole, // Previous role
-            newRole: editingUser.role, // New role
-            timestamp: serverTimestamp(), // Use Firestore server timestamp
-            adminId: auth.currentUser.uid, // Admin who made the change
-          });
-
-          // Send a notification if the role has changed
-          await addDoc(
-            collection(db, "Users", editingUser.id, "Notifications"),
-            {
-              message: `Your role has been changed to ${editingUser.role}`,
-              timestamp: serverTimestamp(), // Use serverTimestamp here
-              seen: false, // Mark as unread
-              status: "new", // Example status
-            }
-          );
-        } else {
-          // Update user data without notification if role hasn't changed
-          await updateDoc(userDocRef, {
-            firstName: editingUser.firstName,
-            lastName: editingUser.lastName,
-            role: editingUser.role,
-          });
-        }
-
-        // Log profile change in UserLogs collection if first name or last name changes
-        if (
-          previousFirstName !== editingUser.firstName ||
-          previousLastName !== editingUser.lastName
-        ) {
-          // Fetch admin details
-          const adminDoc = await getDoc(doc(db, "Users", auth.currentUser.uid));
-          const adminFullName = `${adminDoc.data().firstName} ${
-            adminDoc.data().lastName
-          }`;
-
-          // Determine the specific changes
-          let changes = [];
-          if (previousFirstName !== editingUser.firstName) {
-            changes.push(
-              `first name from "${previousFirstName}" to "${editingUser.firstName}"`
-            );
-          }
-          if (previousLastName !== editingUser.lastName) {
-            changes.push(
-              `last name from "${previousLastName}" to "${editingUser.lastName}"`
-            );
-          }
-
-          // Construct the action description
-          const action = `${adminFullName} updated ${changes.join(" and ")}`;
-
-          // Add log to Firestore
-          await addDoc(collection(db, "UserLog"), {
-            userId: editingUser.id,
-            action: action, // Detailed action description
-            previousFirstName: previousFirstName,
-            newFirstName: editingUser.firstName,
-            previousLastName: previousLastName,
-            newLastName: editingUser.lastName,
-            timestamp: serverTimestamp(),
-            adminId: auth.currentUser.uid, // Log the admin who made the change
-          });
-        }
-
-        setMessage("User updated successfully.");
-        fetchUsers(); // Refresh the user list
-        setIsEditing(false);
-        setEditingUser(null); // Reset editing state
-      } catch (error) {
-        console.error("Error updating user:", error);
-        setMessage("Failed to update user.");
-      }
-    }
-  };
 
   const fetchUsers = async () => {
     setLoading(true);
@@ -196,10 +50,52 @@ function UserManagement() {
         ...doc.data(),
       }));
       setUsers(usersList);
-    } catch (error) {
+    } catch {
       setMessage("Failed to fetch users.");
     }
     setLoading(false);
+  };
+
+  useEffect(() => {
+    if (authLoading) return;
+    if (currentUser) checkAdminStatus(currentUser.uid);
+    else navigate("/signin");
+  }, [currentUser, authLoading, navigate]);
+
+  const handleEdit = (user) => {
+    setEditingUser(user);
+    setIsEditing(true);
+  };
+
+  const handleDeleteConfirmation = (userId) => setDeleteUserId(userId);
+
+  const handleDelete = async () => {
+    try {
+      await deleteDoc(doc(db, "Users", deleteUserId));
+      setMessage("User deleted successfully.");
+      fetchUsers();
+      setDeleteUserId(null);
+    } catch {
+      setMessage("Failed to delete user.");
+    }
+  };
+
+  const handleUpdateUser = async () => {
+    if (!editingUser) return;
+    try {
+      const userRef = doc(db, "Users", editingUser.id);
+      await updateDoc(userRef, {
+        firstName: editingUser.firstName,
+        lastName: editingUser.lastName,
+        role: editingUser.role,
+      });
+      setMessage("User updated successfully.");
+      fetchUsers();
+      setIsEditing(false);
+      setEditingUser(null);
+    } catch {
+      setMessage("Failed to update user.");
+    }
   };
 
   const filteredUsers = users.filter((user) =>
@@ -211,130 +107,85 @@ function UserManagement() {
   const indexOfLastUser = currentPage * usersPerPage;
   const indexOfFirstUser = indexOfLastUser - usersPerPage;
   const currentUsers = filteredUsers.slice(indexOfFirstUser, indexOfLastUser);
-
   const totalPages = Math.ceil(filteredUsers.length / usersPerPage);
 
-  const handlePageSizeChange = (event) => {
-    setUsersPerPage(Number(event.target.value));
-    setCurrentPage(1); // Reset to first page when page size changes
-  };
-
-  // Pagination with ellipsis
-  const maxVisiblePages = 5;
-  const startPage = Math.max(1, currentPage - Math.floor(maxVisiblePages / 2));
-  const endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
-  const adjustedStartPage = Math.max(1, endPage - maxVisiblePages + 1);
-
-  useEffect(() => {
-    // Timer to hide the message after 5 seconds
-    if (message) {
-      const timer = setTimeout(() => {
-        setMessage(""); // Reset message after 5 seconds
-      }, 5000);
-
-      return () => clearTimeout(timer); // Cleanup timer on unmount
-    }
-  }, [message]);
-
   return (
-    <div className="p-8 bg-gray-50 min-h-screen relative mb-11">
-      <h2 className="text-3xl font-bold text-center mt-20 mb-10 text-gray-800">
+    <div className="p-4 sm:p-8 bg-gray-50 min-h-screen relative mb-11">
+      <h2 className="text-2xl sm:text-3xl font-bold text-center mb-6 sm:mb-10 text-gray-800">
         Manage Users
       </h2>
+
+      {/* Message */}
       {message && (
         <div
-          className={`p-2 mb-2 rounded-md text-white text-center ${
+          className={`p-2 mb-2 rounded-md text-white text-center w-full sm:w-64 mx-auto ${
             message.includes("success")
               ? "bg-green-600"
               : message.includes("Failed")
               ? "bg-red-600"
               : "bg-blue-600"
-          } w-64 mx-auto`}
+          }`}
           role="alert"
         >
-          <div className="flex items-center">
-            {message.includes("success") && (
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                className="w-6 h-6 mr-2"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-                strokeWidth="2"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M5 13l4 4L19 7"
-                />
-              </svg>
-            )}
-            {message.includes("Failed") && (
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                className="w-6 h-6 mr-2"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-                strokeWidth="2"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M6 18L18 6M6 6l12 12"
-                />
-              </svg>
-            )}
-            <span>{message}</span>
-          </div>
+          {message}
         </div>
       )}
-      <div className="relative mb-1 w-full sm:w-72">
-        {/* Input field with icon inside */}
+
+      {/* Search */}
+      <div className="relative mb-4 w-full sm:w-72 mx-auto">
         <input
           type="text"
           placeholder="Search users..."
           value={searchQuery}
           onChange={(e) => {
             setSearchQuery(e.target.value);
-            setCurrentPage(1); // Reset to the first page when searching
+            setCurrentPage(1);
           }}
-          className="w-full pl-10 pr-3 py-2 border border-gray-500 rounded-md" // Add left padding to make space for the icon
+          className="w-full pl-10 pr-2 py-1 sm:py-2 border border-gray-500 rounded-md text-sm sm:text-base"
         />
         <FaSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500" />
       </div>
 
+      {/* Users table */}
       {loading ? (
         <p className="text-center text-gray-500">Loading users...</p>
       ) : (
-        <div className="overflow-x-auto shadow-lg rounded-lg max-h-[500px]">
-          <table className="table-auto w-full border-collapse bg-white">
+        <div className="overflow-x-auto shadow-lg rounded-lg max-h-[400px]">
+          <table className="table-auto w-full border-collapse bg-white text-sm sm:text-base">
             <thead>
               <tr className="bg-indigo-600 text-white">
-                <th className="p-3 font-semibold">Email</th>
-                <th className="p-3 font-semibold">First Name</th>
-                <th className="p-3 font-semibold">Last Name</th>
-                <th className="p-3 font-semibold">Role</th>
-                <th className="p-3 font-semibold">Actions</th>
+                <th className="p-2 sm:p-3 font-semibold">Email</th>
+                <th className="p-2 sm:p-3 font-semibold">First</th>
+                <th className="p-2 sm:p-3 font-semibold">Last</th>
+                <th className="p-2 sm:p-3 font-semibold">Role</th>
+                <th className="p-2 sm:p-3 font-semibold">Actions</th>
               </tr>
             </thead>
             <tbody>
               {currentUsers.map((user) => (
                 <tr key={user.id} className="hover:bg-gray-100">
-                  <td className="p-3 border-b text-center">{user.email}</td>
-                  <td className="p-3 border-b text-center">{user.firstName}</td>
-                  <td className="p-3 border-b text-center">{user.lastName}</td>
-                  <td className="p-3 border-b text-center">{user.role}</td>
-                  <td className="p-3 border-b text-center">
+                  <td className="p-1 sm:p-3 border-b text-center">
+                    {user.email}
+                  </td>
+                  <td className="p-1 sm:p-3 border-b text-center">
+                    {user.firstName}
+                  </td>
+                  <td className="p-1 sm:p-3 border-b text-center">
+                    {user.lastName}
+                  </td>
+                  <td className="p-1 sm:p-3 border-b text-center">
+                    {user.role}
+                  </td>
+                  <td className="p-1 sm:p-3 border-b text-center flex flex-col sm:flex-row justify-center items-center gap-1 sm:gap-2">
                     <button
-                      className="bg-blue-600 text-white px-3 py-1 rounded mr-2 hover:bg-blue-500"
-                      onClick={() => handleEdit(user)} // Trigger edit
+                      className="bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-500 text-xs sm:text-sm"
+                      onClick={() => handleEdit(user)}
                     >
                       Edit
                     </button>
                     <button
-                      className="bg-red-600 text-white px-3 py-1 rounded hover:bg-red-500"
-                      onClick={() => handleDeleteConfirmation(user.id)} // Trigger delete confirmation
+                      className="bg-red-600 text-white px-2 py-1 rounded hover:bg-red-500 text-xs sm:text-sm"
+                      onClick={() => handleDeleteConfirmation(user.id)}
                     >
                       Delete
                     </button>
@@ -346,162 +197,128 @@ function UserManagement() {
         </div>
       )}
 
-      {/* Modal for Delete Confirmation */}
+      {/* Delete Modal */}
       {deleteUserId && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center">
-          <div className="bg-white p-4 rounded shadow-lg">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center p-4">
+          <div className="bg-white p-4 rounded shadow-lg w-full max-w-sm">
             <p>Are you sure you want to delete this user?</p>
-            <button
-              className="bg-red-500 text-white p-2 rounded mr-2"
-              onClick={handleDelete}
-            >
-              Yes
-            </button>
-            <button
-              className="bg-gray-300 text-black p-2 rounded"
-              onClick={() => setDeleteUserId(null)}
-            >
-              No
-            </button>
+            <div className="flex flex-col sm:flex-row justify-end gap-2 mt-2">
+              <button
+                className="bg-red-500 text-white p-2 rounded"
+                onClick={handleDelete}
+              >
+                Yes
+              </button>
+              <button
+                className="bg-gray-300 text-black p-2 rounded"
+                onClick={() => setDeleteUserId(null)}
+              >
+                No
+              </button>
+            </div>
           </div>
         </div>
       )}
 
-      {/* Modal for Editing User */}
+      {/* Edit Modal */}
       {isEditing && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center">
-          <div className="bg-white p-4 rounded shadow-lg">
-            <h3 className="text-lg font-bold">Edit User</h3>
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center p-4">
+          <div className="bg-white p-4 rounded shadow-lg w-full max-w-sm">
+            <h3 className="text-lg font-bold mb-2">Edit User</h3>
             <input
               type="text"
               placeholder="First Name"
               value={editingUser.firstName}
               onChange={(e) =>
-                setEditingUser({
-                  ...editingUser,
-                  firstName: e.target.value,
-                })
+                setEditingUser({ ...editingUser, firstName: e.target.value })
               }
-              className="border p-2 w-full mb-2"
+              className="border p-2 w-full mb-2 text-sm"
             />
             <input
               type="text"
               placeholder="Last Name"
               value={editingUser.lastName}
               onChange={(e) =>
-                setEditingUser({
-                  ...editingUser,
-                  lastName: e.target.value,
-                })
+                setEditingUser({ ...editingUser, lastName: e.target.value })
               }
-              className="border p-2 w-full mb-2"
+              className="border p-2 w-full mb-2 text-sm"
             />
             <select
               value={editingUser.role}
               onChange={(e) =>
-                setEditingUser({
-                  ...editingUser,
-                  role: e.target.value,
-                })
+                setEditingUser({ ...editingUser, role: e.target.value })
               }
-              className="border p-2 w-full mb-2"
+              className="border p-2 w-full mb-2 text-sm"
             >
               <option value="Researcher">Researcher</option>
               <option value="Admin">Admin</option>
               <option value="Peer Reviewer">Peer Reviewer</option>
             </select>
-            <button
-              className="bg-blue-500 text-white p-2 rounded"
-              onClick={handleUpdateUser}
-            >
-              Update User
-            </button>
-            <button
-              className="bg-gray-300 text-black p-2 rounded ml-2"
-              onClick={() => setIsEditing(false)}
-            >
-              Cancel
-            </button>
+            <div className="flex flex-col sm:flex-row justify-end gap-2 mt-2">
+              <button
+                className="bg-blue-500 text-white p-2 rounded text-sm"
+                onClick={handleUpdateUser}
+              >
+                Update
+              </button>
+              <button
+                className="bg-gray-300 text-black p-2 rounded text-sm"
+                onClick={() => setIsEditing(false)}
+              >
+                Cancel
+              </button>
+            </div>
           </div>
         </div>
       )}
 
-      {/* Fixed Pagination */}
-      <div className="fixed bottom-0 left-0 w-full p-2 bg-white shadow-lg">
-        <div className="flex justify-between items-center">
-          <div className="flex items-center">
-            <span className="mr-2">Page Size:</span>
-            <select
-              value={usersPerPage}
-              onChange={handlePageSizeChange}
-              className="border rounded"
-            >
-              <option value={5}>5</option>
-              <option value={10}>10</option>
-              <option value={20}>20</option>
-            </select>
-          </div>
-
-          <div className="flex items-center space-x-1">
+      {/* Pagination */}
+      <div className="mt-4 p-2 bg-white shadow-lg flex flex-col sm:flex-row justify-between items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-sm">Page Size:</span>
+          <select
+            value={usersPerPage}
+            onChange={(e) => {
+              setUsersPerPage(Number(e.target.value));
+              setCurrentPage(1);
+            }}
+            className="border rounded text-sm"
+          >
+            <option value={5}>5</option>
+            <option value={10}>10</option>
+            <option value={20}>20</option>
+          </select>
+        </div>
+        <div className="flex items-center flex-wrap gap-1 text-sm">
+          <button
+            onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
+            disabled={currentPage === 1}
+            className="px-2 py-1 bg-blue-600 text-white rounded disabled:bg-gray-300"
+          >
+            Prev
+          </button>
+          {Array.from({ length: totalPages }, (_, i) => i + 1).map((num) => (
             <button
-              onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
-              disabled={currentPage === 1}
-              className="px-3 py-1 bg-blue-600 text-white rounded disabled:bg-gray-300"
+              key={num}
+              onClick={() => setCurrentPage(num)}
+              className={`px-2 py-1 rounded ${
+                num === currentPage
+                  ? "bg-blue-600 text-white"
+                  : "bg-gray-200 text-gray-600"
+              }`}
             >
-              Previous
+              {num}
             </button>
-
-            {startPage > 1 && (
-              <>
-                <button
-                  onClick={() => setCurrentPage(1)}
-                  className="px-3 py-1 rounded bg-gray-200 text-gray-600"
-                >
-                  1
-                </button>
-                {startPage > 2 && <span>...</span>}
-              </>
-            )}
-
-            {Array.from(
-              { length: endPage - adjustedStartPage + 1 },
-              (_, i) => adjustedStartPage + i
-            ).map((pageNumber) => (
-              <button
-                key={pageNumber}
-                onClick={() => setCurrentPage(pageNumber)}
-                className={`px-3 py-1 rounded ${
-                  pageNumber === currentPage
-                    ? "bg-blue-600 text-white"
-                    : "bg-gray-200 text-gray-600"
-                }`}
-              >
-                {pageNumber}
-              </button>
-            ))}
-
-            {endPage < totalPages && (
-              <>
-                {endPage < totalPages - 1 && <span>...</span>}
-                <button
-                  onClick={() => setCurrentPage(totalPages)}
-                  className="px-3 py-1 rounded bg-gray-200 text-gray-600"
-                >
-                  {totalPages}
-                </button>
-              </>
-            )}
-
-            <button
-              onClick={() =>
-                setCurrentPage((prev) => Math.min(prev + 1, totalPages))
-              }
-              disabled={currentPage === totalPages}
-              className="px-3 py-1 bg-blue-600 text-white rounded disabled:bg-gray-300"
-            >
-              Next
-            </button>
-          </div>
+          ))}
+          <button
+            onClick={() =>
+              setCurrentPage((prev) => Math.min(prev + 1, totalPages))
+            }
+            disabled={currentPage === totalPages}
+            className="px-2 py-1 bg-blue-600 text-white rounded disabled:bg-gray-300"
+          >
+            Next
+          </button>
         </div>
       </div>
     </div>

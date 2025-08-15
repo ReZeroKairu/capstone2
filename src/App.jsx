@@ -4,11 +4,18 @@ import {
   Routes,
   Route,
   Navigate,
-  useLocation,
 } from "react-router-dom";
+import { getAuth, onAuthStateChanged } from "firebase/auth";
+import { getFirestore, doc, getDoc } from "firebase/firestore";
+
 import { AuthProvider } from "./authcontext/AuthContext";
+import ProtectedRoute from "./authcontext/ProtectedRoute";
+import AdminRoute from "./authcontext/AdminRoute";
+
 import Navbar from "./components/Navbar";
+import Sidebar from "./components/Sidebar";
 import Footer from "./components/Footer";
+
 import Home from "./pages/Home";
 import Announcement from "./components/Announcement";
 import Profile from "./authcomponents/Profile";
@@ -22,14 +29,10 @@ import Guidelines from "./components/Guidelines";
 import Unauthorized from "./pages/Unauthorized";
 import UserManagement from "./pages/Admin/UserManagement";
 import AdminCreation from "./components/AdminCreation";
-import ProtectedRoute from "./authcontext/ProtectedRoute";
-import AdminRoute from "./authcontext/AdminRoute";
-import { getAuth, onAuthStateChanged } from "firebase/auth";
 import UserLog from "./pages/Admin/UserLog";
 import NotFound from "./pages/NotFound";
 import Manuscripts from "./components/Manuscripts";
 import SubmitManuscript from "./pages/Researcher/SubmitManuscript";
-import DynamicForm from "./formcomponents/DynamicForm";
 import CreateForm from "./formcomponents/CreateForm";
 import AnswerForm from "./formcomponents/AnswerForm";
 import FormResponses from "./formcomponents/FormResponses";
@@ -39,124 +42,117 @@ import { SortableItem } from "./pages/Admin/SortableItem";
 function App() {
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState(null);
+  const [role, setRole] = useState(null);
   const auth = getAuth();
+  const db = getFirestore();
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(
-      auth,
-      (currentUser) => {
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+      if (currentUser) {
         setUser(currentUser);
-        setLoading(false);
-      },
-      (error) => {
-        console.error("Error checking auth state:", error);
-        setLoading(false);
+        const userRef = doc(db, "Users", currentUser.uid);
+        const docSnap = await getDoc(userRef);
+        if (docSnap.exists()) {
+          setRole(docSnap.data().role);
+        }
+      } else {
+        setUser(null);
+        setRole(null);
       }
-    );
+      setLoading(false);
+    });
 
     return () => unsubscribe();
-  }, [auth]);
+  }, [auth, db]);
 
-  if (loading) {
-    return <p className="text-center">Loading...</p>;
-  }
+  if (loading) return <p className="text-center p-6 text-lg">Loading...</p>;
 
   return (
-    <AuthProvider value={{ currentUser: user }}>
-      <Router future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
-        {/* Top-level flex container */}
-        <div className="flex flex-col min-h-screen">
-          <Navbar user={user} onLogout={() => auth.signOut()} />
+    <AuthProvider value={{ user, role }}>
+      <Router>
+        <div className="flex min-h-screen">
+          {/* Sidebar is fixed on all pages */}
+          {user && <Sidebar role={role} />}
 
-          {/* Main content fills remaining space */}
-          <div className="flex-1">
-            <div className="App">
-              <div className="auth-wrapper">
-                <div className="auth-inner">
-                  <Routes>
-                    <Route path="/" element={<Navigate to="/home" />} />
-                    <Route path="/home" element={<Home />} />
-                    <Route path="/signup" element={<SignUp />} />
-                    <Route path="/signin" element={<SignIn />} />
-                    <Route
-                      path="/forgot-password"
-                      element={<ForgotPassword />}
-                    />
-                    <Route path="/announcement" element={<Announcement />} />
-                    <Route path="/journals" element={<Journals />} />
-                    <Route
-                      path="/call-for-papers"
-                      element={<CallForPapers />}
-                    />
-                    <Route path="/pub-ethics" element={<PubEthics />} />
-                    <Route path="/guidelines" element={<Guidelines />} />
-                    <Route path="/unauthorized" element={<Unauthorized />} />
-                    <Route path="/manuscripts" element={<Manuscripts />} />
-                    <Route path="/dynamicform" element={<DynamicForm />} />
-                    <Route path="/createform" element={<CreateForm />} />
-                    <Route path="/answerform" element={<AnswerForm />} />
-                    <Route path="/formresponses" element={<FormResponses />} />
-                    <Route path="/submissions" element={<Submissions />} />
-                    <Route path="/sortable-item" element={<SortableItem />} />
-                    <Route
-                      path="/submit-manuscript"
-                      element={<SubmitManuscript />}
-                    />
-                    <Route path="*" element={<NotFound />} />
-                    <Route
-                      path="/user-log"
-                      element={
-                        <AdminRoute>
-                          <UserLog />
-                        </AdminRoute>
-                      }
-                    />
-                    <Route
-                      path="/profile"
-                      element={
-                        <ProtectedRoute>
-                          <Profile />
-                        </ProtectedRoute>
-                      }
-                    />
-                    <Route
-                      path="/user-management"
-                      element={
-                        <AdminRoute>
-                          <UserManagement />
-                        </AdminRoute>
-                      }
-                    />
-                    <Route
-                      path="/create-admin"
-                      element={
-                        <ProtectedRoute>
-                          <AdminCreation />
-                        </ProtectedRoute>
-                      }
-                    />
-                  </Routes>
-                </div>
-              </div>
-            </div>
+          {/* Main content wrapper */}
+          <div
+            className={`flex-1 flex flex-col transition-all duration-300 ease-in-out ${
+              user ? "md:ml-64" : ""
+            }`}
+          >
+            {/* Navbar stays on top */}
+            <Navbar user={user} onLogout={() => auth.signOut()} />
+
+            {/* Page content */}
+            <main className="flex-1 p-4 sm:p-6 md:p-8 lg:p-12 overflow-auto">
+              <Routes>
+                <Route path="/" element={<Navigate to="/home" />} />
+                <Route path="/home" element={<Home />} />
+                <Route path="/signup" element={<SignUp />} />
+                <Route path="/signin" element={<SignIn />} />
+                <Route path="/forgot-password" element={<ForgotPassword />} />
+                <Route path="/announcement" element={<Announcement />} />
+                <Route path="/journals" element={<Journals />} />
+                <Route path="/call-for-papers" element={<CallForPapers />} />
+                <Route path="/pub-ethics" element={<PubEthics />} />
+                <Route path="/guidelines" element={<Guidelines />} />
+                <Route path="/unauthorized" element={<Unauthorized />} />
+                <Route path="/manuscripts" element={<Manuscripts />} />
+                <Route path="/createform" element={<CreateForm />} />
+                <Route path="/answerform" element={<AnswerForm />} />
+                <Route path="/formresponses" element={<FormResponses />} />
+                <Route path="/submissions" element={<Submissions />} />
+                <Route path="/sortable-item" element={<SortableItem />} />
+                <Route
+                  path="/submit-manuscript"
+                  element={<SubmitManuscript />}
+                />
+                <Route path="*" element={<NotFound />} />
+
+                {/* Protected Routes */}
+                <Route
+                  path="/profile"
+                  element={
+                    <ProtectedRoute>
+                      <Profile />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/create-admin"
+                  element={
+                    <ProtectedRoute>
+                      <AdminCreation />
+                    </ProtectedRoute>
+                  }
+                />
+
+                {/* Admin Routes */}
+                <Route
+                  path="/user-log"
+                  element={
+                    <AdminRoute>
+                      <UserLog />
+                    </AdminRoute>
+                  }
+                />
+                <Route
+                  path="/user-management"
+                  element={
+                    <AdminRoute>
+                      <UserManagement />
+                    </AdminRoute>
+                  }
+                />
+              </Routes>
+            </main>
+
+            <Footer />
           </div>
-
-          {/* Footer always at bottom */}
-          <ConditionalFooter />
         </div>
       </Router>
     </AuthProvider>
   );
 }
-
-// Footer component
-const ConditionalFooter = () => {
-  const location = useLocation();
-  const excludedRoutes = ["/user-management", "/user-log"];
-  if (!excludedRoutes.includes(location.pathname)) {
-    return <Footer />;
-  }
-  return null;
-};
 
 export default App;
