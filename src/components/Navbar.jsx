@@ -132,8 +132,11 @@ const Navbar = ({ onLogout }) => {
 
   return (
     <>
-      {/* Main Navbar Header */}
-      <header className="bg-yellow-400 shadow-md fixed w-full z-50 md:pr-64">
+      <header
+        className={`bg-yellow-400 shadow-md fixed w-full z-50 ${
+          user ? "md:pr-64" : ""
+        }`}
+      >
         <div className="flex items-center px-4 py-1">
           {/* Logo Section */}
           <div className="flex items-center">
@@ -305,7 +308,11 @@ const Navbar = ({ onLogout }) => {
       </header>
 
       {/* Contact Us Dropdown Header */}
-      <div className="bg-red-800 text-white py-1 fixed w-full mt-14 z-40 md:pr-64">
+      <div
+        className={`bg-red-800 text-white py-1 fixed w-full mt-14 z-40 ${
+          user ? "md:pr-64" : ""
+        }`}
+      >
         <div className="flex justify-end mr-4">
           <button
             ref={contactButtonRef}
