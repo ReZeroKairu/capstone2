@@ -36,6 +36,8 @@ import SubmitManuscript from "./pages/Researcher/SubmitManuscript";
 import CreateForm from "./formcomponents/CreateForm";
 import AnswerForm from "./formcomponents/AnswerForm";
 import FormResponses from "./formcomponents/FormResponses";
+import Dashboard from "./components/Dashboard";
+
 import Submissions from "./components/Submissions";
 import { SortableItem } from "./pages/Admin/SortableItem";
 
@@ -102,6 +104,7 @@ function App() {
                 <Route path="/answerform" element={<AnswerForm />} />
                 <Route path="/formresponses" element={<FormResponses />} />
                 <Route path="/submissions" element={<Submissions />} />
+                <Route path="/dashboard" element={<Dashboard />} />
                 <Route path="/sortable-item" element={<SortableItem />} />
                 <Route
                   path="/submit-manuscript"
