@@ -188,7 +188,7 @@ function Announcement() {
   return (
     <div className="relative flex flex-col items-center mt-10 pt-28 p-16">
       {/* White Box */}
-      <div className="relative w-full max-w-3xl bg-white border border-gray-300 rounded-lg shadow p-6">
+      <div className="relative w-full max-w-3xl bg-white border border-gray-300 rounded-lg shadow p-6 pt-11">
         {/* Floating Header */}
         <div className="absolute -top-5 left-1/2 transform -translate-x-1/2 bg-red-800 text-white px-6 py-2 rounded-lg font-bold text-lg">
           {isEditing ? "Editing Announcements" : "Announcements"}
