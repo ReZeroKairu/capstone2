@@ -5,7 +5,7 @@ import {
   signOut,
 } from "firebase/auth";
 import { auth, db } from "../firebase/firebase";
-import { setDoc, doc, collection, addDoc } from "firebase/firestore";
+import { setDoc, doc } from "firebase/firestore";
 import { useNavigate } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
@@ -22,7 +22,13 @@ function SignUp() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
+
+  // Error states
   const [errorMessage, setErrorMessage] = useState("");
+  const [emailError, setEmailError] = useState("");
+  const [passwordError, setPasswordError] = useState("");
+  const [confirmPasswordError, setConfirmPasswordError] = useState("");
+
   const [successMessage, setSuccessMessage] = useState("");
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -38,13 +44,12 @@ function SignUp() {
     }
   }, [errorMessage]);
 
-  // Check if the user is already authenticated
+  // Redirect if already authenticated
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged((user) => {
       if (user && !successMessage) {
         setIsCheckingAuth(false);
-        // Redirect user to the home or another page if already signed in
-        navigate("/home"); // or the path you want to redirect to
+        navigate("/home");
       } else {
         setIsCheckingAuth(false);
       }
@@ -56,9 +61,11 @@ function SignUp() {
     e.preventDefault();
 
     setErrorMessage("");
+    setEmailError("");
+    setPasswordError("");
+    setConfirmPasswordError("");
     setSuccessMessage("");
 
-    // Trim inputs before validation
     const trimmedFirstName = firstName.trim();
     const trimmedLastName = lastName.trim();
     const trimmedEmail = email.trim();
@@ -74,55 +81,54 @@ function SignUp() {
       return;
     }
     if (password.length < 6) {
-      setErrorMessage("Password must be at least 6 characters long!");
+      setPasswordError("Password must be at least 6 characters long!");
       return;
     }
     if (password !== confirmPassword) {
-      setErrorMessage("Passwords do not match!");
+      setConfirmPasswordError("Passwords do not match!");
       return;
     }
 
     setLoading(true);
 
     try {
-      // Step 1: Create the user, but we don't want them signed in
+      // Create the user
       const userCredential = await createUserWithEmailAndPassword(
         auth,
-        trimmedEmail, // ✅ use trimmed email
+        trimmedEmail,
         password
       );
       const user = userCredential.user;
 
-      // Step 2: Log the user out immediately to prevent auto login
+      // Log out immediately
       await signOut(auth);
 
-      // Step 3: Write user data to Firestore (including the 'photo' field)
+      // Save to Firestore
       await setDoc(doc(db, "Users", user.uid), {
         uid: user.uid,
-        firstName: trimmedFirstName, // ✅ use trimmed firstName
-        lastName: trimmedLastName, // ✅ use trimmed lastName
+        firstName: trimmedFirstName,
+        lastName: trimmedLastName,
         email: user.email,
         role: "Researcher",
         photo: null,
       });
 
-      // Step 4: Send verification email
+      // Send verification email
       await sendEmailVerification(user);
 
       setSuccessMessage(
         "User registered successfully! A verification email has been sent. Please check your inbox and verify your email before signing in."
       );
 
-      // Redirect to sign-in page after 5 seconds to show success message
       setTimeout(() => {
         navigate("/SignIn");
       }, 5000);
     } catch (error) {
-      console.error("Error creating user:", error);
+      console.error("Error creating user:", error.code, error.message);
       if (error.code === "auth/email-already-in-use") {
-        setErrorMessage("Email already registered.");
+        setEmailError("Email already registered.");
       } else {
-        setErrorMessage("Failed to register user.");
+        setErrorMessage(error.message || "Failed to register user.");
       }
     } finally {
       setLoading(false);
@@ -196,75 +202,97 @@ function SignUp() {
             </span>
           </div>
 
-          <div className="relative">
+          <div className="relative mb-3">
             <label className="block text-sm font-medium text-gray-700">
               Email address
             </label>
-            <input
-              type="email"
-              className="w-full mt-1 p-2 pl-10 border text-black rounded-lg focus:ring-blue-500 focus:border-blue-500"
-              placeholder="Email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              autoComplete="email"
-            />
-            <span className="absolute inset-y-0 left-0 flex items-center pl-3 mt-6 text-red-800">
-              <FontAwesomeIcon icon={faEnvelope} />
-            </span>
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-red-800">
+                <FontAwesomeIcon icon={faEnvelope} />
+              </span>
+              <input
+                type="email"
+                className="w-full mt-1 p-2 pl-10 border text-black rounded-lg focus:ring-blue-500 focus:border-blue-500"
+                placeholder="Email"
+                value={email}
+                onChange={(e) => {
+                  setEmail(e.target.value);
+                  setEmailError("");
+                }}
+                autoComplete="email"
+              />
+            </div>
+            {emailError && (
+              <p className="text-red-600 text-sm mt-1">{emailError}</p>
+            )}
           </div>
 
-          <div className="relative">
+          <div className="relative mb-3">
             <label className="block text-sm font-medium text-black">
               Password
             </label>
-            <input
-              type={showPassword ? "text" : "password"}
-              className="w-full mt-1 p-2 pl-10 border text-black rounded-lg focus:ring-blue-500 focus:border-blue-500"
-              placeholder="Enter password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
-            {/* Left lock icon */}
-            <span className="absolute inset-y-0 left-0 flex items-center pl-3 mt-6 text-red-800">
-              <FontAwesomeIcon icon={faLock} />
-            </span>
-            {/* Right eye toggle */}
-            <span
-              className="absolute inset-y-0 right-0 flex items-center pr-2 mt-6 cursor-pointer"
-              onClick={() => setShowPassword(!showPassword)}
-            >
-              <FontAwesomeIcon
-                icon={showPassword ? faEyeSlash : faEye}
-                className="text-red-900"
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-red-800">
+                <FontAwesomeIcon icon={faLock} />
+              </span>
+              <input
+                type={showPassword ? "text" : "password"}
+                className="w-full mt-1 p-2 pl-10 pr-10 border text-black rounded-lg focus:ring-blue-500 focus:border-blue-500"
+                placeholder="Enter password"
+                value={password}
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  setPasswordError("");
+                }}
               />
-            </span>
+              <span
+                className="absolute right-3 top-1/2 -translate-y-1/2 cursor-pointer"
+                onClick={() => setShowPassword(!showPassword)}
+              >
+                <FontAwesomeIcon
+                  icon={showPassword ? faEyeSlash : faEye}
+                  className="text-red-900"
+                />
+              </span>
+            </div>
+            {passwordError && (
+              <p className="text-red-600 text-sm mt-1">{passwordError}</p>
+            )}
           </div>
 
-          <div className="relative">
+          <div className="relative mb-3">
             <label className="block text-sm font-medium text-black">
               Confirm Password
             </label>
-            <input
-              type={showConfirmPassword ? "text" : "password"}
-              className="w-full mt-1 p-2 pl-10 border text-black rounded-lg focus:ring-blue-500 focus:border-blue-500"
-              placeholder="Confirm password"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-            />
-            {/* Left lock icon */}
-            <span className="absolute inset-y-0 left-0 flex items-center pl-3 mt-6 text-red-800">
-              <FontAwesomeIcon icon={faLock} />
-            </span>
-            {/* Right eye toggle */}
-            <span
-              className="absolute inset-y-0 right-0 flex items-center pr-2 mt-6 cursor-pointer"
-              onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-            >
-              <FontAwesomeIcon
-                icon={showConfirmPassword ? faEyeSlash : faEye}
-                className="text-red-900"
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-red-800">
+                <FontAwesomeIcon icon={faLock} />
+              </span>
+              <input
+                type={showConfirmPassword ? "text" : "password"}
+                className="w-full mt-1 p-2 pl-10 pr-10 border text-black rounded-lg focus:ring-blue-500 focus:border-blue-500"
+                placeholder="Confirm password"
+                value={confirmPassword}
+                onChange={(e) => {
+                  setConfirmPassword(e.target.value);
+                  setConfirmPasswordError("");
+                }}
               />
-            </span>
+              <span
+                className="absolute right-3 top-1/2 -translate-y-1/2 cursor-pointer"
+                onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+              >
+                <FontAwesomeIcon
+                  icon={showConfirmPassword ? faEyeSlash : faEye}
+                  className="text-red-900"
+                />
+              </span>
+            </div>
+            {confirmPasswordError && (
+              <p className="text-red-600 text-sm mt-1">
+                {confirmPasswordError}
+              </p>
+            )}
           </div>
 
           <div className="flex justify-center mt-4">
