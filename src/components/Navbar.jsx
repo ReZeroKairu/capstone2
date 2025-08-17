@@ -304,11 +304,7 @@ const Navbar = ({ onLogout }) => {
       </header>
 
       {/* Contact Us Dropdown Header */}
-      <div
-        className={`bg-red-800 text-white py-1 fixed w-full mt-14 z-40 ${
-          user ? "md:pr-64" : ""
-        }`}
-      >
+      <div className="bg-red-800 text-white py-1 fixed top-14 left-0 w-full z-40">
         <div className="flex justify-end mr-4">
           <button
             ref={contactButtonRef}
