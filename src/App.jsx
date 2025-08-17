@@ -84,7 +84,7 @@ function App() {
             <Navbar user={user} onLogout={() => auth.signOut()} />
 
             {/* Page content */}
-            <main className="flex-1 p-4 sm:p-6 md:p-8 lg:p-12 overflow-auto">
+            <main className="flex-1 overflow-auto">
               <Routes>
                 <Route path="/" element={<Navigate to="/home" />} />
                 <Route path="/home" element={<Home />} />

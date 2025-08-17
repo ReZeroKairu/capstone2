@@ -8,7 +8,13 @@ import { auth, db } from "../firebase/firebase";
 import { setDoc, doc, collection, addDoc } from "firebase/firestore";
 import { useNavigate } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faEye, faEyeSlash } from "@fortawesome/free-solid-svg-icons";
+import {
+  faEye,
+  faEyeSlash,
+  faUser,
+  faEnvelope,
+  faLock,
+} from "@fortawesome/free-solid-svg-icons";
 
 function SignUp() {
   const [email, setEmail] = useState("");
@@ -52,7 +58,18 @@ function SignUp() {
     setErrorMessage("");
     setSuccessMessage("");
 
-    if (!firstName || !lastName || !email || !password || !confirmPassword) {
+    // Trim inputs before validation
+    const trimmedFirstName = firstName.trim();
+    const trimmedLastName = lastName.trim();
+    const trimmedEmail = email.trim();
+
+    if (
+      !trimmedFirstName ||
+      !trimmedLastName ||
+      !trimmedEmail ||
+      !password ||
+      !confirmPassword
+    ) {
       setErrorMessage("Please fill out all fields");
       return;
     }
@@ -71,7 +88,7 @@ function SignUp() {
       // Step 1: Create the user, but we don't want them signed in
       const userCredential = await createUserWithEmailAndPassword(
         auth,
-        email,
+        trimmedEmail, // ✅ use trimmed email
         password
       );
       const user = userCredential.user;
@@ -82,11 +99,11 @@ function SignUp() {
       // Step 3: Write user data to Firestore (including the 'photo' field)
       await setDoc(doc(db, "Users", user.uid), {
         uid: user.uid,
-        firstName: firstName,
-        lastName: lastName,
+        firstName: trimmedFirstName, // ✅ use trimmed firstName
+        lastName: trimmedLastName, // ✅ use trimmed lastName
         email: user.email,
-        role: "Researcher", // Default role can be "Researcher"
-        photo: null, // Initialize photo as null or a placeholder URL
+        role: "Researcher",
+        photo: null,
       });
 
       // Step 4: Send verification email
@@ -101,7 +118,7 @@ function SignUp() {
         navigate("/SignIn");
       }, 5000);
     } catch (error) {
-      console.error("Error creating user:", error); // Log error
+      console.error("Error creating user:", error);
       if (error.code === "auth/email-already-in-use") {
         setErrorMessage("Email already registered.");
       } else {
@@ -111,10 +128,6 @@ function SignUp() {
       setLoading(false);
     }
   };
-
-  if (isCheckingAuth) {
-    return null; // Optionally, you can show a loading indicator here
-  }
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -151,44 +164,53 @@ function SignUp() {
             </div>
           )}
 
-          <div className="mb-3">
-            <label>First Name:</label>
+          <div className="relative mb-3">
+            <label className="block text-sm font-medium text-gray-700">
+              First Name:
+            </label>
             <input
               type="text"
-              className="w-full mt-1 p-2 border text-black rounded-lg focus:ring-blue-500 focus:border-blue-500"
-              placeholder="Enter your first name"
+              className="w-full mt-1 p-2 pl-10 border text-black rounded-lg focus:ring-blue-500 focus:border-blue-500"
+              placeholder="First Name"
               value={firstName}
               onChange={(e) => setFirstName(e.target.value)}
             />
+            <span className="absolute inset-y-0 left-0 flex items-center pl-3 mt-6 text-red-800">
+              <FontAwesomeIcon icon={faUser} />
+            </span>
           </div>
 
-          <div>
+          <div className="relative mb-3">
             <label className="block text-sm font-medium text-gray-700">
               Last Name:
             </label>
             <input
               type="text"
-              className="w-full mt-1 p-2 border text-black rounded-lg focus:ring-blue-500 focus:border-blue-500"
-              placeholder="Enter your last name"
+              className="w-full mt-1 p-2 pl-10 border text-black rounded-lg focus:ring-blue-500 focus:border-blue-500"
+              placeholder="Last Name"
               value={lastName}
               onChange={(e) => setLastName(e.target.value)}
             />
+            <span className="absolute inset-y-0 left-0 flex items-center pl-3 mt-6 text-red-800">
+              <FontAwesomeIcon icon={faUser} />
+            </span>
           </div>
 
-          <div>
+          <div className="relative">
             <label className="block text-sm font-medium text-gray-700">
               Email address
             </label>
             <input
               type="email"
-              className="w-full mt-1 p-2 border text-black rounded-lg focus:ring-blue-500 focus:border-blue-500 autofill:bg-transparent"
-              placeholder="Enter email"
+              className="w-full mt-1 p-2 pl-10 border text-black rounded-lg focus:ring-blue-500 focus:border-blue-500"
+              placeholder="Email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               autoComplete="email"
-              name="email"
-              id="email"
             />
+            <span className="absolute inset-y-0 left-0 flex items-center pl-3 mt-6 text-red-800">
+              <FontAwesomeIcon icon={faEnvelope} />
+            </span>
           </div>
 
           <div className="relative">
@@ -197,11 +219,16 @@ function SignUp() {
             </label>
             <input
               type={showPassword ? "text" : "password"}
-              className="w-full mt-1 p-2 border text-black rounded-lg focus:ring-blue-500 focus:border-blue-500"
+              className="w-full mt-1 p-2 pl-10 border text-black rounded-lg focus:ring-blue-500 focus:border-blue-500"
               placeholder="Enter password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
             />
+            {/* Left lock icon */}
+            <span className="absolute inset-y-0 left-0 flex items-center pl-3 mt-6 text-red-800">
+              <FontAwesomeIcon icon={faLock} />
+            </span>
+            {/* Right eye toggle */}
             <span
               className="absolute inset-y-0 right-0 flex items-center pr-2 mt-6 cursor-pointer"
               onClick={() => setShowPassword(!showPassword)}
@@ -219,11 +246,16 @@ function SignUp() {
             </label>
             <input
               type={showConfirmPassword ? "text" : "password"}
-              className="w-full mt-1 p-2 border text-black rounded-lg focus:ring-blue-500 focus:border-blue-500"
+              className="w-full mt-1 p-2 pl-10 border text-black rounded-lg focus:ring-blue-500 focus:border-blue-500"
               placeholder="Confirm password"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
             />
+            {/* Left lock icon */}
+            <span className="absolute inset-y-0 left-0 flex items-center pl-3 mt-6 text-red-800">
+              <FontAwesomeIcon icon={faLock} />
+            </span>
+            {/* Right eye toggle */}
             <span
               className="absolute inset-y-0 right-0 flex items-center pr-2 mt-6 cursor-pointer"
               onClick={() => setShowConfirmPassword(!showConfirmPassword)}
