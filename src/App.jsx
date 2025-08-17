@@ -37,7 +37,6 @@ import CreateForm from "./formcomponents/CreateForm";
 import AnswerForm from "./formcomponents/AnswerForm";
 import FormResponses from "./formcomponents/FormResponses";
 import Dashboard from "./components/Dashboard";
-
 import Submissions from "./components/Submissions";
 import { SortableItem } from "./pages/Admin/SortableItem";
 
@@ -45,6 +44,7 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState(null);
   const [role, setRole] = useState(null);
+  const [sidebarOpen, setSidebarOpen] = useState(true); // Sidebar state
   const auth = getAuth();
   const db = getFirestore();
 
@@ -74,16 +74,26 @@ function App() {
       <Router>
         <div className="flex min-h-screen">
           {/* Sidebar is fixed on all pages */}
-          {user && <Sidebar role={role} />}
+          {user && (
+            <Sidebar
+              role={role}
+              isOpen={sidebarOpen}
+              toggleSidebar={() => setSidebarOpen(!sidebarOpen)}
+            />
+          )}
 
           {/* Main content wrapper */}
           <div
             className={`flex-1 flex flex-col transition-all duration-300 ease-in-out ${
-              user ? "md:ml-64" : ""
+              user && sidebarOpen ? "md:ml-64" : ""
             }`}
           >
             {/* Navbar stays on top */}
-            <Navbar user={user} onLogout={() => auth.signOut()} />
+            <Navbar
+              user={user}
+              onLogout={() => auth.signOut()}
+              isSidebarOpen={sidebarOpen} // Pass sidebar state
+            />
 
             {/* Page content */}
             <main className="flex-1 overflow-auto">

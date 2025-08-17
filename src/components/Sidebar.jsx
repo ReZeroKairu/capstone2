@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect } from "react";
 import {
   FaHome,
   FaBullhorn,
@@ -11,14 +11,22 @@ import {
 } from "react-icons/fa";
 import { Link, useLocation } from "react-router-dom";
 
-const Sidebar = ({ role }) => {
-  const [isOpen, setIsOpen] = useState(false);
+const Sidebar = ({ role, isOpen, toggleSidebar }) => {
   const location = useLocation();
 
-  const toggleSidebar = () => setIsOpen(!isOpen);
+  // Reset desktop sidebar when switching to mobile
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth < 768 && isOpen) {
+        toggleSidebar(false); // close desktop sidebar
+      }
+    };
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, [isOpen, toggleSidebar]);
 
   const handleLinkClick = () => {
-    if (window.innerWidth < 768) setIsOpen(false);
+    if (window.innerWidth < 768) return; // mobile links just navigate
   };
 
   const links = [
@@ -82,37 +90,52 @@ const Sidebar = ({ role }) => {
           }`}
         >
           {link.icon}
-          {!mobile && <span className="ml-3">{link.name}</span>}
+          {!mobile && isOpen && <span className="ml-3">{link.name}</span>}
         </Link>
       </li>
     ));
 
   return (
     <>
-      {/* Overlay for mobile */}
-      <div
-        className={`fixed inset-0 bg-black bg-opacity-50 z-20 transition-opacity duration-300 md:hidden ${
-          isOpen ? "opacity-100 visible" : "opacity-0 invisible"
-        }`}
-        onClick={toggleSidebar}
-      ></div>
-
       {/* Desktop Sidebar */}
-      <div className="hidden md:block fixed top-14 left-0 h-[calc(100%-56px)] w-64 bg-red-800 text-white z-30 overflow-y-auto">
-        <div className="text-center pt-10 py-4 px-6 text-xl font-semibold sticky top-0">
-          Menu
-        </div>
-        <ul className="mt-4">
-          {renderLinks(links)}
-          {role === "Admin" && renderLinks(adminLinks)}
-          {role === "Researcher" && renderLinks(researcherLinks)}
-          {role === "Peer Reviewer" && renderLinks(peerReviewerLinks)}
-        </ul>
+      <div
+        className={`hidden md:block fixed top-0 left-0 h-full bg-red-800 text-white z-30 overflow-y-auto transition-all duration-300 ${
+          isOpen ? "w-64" : "w-0"
+        }`}
+      >
+        {isOpen && (
+          <div className="py-4 pt-28 pl-24 px-6">
+            <span className="text-xl font-semibold">Menu</span>
+          </div>
+        )}
+
+        {isOpen && (
+          <ul className="mt-4">
+            {renderLinks(links)}
+            {role === "Admin" && renderLinks(adminLinks)}
+            {role === "Researcher" && renderLinks(researcherLinks)}
+            {role === "Peer Reviewer" && renderLinks(peerReviewerLinks)}
+          </ul>
+        )}
       </div>
 
-      {/* Mobile bottom nav */}
+      {/* Floating burger/X button on desktop only */}
+      <button
+        type="button"
+        onClick={() => toggleSidebar(!isOpen)}
+        className="hidden md:flex bg-red-700 hover:bg-red-600 active:bg-red-800 text-white w-10 h-10 items-center justify-center rounded z-50 outline-none focus:outline-none"
+        style={{
+          position: "fixed",
+          top: "7rem",
+          left: "0.5rem",
+        }}
+      >
+        {isOpen ? <FaTimes /> : <FaBars />}
+      </button>
+
+      {/* Mobile Bottom Menu (unchanged) */}
       <div
-        className={`fixed bottom-0 left-0 w-full bg-red-800 text-white z-30 md:hidden flex justify-around p-2 ${
+        className={`md:hidden fixed bottom-0 left-0 w-full bg-red-800 text-white z-30 flex justify-around p-2 ${
           isOpen ? "h-48 flex-col" : "h-16"
         } transition-all duration-300`}
       >
