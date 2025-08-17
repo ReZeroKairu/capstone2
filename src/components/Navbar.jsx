@@ -132,11 +132,7 @@ const Navbar = ({ onLogout }) => {
 
   return (
     <>
-      <header
-        className={`bg-yellow-400 shadow-md fixed w-full z-50 ${
-          user ? "md:pr-64" : ""
-        }`}
-      >
+      <header className="bg-yellow-400 shadow-md fixed top-0 left-0 w-full z-50">
         <div className="flex items-center px-4 py-1">
           {/* Logo Section */}
           <div className="flex items-center">

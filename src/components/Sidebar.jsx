@@ -98,8 +98,8 @@ const Sidebar = ({ role }) => {
       ></div>
 
       {/* Desktop Sidebar */}
-      <div className="hidden md:block fixed top-0 left-0 h-full w-64 bg-red-800 text-white z-30 overflow-y-auto">
-        <div className="text-center py-4 px-6 text-xl font-semibold sticky top-0">
+      <div className="hidden md:block fixed top-14 left-0 h-[calc(100%-56px)] w-64 bg-red-800 text-white z-30 overflow-y-auto">
+        <div className="text-center pt-10 py-4 px-6 text-xl font-semibold sticky top-0">
           Menu
         </div>
         <ul className="mt-4">
