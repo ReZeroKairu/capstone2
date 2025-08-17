@@ -7,7 +7,7 @@ function Home() {
         className="absolute inset-0 bg-cover bg-center bg-fixed"
         style={{ backgroundImage: "url('/bg.jpg')" }}
       />
-      <div className="relative flex flex-col items-center justify-center h-full bg-black bg-opacity-5">
+      <div className="relative flex flex-col items-center justify-center h-full">
         <img
           src="/pubtracklogo.png"
           alt="PubTrack Logo"
