@@ -5,14 +5,16 @@ import {
   getDocs,
   doc,
   getDoc,
+  addDoc,
   deleteDoc,
   updateDoc,
+  setDoc,
+  serverTimestamp,
 } from "firebase/firestore";
 import { useAuth } from "../../authcontext/AuthContext";
 import { useNavigate } from "react-router-dom";
 import { FaSearch } from "react-icons/fa";
 import { getAuth } from "firebase/auth";
-
 function UserManagement() {
   const { currentUser, loading: authLoading } = useAuth();
   const navigate = useNavigate();
@@ -91,18 +93,58 @@ function UserManagement() {
 
   const handleUpdateUser = async () => {
     if (!editingUser) return;
+
     try {
       const userRef = doc(db, "Users", editingUser.id);
+
+      // Fetch previous user data
+      const userSnap = await getDoc(userRef);
+      if (!userSnap.exists()) {
+        setMessage("User does not exist.");
+        return;
+      }
+
+      const prevRole = userSnap.data().role;
+
+      // Update the user document
       await updateDoc(userRef, {
         firstName: editingUser.firstName,
         lastName: editingUser.lastName,
         role: editingUser.role,
       });
+
+      // If role changed, create a notification
+      if (prevRole !== editingUser.role) {
+        try {
+          const notifColRef = collection(
+            db,
+            "Users",
+            editingUser.id,
+            "Notifications"
+          );
+
+          const newNotif = {
+            message: `Your role has been changed from ${prevRole} to ${editingUser.role}`,
+            timestamp: serverTimestamp(),
+            seen: false,
+          };
+
+          console.log("Attempting to create notification...");
+          const notifDocRef = await addDoc(notifColRef, newNotif);
+          console.log("Notification created with ID:", notifDocRef.id);
+        } catch (notifError) {
+          console.error("Failed to create notification:", notifError);
+          setMessage("User updated but failed to create notification.");
+        }
+      }
+
+      // Update local state
       setUsers((prev) =>
         prev.map((u) =>
           u.id === editingUser.id ? { ...u, ...editingUser } : u
         )
       );
+
       setMessage("User updated successfully.");
       setIsEditing(false);
       setEditingUser(null);
