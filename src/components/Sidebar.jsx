@@ -123,7 +123,7 @@ const Sidebar = ({ role, isOpen, toggleSidebar }) => {
       <button
         type="button"
         onClick={() => toggleSidebar(!isOpen)}
-        className="hidden md:flex bg-red-700 hover:bg-red-600 active:bg-red-800 text-white w-10 h-10 items-center justify-center rounded z-50 outline-none focus:outline-none"
+        className="hidden md:flex bg-red-700 hover:bg-red-600 active:bg-red-500 text-white w-10 h-10 items-center justify-center rounded z-30 outline-none focus:outline-none"
         style={{
           position: "fixed",
           top: "7rem",

@@ -43,7 +43,7 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState(null);
   const [role, setRole] = useState(null);
-  const [sidebarOpen, setSidebarOpen] = useState(true); // Sidebar state
+  const [sidebarOpen, setSidebarOpen] = useState(true);
   const auth = getAuth();
   const db = getFirestore();
 
@@ -66,13 +66,18 @@ function App() {
     return () => unsubscribe();
   }, [auth, db]);
 
-  if (loading) return <p className="text-center p-6 text-lg">Loading...</p>;
+  if (loading)
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-4 border-blue-600"></div>
+      </div>
+    );
 
   return (
     <AuthProvider value={{ user, role }}>
       <Router>
         <div className="flex min-h-screen">
-          {/* Sidebar is fixed on all pages */}
+          {/* Sidebar */}
           {user && (
             <Sidebar
               role={role}
@@ -81,17 +86,17 @@ function App() {
             />
           )}
 
-          {/* Main content wrapper */}
+          {/* Main content */}
           <div
-            className={`flex-1 flex flex-col transition-all duration-300 ease-in-out ${
+            className={`flex-1 flex flex-col transition-all duration-300 ease-in-out relative ${
               user && sidebarOpen ? "md:ml-64" : ""
             }`}
           >
-            {/* Navbar stays on top */}
+            {/* Navbar */}
             <Navbar
               user={user}
               onLogout={() => auth.signOut()}
-              isSidebarOpen={sidebarOpen} // Pass sidebar state
+              isSidebarOpen={sidebarOpen}
             />
 
             {/* Page content */}
