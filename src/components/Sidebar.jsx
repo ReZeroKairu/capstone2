@@ -14,11 +14,11 @@ import { Link, useLocation } from "react-router-dom";
 const Sidebar = ({ role, isOpen, toggleSidebar }) => {
   const location = useLocation();
 
-  // Reset desktop sidebar when switching to mobile
+  // Close desktop sidebar when switching to mobile
   useEffect(() => {
     const handleResize = () => {
       if (window.innerWidth < 768 && isOpen) {
-        toggleSidebar(false); // close desktop sidebar
+        toggleSidebar(false);
       }
     };
     window.addEventListener("resize", handleResize);
@@ -108,7 +108,6 @@ const Sidebar = ({ role, isOpen, toggleSidebar }) => {
             <span className="text-xl font-semibold">Menu</span>
           </div>
         )}
-
         {isOpen && (
           <ul className="mt-4">
             {renderLinks(links)}
@@ -119,26 +118,18 @@ const Sidebar = ({ role, isOpen, toggleSidebar }) => {
         )}
       </div>
 
-      {/* Floating burger/X button on desktop only */}
+      {/* Desktop burger/X toggle */}
       <button
         type="button"
         onClick={() => toggleSidebar(!isOpen)}
         className="hidden md:flex bg-red-700 hover:bg-red-600 active:bg-red-500 text-white w-10 h-10 items-center justify-center rounded z-30 outline-none focus:outline-none"
-        style={{
-          position: "fixed",
-          top: "7rem",
-          left: "0.5rem",
-        }}
+        style={{ position: "fixed", top: "7rem", left: "0.5rem" }}
       >
         {isOpen ? <FaTimes /> : <FaBars />}
       </button>
 
-      {/* Mobile Bottom Menu (unchanged) */}
-      <div
-        className={`md:hidden fixed bottom-0 left-0 w-full bg-red-800 text-white z-30 flex justify-around p-2 ${
-          isOpen ? "h-48 flex-col" : "h-16"
-        } transition-all duration-300`}
-      >
+      {/* Mobile Bottom Menu - always stick to bottom */}
+      <div className="md:hidden fixed bottom-0 left-0 w-full bg-red-800 text-white z-30 flex justify-around p-2 h-16">
         {renderLinks(links, true)}
         {role === "Admin" && renderLinks(adminLinks, true)}
         {role === "Researcher" && renderLinks(researcherLinks, true)}

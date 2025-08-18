@@ -30,7 +30,7 @@ const STATUS_COLORS = {
   Rejected: "bg-red-500",
 };
 
-const Dashboard = () => {
+const Dashboard = ({ sidebarOpen }) => {
   const [user, setUser] = useState(null);
   const [role, setRole] = useState(null);
   const [submissions, setSubmissions] = useState([]);
@@ -137,8 +137,11 @@ const Dashboard = () => {
   };
 
   return (
-    <div className="flex flex-col min-h-screen pt-28 px-4 sm:px-6 lg:px-8">
-      <h1 className="text-3xl font-bold mb-6">
+    <div
+      className={`flex flex-col min-h-screen pt-24 px-4 sm:px-6 lg:px-24 transition-all duration-300
+    ${sidebarOpen ? "lg:pl-64" : ""}`} // Left padding if sidebar open
+    >
+      <h1 className="text-3xl font-bold mb-6 text-center sm:text-left">
         Welcome, {user.displayName || "User"}!
       </h1>
 
@@ -155,7 +158,7 @@ const Dashboard = () => {
                 className="mb-4 border p-3 rounded bg-white shadow-sm cursor-pointer hover:shadow-md transition"
                 onClick={() => setSelectedSubmission(sub)}
               >
-                <p className="text-sm text-gray-500 mb-2">
+                <p className="text-sm text-gray-500 mb-2 break-words">
                   {sub.firstName} {sub.lastName} ({sub.role}) —{" "}
                   {sub.submittedAt ? sub.submittedAt.toLocaleString() : "-"}
                 </p>
@@ -191,7 +194,7 @@ const Dashboard = () => {
               {notifications.map((notif) => (
                 <li
                   key={notif.id}
-                  className="bg-white p-3 rounded shadow-sm hover:bg-gray-100 transition"
+                  className="bg-white p-3 rounded shadow-sm hover:bg-gray-100 transition break-words"
                 >
                   {notif.message}
                   <p className="text-xs text-gray-400">
@@ -214,15 +217,15 @@ const Dashboard = () => {
 
       {/* Submission Details Modal */}
       {selectedSubmission && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-lg relative">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50 px-2">
+          <div className="bg-white rounded-lg p-6 w-full max-w-lg relative overflow-auto">
             <button
               className="absolute top-3 right-3 text-red-600 font-bold text-xl"
               onClick={() => setSelectedSubmission(null)}
             >
               &times;
             </button>
-            <h3 className="text-xl font-semibold mb-4">
+            <h3 className="text-xl font-semibold mb-4 break-words">
               {selectedSubmission.firstName} {selectedSubmission.lastName}
             </h3>
             <p>Status: {selectedSubmission.status}</p>
