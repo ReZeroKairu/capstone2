@@ -27,87 +27,96 @@ export default function FormResponses() {
   const [searchTerm, setSearchTerm] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // Check admin role
+  // Fetch current user and check admin role
   useEffect(() => {
     const unsub = auth.onAuthStateChanged(async (user) => {
-      if (user) {
-        setCurrentUser(user);
-        const usersSnapshot = await getDocs(collection(db, "Users"));
-        const adminCheck = usersSnapshot.docs.find(
-          (doc) => doc.id === user.uid && doc.data().role === "Admin"
-        );
-        setIsAdmin(!!adminCheck);
-      }
+      if (!user) return setCurrentUser(null);
+      setCurrentUser(user);
+
+      // Fetch only current user's document to check role
+      const userSnapshot = await getDocs(
+        query(collection(db, "Users"), where("__name__", "==", user.uid))
+      );
+      const userData = userSnapshot.docs[0]?.data();
+      setIsAdmin(userData?.role === "Admin");
     });
+
     return () => unsub();
   }, []);
 
-  // Fetch all forms
+  // Fetch available forms
   useEffect(() => {
     const fetchForms = async () => {
-      const formSnapshot = await getDocs(collection(db, "forms"));
-      setForms(formSnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
+      const snapshot = await getDocs(collection(db, "forms"));
+      setForms(snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
     };
     fetchForms();
   }, []);
 
+  // Fetch form responses with proper constraints
   const fetchResponses = async (direction = "next") => {
     if (!selectedFormId || !currentUser) return;
     setLoading(true);
 
-    let constraints = [where("formId", "==", selectedFormId)];
-    if (!isAdmin) constraints.push(where("userId", "==", currentUser.uid));
+    try {
+      let constraints = [where("formId", "==", selectedFormId)];
+      if (!isAdmin) constraints.push(where("userId", "==", currentUser.uid));
 
-    if (startDate && endDate) {
-      const start = Timestamp.fromDate(new Date(startDate + "T00:00:00"));
-      const end = Timestamp.fromDate(new Date(endDate + "T23:59:59"));
-      constraints.push(where("submittedAt", ">=", start));
-      constraints.push(where("submittedAt", "<=", end));
-    }
-
-    let q = query(
-      collection(db, "form_responses"),
-      ...constraints,
-      orderBy("submittedAt", "desc"),
-      limit(searchTerm ? 1000 : PAGE_SIZE)
-    );
-
-    if (!searchTerm && direction === "next" && lastVisible) {
-      q = query(q, startAfter(lastVisible));
-    }
-
-    const snapshot = await getDocs(q);
-    const data = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-
-    let filtered = data;
-
-    if (searchTerm.trim() !== "") {
-      const term = searchTerm.toLowerCase();
-      filtered = data.filter(
-        (r) =>
-          `${r.firstName || ""} ${r.lastName || ""}`
-            .toLowerCase()
-            .includes(term) || r.email?.toLowerCase().includes(term)
-      );
-      setLastVisible(null);
-      setPrevStack([]);
-    } else {
-      if (direction === "next" && lastVisible)
-        setPrevStack((prev) => [...prev, lastVisible]);
-      else if (direction === "prev") {
-        const prevPage = prevStack[prevStack.length - 1];
-        setPrevStack((prev) => prev.slice(0, -1));
-        setLastVisible(prevPage || null);
+      if (startDate && endDate) {
+        const start = Timestamp.fromDate(new Date(startDate + "T00:00:00"));
+        const end = Timestamp.fromDate(new Date(endDate + "T23:59:59"));
+        constraints.push(where("submittedAt", ">=", start));
+        constraints.push(where("submittedAt", "<=", end));
       }
-    }
 
-    setResponses(
-      direction === "prev"
-        ? filtered
-        : [...(direction === "next" ? responses : []), ...filtered]
-    );
-    setLastVisible(snapshot.docs[snapshot.docs.length - 1] || null);
-    setLoading(false);
+      let q = query(
+        collection(db, "form_responses"),
+        ...constraints,
+        orderBy("submittedAt", "desc"),
+        limit(searchTerm ? 1000 : PAGE_SIZE)
+      );
+
+      if (!searchTerm && direction === "next" && lastVisible) {
+        q = query(q, startAfter(lastVisible));
+      }
+
+      const snapshot = await getDocs(q);
+      const data = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+
+      let filtered = data;
+
+      // Client-side search
+      if (searchTerm.trim()) {
+        const term = searchTerm.toLowerCase();
+        filtered = data.filter(
+          (r) =>
+            `${r.firstName || ""} ${r.lastName || ""}`
+              .toLowerCase()
+              .includes(term) || r.email?.toLowerCase().includes(term)
+        );
+        setLastVisible(null);
+        setPrevStack([]);
+      } else {
+        if (direction === "next" && lastVisible)
+          setPrevStack((prev) => [...prev, lastVisible]);
+        else if (direction === "prev") {
+          const prevPage = prevStack[prevStack.length - 1];
+          setPrevStack((prev) => prev.slice(0, -1));
+          setLastVisible(prevPage || null);
+        }
+      }
+
+      setResponses(
+        direction === "prev"
+          ? filtered
+          : [...(direction === "next" ? responses : []), ...filtered]
+      );
+      setLastVisible(snapshot.docs[snapshot.docs.length - 1] || null);
+    } catch (err) {
+      console.error("Error fetching responses:", err.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   // Trigger fetch when filters/search change
@@ -115,23 +124,20 @@ export default function FormResponses() {
     setLastVisible(null);
     setPrevStack([]);
     setResponses([]);
-    fetchResponses(true);
+    fetchResponses("next");
   }, [selectedFormId, startDate, endDate, currentUser, isAdmin]);
 
-  // Handle Enter key for search/filter
   const handleKeyDown = (e) => {
-    if (e.key === "Enter") fetchResponses(true);
+    if (e.key === "Enter") fetchResponses("next");
   };
 
-  if (!isAdmin && !currentUser) {
+  if (!currentUser) {
     return (
-      <p className="p-28 text-red-500">
-        You do not have permission to view responses.
-      </p>
+      <p className="p-28 text-red-500">Please log in to view responses.</p>
     );
   }
 
-  // Safe text highlighting function
+  // Text highlighting helper
   const highlightText = (text) => {
     if (!searchTerm) return text;
     const escaped = searchTerm.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -203,7 +209,7 @@ export default function FormResponses() {
         <p>No responses found.</p>
       )}
 
-      {/* Response list */}
+      {/* Responses */}
       {responses.map((res) => {
         const fullName = `${res.firstName || ""} ${res.lastName || ""}`;
         return (
