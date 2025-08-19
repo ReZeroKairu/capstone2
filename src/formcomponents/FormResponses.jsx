@@ -9,6 +9,10 @@ import {
   startAfter,
   limit,
   Timestamp,
+  doc,
+  updateDoc,
+  addDoc,
+  serverTimestamp,
 } from "firebase/firestore";
 
 const PAGE_SIZE = 5;
@@ -26,6 +30,7 @@ export default function FormResponses() {
   const [searchTerm, setSearchTerm] = useState("");
   const [loading, setLoading] = useState(false);
 
+  // Fetch current user & check admin role
   useEffect(() => {
     const unsub = auth.onAuthStateChanged(async (user) => {
       if (!user) return setCurrentUser(null);
@@ -41,6 +46,7 @@ export default function FormResponses() {
     return () => unsub();
   }, []);
 
+  // Fetch available forms
   useEffect(() => {
     const fetchForms = async () => {
       const snapshot = await getDocs(collection(db, "forms"));
@@ -49,15 +55,21 @@ export default function FormResponses() {
     fetchForms();
   }, []);
 
+  // Fetch responses (with pagination & search)
+  // Fetch responses (with pagination & search)
   const fetchResponses = async (direction = "next") => {
     if (!selectedFormId || !currentUser) return;
     setLoading(true);
 
     try {
-      let constraints = [where("formId", "==", selectedFormId)];
+      // Always fetch only Pending responses for FormResponses
+      let constraints = [
+        where("formId", "==", selectedFormId),
+        where("status", "==", "Pending"), // ✅ Only Pending here
+      ];
+
       if (!isAdmin) constraints.push(where("userId", "==", currentUser.uid));
 
-      // Date filter
       if (startDate && endDate) {
         const start = Timestamp.fromDate(new Date(startDate + "T00:00:00"));
         const end = Timestamp.fromDate(new Date(endDate + "T23:59:59"));
@@ -67,7 +79,6 @@ export default function FormResponses() {
 
       const isSearching = searchTerm.trim() !== "";
 
-      // Build base query
       let q = query(
         collection(db, "form_responses"),
         ...constraints,
@@ -82,18 +93,15 @@ export default function FormResponses() {
       const snapshot = await getDocs(q);
       let data = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
 
-      // Client-side search using searchIndex for flexible name/email search
       if (isSearching) {
         const term = searchTerm.toLowerCase();
         data = data.filter((res) =>
           res.searchIndex?.some((field) => field.includes(term))
         );
-        // Reset pagination when searching
         setPrevStack([]);
         setLastVisible(null);
         setResponses(data);
       } else {
-        // Pagination handling
         if (direction === "prev") {
           const prevPage = prevStack[prevStack.length - 1];
           setPrevStack((prev) => prev.slice(0, -1));
@@ -125,12 +133,6 @@ export default function FormResponses() {
     if (e.key === "Enter") fetchResponses("next");
   };
 
-  if (!currentUser) {
-    return (
-      <p className="p-28 text-red-500">Please log in to view responses.</p>
-    );
-  }
-
   const highlightText = (text) => {
     if (!searchTerm) return text;
     const escaped = searchTerm.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -145,6 +147,124 @@ export default function FormResponses() {
       )
     );
   };
+
+  // Admin: Accept submission
+  const handleAccept = async (res) => {
+    try {
+      const resRef = doc(db, "form_responses", res.id);
+
+      // Update status at the root level
+      await updateDoc(resRef, { status: "Accepted" });
+
+      // Add history entry in subcollection
+      await addDoc(collection(db, "form_responses", res.id, "history"), {
+        timestamp: serverTimestamp(),
+        updatedBy: currentUser.uid,
+        status: "Accepted",
+      });
+
+      // Check if manuscript already exists for this response
+      const manuscriptsRef = collection(db, "manuscripts");
+      const q = query(manuscriptsRef, where("responseId", "==", res.id));
+      const snapshot = await getDocs(q);
+
+      if (!snapshot.empty) {
+        // Update existing manuscript status
+        snapshot.forEach(async (docSnap) => {
+          await updateDoc(doc(db, "manuscripts", docSnap.id), {
+            status: "Accepted",
+          });
+        });
+      } else {
+        // Add to manuscripts collection if it doesn't exist
+        await addDoc(manuscriptsRef, {
+          responseId: res.id,
+          formId: res.formId,
+          formTitle: res.formTitle,
+          answeredQuestions: res.answeredQuestions,
+          userId: res.userId,
+          submittedAt: serverTimestamp(),
+          status: "Accepted",
+        });
+      }
+
+      // Notify researcher
+      await addDoc(collection(db, "Users", res.userId, "Notifications"), {
+        message: `Your manuscript "${res.formTitle}" has been accepted by the admin.`,
+        seen: false,
+        timestamp: serverTimestamp(),
+      });
+
+      // Update local state
+      setResponses((prev) =>
+        prev.map((r) => (r.id === res.id ? { ...r, status: "Accepted" } : r))
+      );
+    } catch (err) {
+      console.error("Error accepting response:", err);
+    }
+  };
+
+  // Admin: Reject submission
+  const handleReject = async (res) => {
+    try {
+      const resRef = doc(db, "form_responses", res.id);
+
+      // Update status at the root level
+      await updateDoc(resRef, { status: "Rejected" });
+
+      // Add history entry in subcollection
+      await addDoc(collection(db, "form_responses", res.id, "history"), {
+        timestamp: serverTimestamp(),
+        updatedBy: currentUser.uid,
+        status: "Rejected",
+      });
+
+      // Check if manuscript already exists for this response
+      const manuscriptsRef = collection(db, "manuscripts");
+      const q = query(manuscriptsRef, where("responseId", "==", res.id));
+      const snapshot = await getDocs(q);
+
+      if (!snapshot.empty) {
+        // Update existing manuscript status
+        snapshot.forEach(async (docSnap) => {
+          await updateDoc(doc(db, "manuscripts", docSnap.id), {
+            status: "Rejected",
+          });
+        });
+      } else {
+        // Add to manuscripts collection if it doesn't exist
+        await addDoc(manuscriptsRef, {
+          responseId: res.id,
+          formId: res.formId,
+          formTitle: res.formTitle,
+          answeredQuestions: res.answeredQuestions,
+          userId: res.userId,
+          submittedAt: serverTimestamp(),
+          status: "Rejected",
+        });
+      }
+
+      // Notify researcher
+      await addDoc(collection(db, "Users", res.userId, "Notifications"), {
+        message: `Your manuscript "${res.formTitle}" has been rejected by the admin.`,
+        seen: false,
+        timestamp: serverTimestamp(),
+      });
+
+      // Update local state
+      setResponses((prev) =>
+        prev.map((r) => (r.id === res.id ? { ...r, status: "Rejected" } : r))
+      );
+    } catch (err) {
+      console.error("Error rejecting response:", err);
+    }
+  };
+
+  if (!currentUser) {
+    return (
+      <p className="p-28 text-red-500">Please log in to view responses.</p>
+    );
+  }
 
   return (
     <div className="p-28 max-w-5xl mx-auto">
@@ -210,6 +330,7 @@ export default function FormResponses() {
               {res.submittedAt?.toDate?.()?.toLocaleString() ||
                 new Date(res.submittedAt.seconds * 1000).toLocaleString()}
             </p>
+
             <div className="mb-2">
               {res.answeredQuestions?.map((q, idx) => (
                 <p key={idx}>
@@ -217,9 +338,11 @@ export default function FormResponses() {
                 </p>
               ))}
             </div>
+
             <div>
               <strong>Status:</strong> {res.status || "Pending"}
             </div>
+
             <div>
               <strong>History:</strong>
               {res.history?.map((h, i) => (
@@ -229,6 +352,24 @@ export default function FormResponses() {
                 </p>
               ))}
             </div>
+
+            {/* Admin Accept/Reject Buttons */}
+            {isAdmin && res.status === "Pending" && (
+              <div className="mt-2 flex gap-2">
+                <button
+                  onClick={() => handleAccept(res)}
+                  className="bg-green-500 text-white px-3 py-1 rounded"
+                >
+                  Accept
+                </button>
+                <button
+                  onClick={() => handleReject(res)}
+                  className="bg-red-500 text-white px-3 py-1 rounded"
+                >
+                  Reject
+                </button>
+              </div>
+            )}
           </div>
         );
       })}

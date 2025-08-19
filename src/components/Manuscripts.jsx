@@ -1,159 +1,226 @@
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
+import { getAuth } from "firebase/auth";
+import {
+  collection,
+  onSnapshot,
+  doc,
+  getDoc,
+  updateDoc,
+  query,
+  where,
+} from "firebase/firestore";
 import { db } from "../firebase/firebase";
-import { collection, getDocs, query, orderBy, limit } from "firebase/firestore";
+
+const STATUS_ORDER = ["Pending", "Accepted", "Rejected"];
 
 const Manuscripts = () => {
-  const [responses, setResponses] = useState([]);
-  const [filteredResponses, setFilteredResponses] = useState([]);
+  const [user, setUser] = useState(null);
+  const [role, setRole] = useState(null);
+  const [manuscripts, setManuscripts] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [message, setMessage] = useState("");
-  const [selectedLabel, setSelectedLabel] = useState("");
-  const [searchValue, setSearchValue] = useState("");
-  const [labels, setLabels] = useState([]);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [expanded, setExpanded] = useState({}); // Track expanded manuscripts
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  const params = new URLSearchParams(location.search);
+  const initialStatus = params.get("status") || "Pending";
+  const [selectedStatus, setSelectedStatus] = useState(initialStatus);
 
   useEffect(() => {
-    const fetchResponses = async () => {
+    const auth = getAuth();
+    let unsubscribeManuscripts = null;
+
+    const fetchData = async (currentUser) => {
       try {
-        const q = query(
-          collection(db, "forms"), // Updated collection
-          orderBy("createdAt", "desc"),
-          limit(10)
-        );
-        const querySnapshot = await getDocs(q);
-        let allResponses = [];
-        let uniqueLabels = new Set();
+        const userRef = doc(db, "Users", currentUser.uid);
+        const docSnap = await getDoc(userRef);
+        const userRole = docSnap.exists() ? docSnap.data().role : "User";
+        setRole(userRole);
 
-        for (const formDoc of querySnapshot.docs) {
-          const form = formDoc.data();
-          const formId = formDoc.id;
-          const responseRef = collection(db, "forms", formId, "responses"); // Updated reference
-          const fields = form.fields || [];
+        const manuscriptsRef = collection(db, "manuscripts");
+        unsubscribeManuscripts = onSnapshot(manuscriptsRef, (snapshot) => {
+          const allMss = snapshot.docs.map((doc) => ({
+            id: doc.id,
+            ...doc.data(),
+          }));
 
-          fields.forEach((field) => uniqueLabels.add(field.label));
+          allMss.sort(
+            (a, b) =>
+              (b.submittedAt?.seconds || 0) - (a.submittedAt?.seconds || 0)
+          );
 
-          const responseSnapshot = await getDocs(responseRef);
-          responseSnapshot.forEach((responseDoc) => {
-            const responseData = responseDoc.data();
-
-            console.log("Fetched Response Data:", responseData); // Debugging log
-
-            // Ensure responses are properly structured
-            const structuredResponses = {};
-            fields.forEach((field) => {
-              structuredResponses[field.id] = responseData[field.id] || "-";
-            });
-
-            allResponses.push({
-              formTitle: form.title || "Untitled Manuscript",
-              responses: structuredResponses,
-              submittedAt:
-                responseData.submittedAt
-                  ?.toDate?.()
-                  ?.toISOString()
-                  ?.split("T")[0] || "N/A",
-              formFields: fields,
-            });
-          });
-        }
-
-        setLabels(Array.from(uniqueLabels));
-        if (allResponses.length === 0) {
-          setMessage("No responses found.");
-        } else {
-          setResponses(allResponses);
-          setFilteredResponses(allResponses);
-        }
-      } catch (error) {
-        console.error("Error fetching responses:", error);
-        setMessage("Error fetching responses.");
+          setManuscripts(
+            userRole === "Admin"
+              ? allMss
+              : allMss.filter((m) => m.userId === currentUser.uid)
+          );
+        });
+      } catch (err) {
+        console.error("Error fetching manuscripts:", err);
       } finally {
         setLoading(false);
       }
     };
 
-    fetchResponses();
+    const unsubscribeAuth = auth.onAuthStateChanged((currentUser) => {
+      if (currentUser) {
+        setUser(currentUser);
+        fetchData(currentUser);
+      } else {
+        setUser(null);
+        setRole(null);
+        setManuscripts([]);
+        setLoading(false);
+      }
+    });
+
+    return () => {
+      unsubscribeAuth();
+      if (unsubscribeManuscripts) unsubscribeManuscripts();
+    };
   }, []);
 
-  useEffect(() => {
-    let filtered = responses;
+  if (loading)
+    return <div className="p-28 text-gray-700">Loading manuscripts...</div>;
+  if (!user)
+    return (
+      <div className="p-28 text-red-600 text-center">
+        You must be signed in to view manuscripts.
+      </div>
+    );
 
-    if (selectedLabel && searchValue) {
-      filtered = filtered.filter((response) =>
-        response.formFields.some(
-          (field) =>
-            field.label === selectedLabel &&
-            response.responses[field.id] &&
-            String(response.responses[field.id])
-              .toLowerCase()
-              .includes(searchValue.toLowerCase())
-        )
-      );
+  const filteredManuscripts = manuscripts.filter((m) => {
+    const matchesStatus = m.status === selectedStatus;
+    const term = searchTerm.toLowerCase();
+    const matchesSearch =
+      m.title?.toLowerCase().includes(term) ||
+      `${m.firstName || ""} ${m.lastName || ""}`.toLowerCase().includes(term);
+    return matchesStatus && matchesSearch;
+  });
+
+  const handleStatusClick = (status) => {
+    setSelectedStatus(status);
+    navigate(`/manuscripts?status=${status}`);
+  };
+
+  const toggleExpand = (id) => {
+    setExpanded((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  const updateManuscriptStatus = async (responseId, newStatus) => {
+    try {
+      const manuscriptsRef = collection(db, "manuscripts");
+      const q = query(manuscriptsRef, where("responseId", "==", responseId));
+      const snapshot = await getDocs(q);
+      if (!snapshot.empty) {
+        const docRef = doc(db, "manuscripts", snapshot.docs[0].id);
+        await updateDoc(docRef, { status: newStatus });
+      }
+    } catch (err) {
+      console.error("Error updating manuscript status:", err);
     }
-
-    setFilteredResponses(filtered);
-  }, [selectedLabel, searchValue, responses]);
+  };
 
   return (
-    <div className="min-h-screen bg-gray-100 py-32 flex flex-col items-center">
-      <div className="max-w-screen-md w-full px-6">
-        <h1 className="text-3xl font-bold text-center mb-6">Manuscripts</h1>
-        <div className="bg-white p-6 rounded-lg shadow-lg mb-6">
-          <select
-            value={selectedLabel}
-            onChange={(e) => setSelectedLabel(e.target.value)}
-            className="p-3 border rounded-lg w-full mb-4"
-          >
-            <option value="">Select Label</option>
-            {labels.map((label, index) => (
-              <option key={index} value={label}>
-                {label}
-              </option>
-            ))}
-          </select>
-          <input
-            type="text"
-            placeholder="Search by label value..."
-            value={searchValue}
-            onChange={(e) => setSearchValue(e.target.value)}
-            className="w-full p-3 border rounded-lg"
-            disabled={!selectedLabel}
-          />
-        </div>
+    <div className="pt-24 px-4 sm:px-6 lg:px-24 pb-24">
+      <h1 className="text-3xl font-bold mb-6 text-center sm:text-left">
+        Manuscripts
+      </h1>
 
-        {loading ? (
-          <p className="text-center">Loading...</p>
-        ) : message ? (
-          <p className="text-center text-red-500">{message}</p>
-        ) : (
-          <div className="flex flex-wrap justify-center gap-6">
-            {filteredResponses.map((response, index) => (
-              <div
-                key={index}
-                className="bg-white p-6 rounded-lg shadow-md w-full md:w-2/3"
-              >
-                <h2 className="text-xl font-semibold mb-2 text-center">
-                  {response.formTitle}
-                </h2>
-                <p className="text-sm text-gray-500 mb-2 text-center">
-                  Submitted At: {response.submittedAt}
-                </p>
-                {response.formFields.map((field) => (
-                  <div key={field.id} className="text-sm border-b py-2">
-                    <strong>{field.label}:</strong>{" "}
-                    {typeof response.responses[field.id] === "object" ? (
-                      <pre className="whitespace-pre-wrap text-sm bg-gray-100 p-2 rounded">
-                        {JSON.stringify(response.responses[field.id], null, 2)}
-                      </pre>
-                    ) : (
-                      response.responses[field.id]
-                    )}
-                  </div>
-                ))}
-              </div>
-            ))}
-          </div>
-        )}
+      {/* Status Buttons */}
+      <div className="flex flex-wrap gap-2 mb-4">
+        {STATUS_ORDER.map((status) => {
+          const count = manuscripts.filter((m) => m.status === status).length;
+          const isSelected = selectedStatus === status;
+          return (
+            <button
+              key={status}
+              className={`px-4 py-2 rounded font-semibold flex items-center gap-2 transition-shadow text-sm sm:text-base ${
+                isSelected
+                  ? "bg-green-500 text-white shadow-md"
+                  : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+              }`}
+              onClick={() => handleStatusClick(status)}
+            >
+              {status}{" "}
+              <span className="bg-white text-gray-700 px-2 rounded-full text-xs sm:text-sm">
+                {count}
+              </span>
+            </button>
+          );
+        })}
       </div>
+
+      {/* Search Input */}
+      <div className="mb-6">
+        <input
+          type="text"
+          placeholder="Search by title or author..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          className="border p-2 w-full rounded text-sm sm:text-base"
+        />
+      </div>
+
+      {/* Manuscript List */}
+      {filteredManuscripts.length === 0 ? (
+        <p className="text-gray-600 text-sm sm:text-base">
+          No manuscripts matching your search and status "{selectedStatus}".
+        </p>
+      ) : (
+        <ul className="space-y-4">
+          {filteredManuscripts.map((m) => (
+            <li
+              key={m.id}
+              className="border p-4 rounded shadow-sm bg-white hover:shadow-md transition w-full sm:w-auto"
+            >
+              <p
+                className="font-semibold text-lg cursor-pointer break-words"
+                onClick={() => toggleExpand(m.id)}
+              >
+                {m.title || "Untitled"}
+              </p>
+              <p className="text-sm text-gray-600 break-words">
+                By {m.firstName || "Unknown"} {m.lastName || ""} (
+                {m.role || "N/A"})
+              </p>
+              {m.submittedAt && (
+                <p className="text-sm text-gray-500">
+                  Submitted:{" "}
+                  {new Date(m.submittedAt.seconds * 1000).toLocaleString()}
+                </p>
+              )}
+              <p className="text-sm mt-1">
+                <strong>Status:</strong>{" "}
+                <span
+                  className={`font-semibold ${
+                    m.status === "Pending"
+                      ? "text-yellow-600"
+                      : m.status === "Accepted"
+                      ? "text-green-600"
+                      : "text-red-600"
+                  }`}
+                >
+                  {m.status}
+                </span>
+              </p>
+
+              {/* Show answers if expanded */}
+              {expanded[m.id] && (
+                <div className="mt-2 border-t pt-2 max-h-96 overflow-y-auto">
+                  {m.answeredQuestions?.map((q, idx) => (
+                    <p key={idx} className="text-sm sm:text-base break-words">
+                      <strong>{q.question}:</strong> {q.answer}
+                    </p>
+                  ))}
+                </div>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 };
