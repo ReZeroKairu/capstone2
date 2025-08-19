@@ -123,6 +123,16 @@ export default function AnswerForm() {
 
       const initialStatus = "Pending";
 
+      // 🔹 Create a searchIndex for Firestore search
+      const searchIndex = [
+        (userInfo.firstName || "").toLowerCase(),
+        (userInfo.lastName || "").toLowerCase(),
+        `${(userInfo.firstName || "").toLowerCase()} ${(
+          userInfo.lastName || ""
+        ).toLowerCase()}`,
+        (userInfo.email || "").toLowerCase(),
+      ];
+
       const responseRef = await addDoc(collection(db, "form_responses"), {
         formId,
         formTitle: form.title,
@@ -134,6 +144,7 @@ export default function AnswerForm() {
         answeredQuestions,
         status: initialStatus,
         submittedAt: serverTimestamp(),
+        searchIndex, // ✅ added searchIndex
       });
 
       await addDoc(

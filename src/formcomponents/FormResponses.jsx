@@ -1,4 +1,3 @@
-// src/formcomponents/FormResponses.jsx
 import React, { useEffect, useState } from "react";
 import { db, auth } from "../firebase/firebase";
 import {
@@ -27,13 +26,11 @@ export default function FormResponses() {
   const [searchTerm, setSearchTerm] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // Fetch current user and check admin role
   useEffect(() => {
     const unsub = auth.onAuthStateChanged(async (user) => {
       if (!user) return setCurrentUser(null);
       setCurrentUser(user);
 
-      // Fetch only current user's document to check role
       const userSnapshot = await getDocs(
         query(collection(db, "Users"), where("__name__", "==", user.uid))
       );
@@ -44,7 +41,6 @@ export default function FormResponses() {
     return () => unsub();
   }, []);
 
-  // Fetch available forms
   useEffect(() => {
     const fetchForms = async () => {
       const snapshot = await getDocs(collection(db, "forms"));
@@ -53,7 +49,6 @@ export default function FormResponses() {
     fetchForms();
   }, []);
 
-  // Fetch form responses with proper constraints
   const fetchResponses = async (direction = "next") => {
     if (!selectedFormId || !currentUser) return;
     setLoading(true);
@@ -62,6 +57,7 @@ export default function FormResponses() {
       let constraints = [where("formId", "==", selectedFormId)];
       if (!isAdmin) constraints.push(where("userId", "==", currentUser.uid));
 
+      // Date filter
       if (startDate && endDate) {
         const start = Timestamp.fromDate(new Date(startDate + "T00:00:00"));
         const end = Timestamp.fromDate(new Date(endDate + "T23:59:59"));
@@ -69,49 +65,48 @@ export default function FormResponses() {
         constraints.push(where("submittedAt", "<=", end));
       }
 
+      const isSearching = searchTerm.trim() !== "";
+
+      // Build base query
       let q = query(
         collection(db, "form_responses"),
         ...constraints,
         orderBy("submittedAt", "desc"),
-        limit(searchTerm ? 1000 : PAGE_SIZE)
+        limit(isSearching ? 1000 : PAGE_SIZE)
       );
 
-      if (!searchTerm && direction === "next" && lastVisible) {
+      if (!isSearching && direction === "next" && lastVisible) {
         q = query(q, startAfter(lastVisible));
       }
 
       const snapshot = await getDocs(q);
-      const data = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+      let data = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
 
-      let filtered = data;
-
-      // Client-side search
-      if (searchTerm.trim()) {
+      // Client-side search using searchIndex for flexible name/email search
+      if (isSearching) {
         const term = searchTerm.toLowerCase();
-        filtered = data.filter(
-          (r) =>
-            `${r.firstName || ""} ${r.lastName || ""}`
-              .toLowerCase()
-              .includes(term) || r.email?.toLowerCase().includes(term)
+        data = data.filter((res) =>
+          res.searchIndex?.some((field) => field.includes(term))
         );
-        setLastVisible(null);
+        // Reset pagination when searching
         setPrevStack([]);
+        setLastVisible(null);
+        setResponses(data);
       } else {
-        if (direction === "next" && lastVisible)
-          setPrevStack((prev) => [...prev, lastVisible]);
-        else if (direction === "prev") {
+        // Pagination handling
+        if (direction === "prev") {
           const prevPage = prevStack[prevStack.length - 1];
           setPrevStack((prev) => prev.slice(0, -1));
           setLastVisible(prevPage || null);
+          setResponses(data);
+        } else {
+          setResponses(direction === "next" ? [...responses, ...data] : data);
+          if (snapshot.docs.length > 0) {
+            setPrevStack((prev) => [...prev, lastVisible]);
+            setLastVisible(snapshot.docs[snapshot.docs.length - 1]);
+          }
         }
       }
-
-      setResponses(
-        direction === "prev"
-          ? filtered
-          : [...(direction === "next" ? responses : []), ...filtered]
-      );
-      setLastVisible(snapshot.docs[snapshot.docs.length - 1] || null);
     } catch (err) {
       console.error("Error fetching responses:", err.message);
     } finally {
@@ -119,13 +114,12 @@ export default function FormResponses() {
     }
   };
 
-  // Trigger fetch when filters/search change
   useEffect(() => {
     setLastVisible(null);
     setPrevStack([]);
     setResponses([]);
     fetchResponses("next");
-  }, [selectedFormId, startDate, endDate, currentUser, isAdmin]);
+  }, [selectedFormId, startDate, endDate, searchTerm, currentUser, isAdmin]);
 
   const handleKeyDown = (e) => {
     if (e.key === "Enter") fetchResponses("next");
@@ -137,7 +131,6 @@ export default function FormResponses() {
     );
   }
 
-  // Text highlighting helper
   const highlightText = (text) => {
     if (!searchTerm) return text;
     const escaped = searchTerm.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -157,7 +150,6 @@ export default function FormResponses() {
     <div className="p-28 max-w-5xl mx-auto">
       <h1 className="text-2xl font-bold mb-4">Form Responses</h1>
 
-      {/* Form selection */}
       <select
         value={selectedFormId}
         onChange={(e) => setSelectedFormId(e.target.value)}
@@ -171,7 +163,6 @@ export default function FormResponses() {
         ))}
       </select>
 
-      {/* Date filter */}
       <div className="mb-4 flex gap-2">
         <label>
           Start Date:{" "}
@@ -193,7 +184,6 @@ export default function FormResponses() {
         </label>
       </div>
 
-      {/* Search input */}
       <div className="mb-4">
         <input
           type="text"
@@ -209,7 +199,6 @@ export default function FormResponses() {
         <p>No responses found.</p>
       )}
 
-      {/* Responses */}
       {responses.map((res) => {
         const fullName = `${res.firstName || ""} ${res.lastName || ""}`;
         return (
@@ -221,7 +210,6 @@ export default function FormResponses() {
               {res.submittedAt?.toDate?.()?.toLocaleString() ||
                 new Date(res.submittedAt.seconds * 1000).toLocaleString()}
             </p>
-
             <div className="mb-2">
               {res.answeredQuestions?.map((q, idx) => (
                 <p key={idx}>
@@ -229,11 +217,9 @@ export default function FormResponses() {
                 </p>
               ))}
             </div>
-
             <div>
               <strong>Status:</strong> {res.status || "Pending"}
             </div>
-
             <div>
               <strong>History:</strong>
               {res.history?.map((h, i) => (
@@ -247,7 +233,6 @@ export default function FormResponses() {
         );
       })}
 
-      {/* Pagination */}
       {!searchTerm && responses.length > 0 && (
         <div className="flex justify-center mt-4 gap-2">
           <button
