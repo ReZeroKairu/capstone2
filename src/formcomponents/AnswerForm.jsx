@@ -20,6 +20,7 @@ export default function AnswerForm() {
   const [currentUser, setCurrentUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [cooldown, setCooldown] = useState(0);
+  const [message, setMessage] = useState(""); // ✅ Added for inline success/error messages
 
   useEffect(() => {
     const fetchLatestForm = async () => {
@@ -46,7 +47,6 @@ export default function AnswerForm() {
       if (user) {
         setCurrentUser(user);
 
-        // 🔹 Check last submission timestamp
         const userRef = doc(db, "Users", user.uid);
         const userSnap = await getDoc(userRef);
         if (userSnap.exists()) {
@@ -67,7 +67,6 @@ export default function AnswerForm() {
     return () => unsub();
   }, []);
 
-  // Countdown timer effect
   useEffect(() => {
     if (cooldown > 0) {
       const timer = setInterval(() => {
@@ -77,31 +76,39 @@ export default function AnswerForm() {
     }
   }, [cooldown]);
 
-  const handleChange = (index, value) => {
-    setAnswers({ ...answers, [index]: value });
+  const handleChange = (index, value, type) => {
+    if (type === "checkbox") {
+      const prev = answers[index] || [];
+      if (prev.includes(value)) {
+        setAnswers({ ...answers, [index]: prev.filter((v) => v !== value) });
+      } else {
+        setAnswers({ ...answers, [index]: [...prev, value] });
+      }
+    } else {
+      setAnswers({ ...answers, [index]: value });
+    }
   };
 
   const submitAnswers = async () => {
     if (cooldown > 0) {
-      alert(`You already submitted. Please wait ${cooldown} seconds.`);
+      setMessage(`You already submitted. Please wait ${cooldown} seconds.`);
       return;
     }
     if (!form) {
-      alert("Form is not loaded yet.");
+      setMessage("Form is not loaded yet.");
       return;
     }
     if (!currentUser) {
-      alert("You must be signed in to submit the form.");
+      setMessage("You must be signed in to submit the form.");
       return;
     }
 
-    // ✅ Required field validation
     const missingRequired = form.questions.some((q, index) => {
       return q.required && !answers[index];
     });
 
     if (missingRequired) {
-      alert("Please fill in all required fields before submitting.");
+      setMessage("Please fill in all required fields before submitting.");
       return;
     }
 
@@ -116,14 +123,12 @@ export default function AnswerForm() {
       const userRef = doc(db, "Users", currentUser.uid);
       const userSnap = await getDoc(userRef);
       if (!userSnap.exists()) {
-        alert("User record not found in database.");
+        setMessage("User record not found in database.");
         return;
       }
       const userInfo = userSnap.data();
-
       const initialStatus = "Pending";
 
-      // 🔹 Create a searchIndex for Firestore search
       const searchIndex = [
         (userInfo.firstName || "").toLowerCase(),
         (userInfo.lastName || "").toLowerCase(),
@@ -133,6 +138,7 @@ export default function AnswerForm() {
         (userInfo.email || "").toLowerCase(),
       ];
 
+      // Add response to form_responses
       const responseRef = await addDoc(collection(db, "form_responses"), {
         formId,
         formTitle: form.title,
@@ -144,9 +150,10 @@ export default function AnswerForm() {
         answeredQuestions,
         status: initialStatus,
         submittedAt: serverTimestamp(),
-        searchIndex, // ✅ added searchIndex
+        searchIndex,
       });
 
+      // Add history entry
       await addDoc(
         collection(db, "form_responses", responseRef.id, "history"),
         {
@@ -156,17 +163,28 @@ export default function AnswerForm() {
         }
       );
 
-      // 🔹 Save last submission timestamp in Firestore
-      await updateDoc(userRef, {
-        lastSubmittedAt: serverTimestamp(),
+      // ✅ Add manuscript entry as Pending
+      await addDoc(collection(db, "manuscripts"), {
+        responseId: responseRef.id,
+        formId,
+        formTitle: form.title,
+        answeredQuestions,
+        userId: currentUser.uid,
+        firstName: userInfo.firstName || "",
+        lastName: userInfo.lastName || "",
+        role: userInfo.role || "Researcher",
+        submittedAt: serverTimestamp(),
+        status: initialStatus,
       });
 
-      setCooldown(5); // set 5 seconds cooldown
-      alert("Form submitted successfully!");
+      await updateDoc(userRef, { lastSubmittedAt: serverTimestamp() });
+
+      setCooldown(5);
       setAnswers({});
+      setMessage("Form submitted successfully!");
     } catch (error) {
       console.error("Submit error:", error);
-      alert("Failed to submit form. Check console for details.");
+      setMessage("Failed to submit form. Check console for details.");
     }
   };
 
@@ -209,7 +227,7 @@ export default function AnswerForm() {
                 <label key={optIndex} className="flex items-center space-x-2">
                   <input
                     type="radio"
-                    name={`question-${index}`} // group by question
+                    name={`question-${index}`}
                     value={option}
                     checked={answers[index] === option}
                     onChange={() => handleChange(index, option)}
@@ -219,6 +237,40 @@ export default function AnswerForm() {
                 </label>
               ))}
             </div>
+          )}
+
+          {/* ✅ Checkbox question type */}
+          {q.type === "checkbox" && (
+            <div className="space-y-2">
+              {q.options?.map((option, optIndex) => (
+                <label key={optIndex} className="flex items-center space-x-2">
+                  <input
+                    type="checkbox"
+                    value={option}
+                    checked={(answers[index] || []).includes(option)}
+                    onChange={() => handleChange(index, option, "checkbox")}
+                    className="form-checkbox text-green-500"
+                  />
+                  <span>{option}</span>
+                </label>
+              ))}
+            </div>
+          )}
+
+          {/* ✅ Select question type */}
+          {q.type === "select" && (
+            <select
+              value={answers[index] || ""}
+              onChange={(e) => handleChange(index, e.target.value)}
+              className="border p-2 w-full rounded focus:outline-none focus:ring-2 focus:ring-green-400"
+            >
+              <option value="">Select an option</option>
+              {q.options?.map((option, optIndex) => (
+                <option key={optIndex} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
           )}
         </div>
       ))}
@@ -232,6 +284,12 @@ export default function AnswerForm() {
       >
         {cooldown > 0 ? `Please wait ${cooldown}s` : "Submit"}
       </button>
+
+      {message && (
+        <p className="mt-2 text-center sm:text-left text-sm text-red-500">
+          {message}
+        </p>
+      )}
 
       {!currentUser && (
         <p className="text-red-500 mt-2 text-sm text-center sm:text-left">

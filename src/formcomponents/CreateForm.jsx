@@ -1,4 +1,3 @@
-// src/formcomponents/CreateForm.jsx
 import React, { useState, useEffect } from "react";
 import { db, auth } from "../firebase/firebase";
 import {
@@ -21,7 +20,6 @@ export default function CreateForm() {
   const [formId, setFormId] = useState(null);
   const [previewMode, setPreviewMode] = useState(false);
 
-  // Load latest form for admin
   useEffect(() => {
     const checkAdminAndFetch = async () => {
       auth.onAuthStateChanged(async (user) => {
@@ -51,7 +49,6 @@ export default function CreateForm() {
     checkAdminAndFetch();
   }, []);
 
-  // Add / remove / update questions
   const addQuestion = () =>
     setQuestions([
       ...questions,
@@ -62,10 +59,15 @@ export default function CreateForm() {
   const updateQuestion = (index, field, value) => {
     const updated = [...questions];
     updated[index][field] = value;
+    if (
+      field === "type" &&
+      !["multiple", "radio", "checkbox", "select"].includes(value)
+    ) {
+      updated[index].options = []; // Clear options for non-choice types
+    }
     setQuestions(updated);
   };
 
-  // Multiple choice / radio options
   const addOption = (qIndex) => {
     const updated = [...questions];
     updated[qIndex].options = updated[qIndex].options || [];
@@ -83,7 +85,6 @@ export default function CreateForm() {
     setQuestions(updated);
   };
 
-  // Drag-and-drop reordering
   const onDragEnd = (result) => {
     if (!result.destination) return;
     const reordered = Array.from(questions);
@@ -92,18 +93,20 @@ export default function CreateForm() {
     setQuestions(reordered);
   };
 
-  // Save form
   const saveForm = async () => {
     if (!title.trim()) return alert("Form title is required!");
     if (questions.some((q) => !q.text.trim()))
       return alert("All questions must have text!");
     if (
       questions.some(
-        (q) => q.required && q.type === "multiple" && q.options.length === 0
+        (q) =>
+          q.required &&
+          ["multiple", "radio", "checkbox", "select"].includes(q.type) &&
+          (!q.options || q.options.length === 0)
       )
     )
       return alert(
-        "All required multiple-choice questions must have at least one option!"
+        "All required choice questions must have at least one option!"
       );
 
     const data = { title, questions, updatedAt: new Date() };
@@ -128,14 +131,7 @@ export default function CreateForm() {
     );
 
   return (
-    <div
-      className="
-    p-4 sm:p-6 md:p-8 lg:p-12 
-    md:pt-24 lg:pt-32 
-    max-w-full sm:max-w-xl md:max-w-3xl lg:max-w-5xl 
-    mx-auto
-  "
-    >
+    <div className="p-4 sm:p-6 md:p-8 lg:p-12 md:pt-24 lg:pt-32 max-w-full sm:max-w-xl md:max-w-3xl lg:max-w-5xl mx-auto">
       <h1 className="text-2xl font-bold mb-4">
         {formId ? "Edit Form" : "Create a Form"}
       </h1>
@@ -196,6 +192,13 @@ export default function CreateForm() {
                           <option value="textarea">Paragraph</option>
                           <option value="multiple">Multiple Choice</option>
                           <option value="radio">Radio</option>
+                          <option value="checkbox">Checkbox</option>{" "}
+                          {/* ✅ Added */}
+                          <option value="select">Dropdown</option>{" "}
+                          {/* ✅ Added */}
+                          <option value="number">Number</option>{" "}
+                          {/* ✅ Added */}
+                          <option value="date">Date</option> {/* ✅ Added */}
                         </select>
 
                         <label className="flex items-center gap-2">
@@ -213,7 +216,10 @@ export default function CreateForm() {
                           Required
                         </label>
 
-                        {(q.type === "multiple" || q.type === "radio") && (
+                        {(q.type === "multiple" ||
+                          q.type === "radio" ||
+                          q.type === "checkbox" ||
+                          q.type === "select") && (
                           <div className="flex flex-col gap-2">
                             {q.options?.map((opt, oIndex) => (
                               <div
@@ -272,17 +278,37 @@ export default function CreateForm() {
               <p className="font-medium mb-2 break-words">
                 {q.text} {q.required && <span className="text-red-500">*</span>}
               </p>
+
               {q.type === "text" && (
                 <input type="text" className="border p-2 w-full rounded mb-2" />
               )}
               {q.type === "textarea" && (
                 <textarea className="border p-2 w-full rounded mb-2" />
               )}
-              {(q.type === "multiple" || q.type === "radio") &&
+              {q.type === "number" && (
+                <input
+                  type="number"
+                  className="border p-2 w-full rounded mb-2"
+                />
+              )}
+              {q.type === "date" && (
+                <input type="date" className="border p-2 w-full rounded mb-2" />
+              )}
+
+              {(q.type === "multiple" ||
+                q.type === "radio" ||
+                q.type === "checkbox" ||
+                q.type === "select") &&
                 q.options?.map((opt, i) => (
                   <label key={i} className="flex items-center gap-2">
                     <input
-                      type={q.type === "radio" ? "radio" : "checkbox"}
+                      type={
+                        q.type === "radio"
+                          ? "radio"
+                          : q.type === "checkbox"
+                          ? "checkbox"
+                          : "radio"
+                      }
                       name={`q${idx}`}
                       className="accent-blue-500"
                     />
