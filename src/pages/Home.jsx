@@ -10,17 +10,15 @@ function Home() {
       />
 
       {/* Logo */}
-      <div className="relative flex-1 w-full">
-        <img
-          src="/pubtracklogo.png"
-          alt="PubTrack Logo"
-          className="
-            h-[300px] md:h-[280px] lg:h-[300px] 
-            absolute bottom-[100px] right-[200px] 
-            max-sm:static max-sm:mx-auto max-sm:mt-40 max-sm:h-[350px]
-          "
-        />
-      </div>
+      <img
+        src="/pubtracklogo.png"
+        alt="PubTrack Logo"
+        className="
+    h-[300px] sm:h-[280px] md:h-[350px] lg:h-[420px] 
+    absolute bottom-[50px] right-[70px] 
+    max-sm:static max-sm:mx-auto max-sm:mt-40 max-sm:h-[250px]
+  "
+      />
     </div>
   );
 }

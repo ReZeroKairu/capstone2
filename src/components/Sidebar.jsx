@@ -1,4 +1,7 @@
 import React, { useEffect } from "react";
+import { MdTrendingUp } from "react-icons/md";
+import { HiTrendingUp } from "react-icons/hi";
+import { FaChartLine } from "react-icons/fa";
 import {
   FaHome,
   FaBullhorn,
@@ -39,7 +42,7 @@ const Sidebar = ({ role, isOpen, toggleSidebar }) => {
     {
       name: "Dashboard",
       path: "/dashboard",
-      icon: <FaTachometerAlt className="text-xl" />,
+      icon: <HiTrendingUp className="text-xl" />,
     },
   ];
 
@@ -85,7 +88,7 @@ const Sidebar = ({ role, isOpen, toggleSidebar }) => {
           onClick={handleLinkClick}
           className={`flex items-center justify-center md:justify-start px-4 py-3 mb-1 rounded-lg ${
             location.pathname === link.path
-              ? "bg-white text-black font-bold"
+              ? "bg-white text-black font-bold "
               : "text-white hover:bg-white hover:text-black hover:font-bold"
           }`}
         >
@@ -123,7 +126,7 @@ const Sidebar = ({ role, isOpen, toggleSidebar }) => {
         type="button"
         onClick={() => toggleSidebar(!isOpen)}
         className="hidden md:flex bg-red-700 hover:bg-red-600 active:bg-red-500 text-white w-10 h-10 items-center justify-center rounded z-30 outline-none focus:outline-none"
-        style={{ position: "fixed", top: "5.3rem", left: "0.5rem" }}
+        style={{ position: "fixed", top: "5.5rem", left: "0.5rem" }}
       >
         {isOpen ? <FaTimes /> : <FaBars />}
       </button>

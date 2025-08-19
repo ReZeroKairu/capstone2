@@ -186,7 +186,7 @@ function Announcement() {
     );
 
   return (
-    <div className="relative flex flex-col items-center mt-10 pt-28 p-16">
+    <div className="relative flex flex-col items-center mt-10 p-6 pt-28 pb-40 sm:p-16 sm:pt-28 sm:pb-16">
       {/* White Box */}
       <div className="relative w-full max-w-3xl bg-white border border-gray-300 rounded-lg shadow p-6 pt-11">
         {/* Floating Header */}
