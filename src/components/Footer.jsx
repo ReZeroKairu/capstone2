@@ -4,13 +4,12 @@ const Footer = () => {
   return (
     <footer
       className="
-        bg-red-800 text-white py-4 px-6 sm:px-12
-        w-full mt-auto
-        relative z-20
-        fixed bottom-0 left-0
-        md:static
-        pb-16 md:pb-4   /* extra bottom padding on mobile, normal on desktop */
-      "
+    bg-red-800 text-white py-4 px-6 sm:px-12
+    w-full mt-auto
+    fixed bottom-0 left-0 z-20
+    md:static
+    pb-16 md:pb-4
+  "
     >
       {/* Main text */}
       <p className="text-xs sm:text-sm md:text-base text-center">
