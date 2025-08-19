@@ -9,6 +9,7 @@ import {
   addDoc,
   doc,
   getDoc,
+  updateDoc,
   serverTimestamp,
 } from "firebase/firestore";
 
@@ -18,6 +19,7 @@ export default function AnswerForm() {
   const [formId, setFormId] = useState(null);
   const [currentUser, setCurrentUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [cooldown, setCooldown] = useState(0);
 
   useEffect(() => {
     const fetchLatestForm = async () => {
@@ -40,20 +42,50 @@ export default function AnswerForm() {
 
     fetchLatestForm();
 
-    const unsub = auth.onAuthStateChanged((user) => {
-      if (user) setCurrentUser(user);
-      else setCurrentUser(null);
+    const unsub = auth.onAuthStateChanged(async (user) => {
+      if (user) {
+        setCurrentUser(user);
+
+        // 🔹 Check last submission timestamp
+        const userRef = doc(db, "Users", user.uid);
+        const userSnap = await getDoc(userRef);
+        if (userSnap.exists()) {
+          const lastSubmittedAt = userSnap.data().lastSubmittedAt?.toMillis?.();
+          if (lastSubmittedAt) {
+            const diff = Date.now() - lastSubmittedAt;
+            if (diff < 5000) {
+              setCooldown(Math.ceil((5000 - diff) / 1000));
+            }
+          }
+        }
+      } else {
+        setCurrentUser(null);
+      }
       setLoading(false);
     });
 
     return () => unsub();
   }, []);
 
+  // Countdown timer effect
+  useEffect(() => {
+    if (cooldown > 0) {
+      const timer = setInterval(() => {
+        setCooldown((prev) => (prev > 0 ? prev - 1 : 0));
+      }, 1000);
+      return () => clearInterval(timer);
+    }
+  }, [cooldown]);
+
   const handleChange = (index, value) => {
     setAnswers({ ...answers, [index]: value });
   };
 
   const submitAnswers = async () => {
+    if (cooldown > 0) {
+      alert(`You already submitted. Please wait ${cooldown} seconds.`);
+      return;
+    }
     if (!form) {
       alert("Form is not loaded yet.");
       return;
@@ -63,10 +95,21 @@ export default function AnswerForm() {
       return;
     }
 
+    // ✅ Required field validation
+    const missingRequired = form.questions.some((q, index) => {
+      return q.required && !answers[index];
+    });
+
+    if (missingRequired) {
+      alert("Please fill in all required fields before submitting.");
+      return;
+    }
+
     try {
       const answeredQuestions = form.questions.map((q, index) => ({
         question: q.text,
         type: q.type,
+        required: q.required || false,
         answer: answers[index] || "",
       }));
 
@@ -102,6 +145,12 @@ export default function AnswerForm() {
         }
       );
 
+      // 🔹 Save last submission timestamp in Firestore
+      await updateDoc(userRef, {
+        lastSubmittedAt: serverTimestamp(),
+      });
+
+      setCooldown(5); // set 5 seconds cooldown
       alert("Form submitted successfully!");
       setAnswers({});
     } catch (error) {
@@ -121,7 +170,10 @@ export default function AnswerForm() {
 
       {form.questions.map((q, index) => (
         <div key={index} className="mb-4">
-          <label className="block font-semibold mb-1">{q.text}</label>
+          <label className="block font-semibold mb-1">
+            {q.text} {q.required && <span className="text-red-500">*</span>}
+          </label>
+
           {q.type === "text" && (
             <input
               type="text"
@@ -130,6 +182,7 @@ export default function AnswerForm() {
               className="border p-2 w-full rounded focus:outline-none focus:ring-2 focus:ring-green-400"
             />
           )}
+
           {q.type === "textarea" && (
             <textarea
               value={answers[index] || ""}
@@ -138,15 +191,35 @@ export default function AnswerForm() {
               rows={4}
             />
           )}
+
+          {q.type === "radio" && (
+            <div className="space-y-2">
+              {q.options?.map((option, optIndex) => (
+                <label key={optIndex} className="flex items-center space-x-2">
+                  <input
+                    type="radio"
+                    name={`question-${index}`} // group by question
+                    value={option}
+                    checked={answers[index] === option}
+                    onChange={() => handleChange(index, option)}
+                    className="form-radio text-green-500"
+                  />
+                  <span>{option}</span>
+                </label>
+              ))}
+            </div>
+          )}
         </div>
       ))}
 
       <button
         onClick={submitAnswers}
-        className="bg-green-500 text-white px-4 py-2 rounded w-full sm:w-auto block sm:inline-block"
-        disabled={!currentUser}
+        className={`${
+          cooldown > 0 ? "bg-gray-400 cursor-not-allowed" : "bg-green-500"
+        } text-white px-4 py-2 rounded w-full sm:w-auto block sm:inline-block`}
+        disabled={!currentUser || cooldown > 0}
       >
-        Submit
+        {cooldown > 0 ? `Please wait ${cooldown}s` : "Submit"}
       </button>
 
       {!currentUser && (
