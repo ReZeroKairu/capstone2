@@ -265,32 +265,13 @@ function Announcement() {
                   )}
                 </div>
               ))}
+
               <button
                 className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm"
                 onClick={addAnnouncement}
               >
                 Add Announcement
               </button>
-              <div className="flex flex-wrap gap-3 pt-4">
-                <button
-                  className={`px-6 py-2 rounded font-semibold ${
-                    saving || !hasChanges()
-                      ? "bg-gray-400 cursor-not-allowed"
-                      : "bg-green-600 hover:bg-green-700 text-white"
-                  }`}
-                  onClick={handleSaveChanges}
-                  disabled={saving || !hasChanges()}
-                >
-                  {saving ? "Saving..." : "Save Changes"}
-                </button>
-                <button
-                  className="bg-gray-600 hover:bg-gray-700 text-white px-6 py-2 rounded font-semibold"
-                  onClick={handleCancelEdit}
-                  disabled={saving}
-                >
-                  Cancel
-                </button>
-              </div>
             </div>
           ) : (
             <div className="space-y-4">
@@ -318,19 +299,44 @@ function Announcement() {
                     )
                 )
               )}
-              {isAdmin && (
-                <div className="text-center mt-4">
-                  <button
-                    className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded font-semibold"
-                    onClick={() => setIsEditing(true)}
-                  >
-                    Edit Announcements
-                  </button>
-                </div>
-              )}
             </div>
           )}
         </div>
+
+        {/* Action Buttons (moved OUTSIDE the scrollable box) */}
+        {isAdmin && (
+          <div className="flex flex-wrap justify-center gap-3 mt-6">
+            {isEditing ? (
+              <>
+                <button
+                  className={`px-6 py-2 rounded font-semibold ${
+                    saving || !hasChanges()
+                      ? "bg-gray-400 cursor-not-allowed"
+                      : "bg-green-600 hover:bg-green-700 text-white"
+                  }`}
+                  onClick={handleSaveChanges}
+                  disabled={saving || !hasChanges()}
+                >
+                  {saving ? "Saving..." : "Save Changes"}
+                </button>
+                <button
+                  className="bg-gray-600 hover:bg-gray-700 text-white px-6 py-2 rounded font-semibold"
+                  onClick={handleCancelEdit}
+                  disabled={saving}
+                >
+                  Cancel
+                </button>
+              </>
+            ) : (
+              <button
+                className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded font-semibold"
+                onClick={() => setIsEditing(true)}
+              >
+                Edit Announcements
+              </button>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
