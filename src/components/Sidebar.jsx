@@ -11,6 +11,8 @@ import {
   FaBook,
   FaBars,
   FaTimes,
+  FaWpforms,
+  FaInbox,
 } from "react-icons/fa";
 import { Link, useLocation } from "react-router-dom";
 
@@ -56,6 +58,16 @@ const Sidebar = ({ role, isOpen, toggleSidebar }) => {
       name: "Manuscripts",
       path: "/manuscripts",
       icon: <FaBook className="text-xl" />,
+    },
+    {
+      name: "Form Creation",
+      path: "/createform",
+      icon: <FaWpforms className="text-xl" />,
+    },
+    {
+      name: "Responses",
+      path: "/formresponses",
+      icon: <FaInbox className="text-xl" />,
     },
   ];
 
