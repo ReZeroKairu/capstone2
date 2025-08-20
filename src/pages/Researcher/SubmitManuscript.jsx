@@ -1,21 +1,26 @@
-import React, { useState, useEffect } from "react";
-import { db } from "../../firebase/firebase";
+import React, { useEffect, useState } from "react";
+import { db, auth } from "../../firebase/firebase";
 import {
   collection,
   getDocs,
   query,
   orderBy,
   limit,
+  addDoc,
   doc,
-  setDoc,
+  getDoc,
+  updateDoc,
+  serverTimestamp,
 } from "firebase/firestore";
 
-const SubmitManuscript = () => {
-  const [latestForm, setLatestForm] = useState(null);
-  const [responses, setResponses] = useState({});
-  const [message, setMessage] = useState("");
+export default function SubmitManuscript() {
+  const [form, setForm] = useState(null);
+  const [answers, setAnswers] = useState({});
+  const [formId, setFormId] = useState(null);
+  const [currentUser, setCurrentUser] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [formSubmitted, setFormSubmitted] = useState(false);
+  const [cooldown, setCooldown] = useState(0);
+  const [message, setMessage] = useState(""); // ✅ Added for inline success/error messages
 
   useEffect(() => {
     const fetchLatestForm = async () => {
@@ -25,137 +30,272 @@ const SubmitManuscript = () => {
           orderBy("createdAt", "desc"),
           limit(1)
         );
-        const querySnapshot = await getDocs(q);
-        if (!querySnapshot.empty) {
-          const formDoc = querySnapshot.docs[0];
-          setLatestForm({ ...formDoc.data(), id: formDoc.id });
-        } else {
-          setMessage("No forms found.");
+        const snapshot = await getDocs(q);
+        if (!snapshot.empty) {
+          const docSnap = snapshot.docs[0];
+          setForm(docSnap.data());
+          setFormId(docSnap.id);
         }
       } catch (error) {
-        console.error("Error fetching latest form:", error);
-        setMessage("Error fetching form.");
-      } finally {
-        setLoading(false);
+        console.error("Failed to fetch latest form:", error);
       }
     };
 
     fetchLatestForm();
+
+    const unsub = auth.onAuthStateChanged(async (user) => {
+      if (user) {
+        setCurrentUser(user);
+
+        const userRef = doc(db, "Users", user.uid);
+        const userSnap = await getDoc(userRef);
+        if (userSnap.exists()) {
+          const lastSubmittedAt = userSnap.data().lastSubmittedAt?.toMillis?.();
+          if (lastSubmittedAt) {
+            const diff = Date.now() - lastSubmittedAt;
+            if (diff < 5000) {
+              setCooldown(Math.ceil((5000 - diff) / 1000));
+            }
+          }
+        }
+      } else {
+        setCurrentUser(null);
+      }
+      setLoading(false);
+    });
+
+    return () => unsub();
   }, []);
 
-  const handleInputChange = (fieldId, value, label) => {
-    setResponses((prevResponses) => ({
-      ...prevResponses,
-      [fieldId]: { value, label },
-    }));
+  useEffect(() => {
+    if (cooldown > 0) {
+      const timer = setInterval(() => {
+        setCooldown((prev) => (prev > 0 ? prev - 1 : 0));
+      }, 1000);
+      return () => clearInterval(timer);
+    }
+  }, [cooldown]);
+
+  const handleChange = (index, value, type) => {
+    if (type === "checkbox") {
+      const prev = answers[index] || [];
+      if (prev.includes(value)) {
+        setAnswers({ ...answers, [index]: prev.filter((v) => v !== value) });
+      } else {
+        setAnswers({ ...answers, [index]: [...prev, value] });
+      }
+    } else {
+      setAnswers({ ...answers, [index]: value });
+    }
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-
-    const isConfirmed = window.confirm(
-      "Are you sure you want to submit the form?"
-    );
-
-    if (!isConfirmed) {
+  const submitAnswers = async () => {
+    if (cooldown > 0) {
+      setMessage(`You already submitted. Please wait ${cooldown} seconds.`);
+      return;
+    }
+    if (!form) {
+      setMessage("Form is not loaded yet.");
+      return;
+    }
+    if (!currentUser) {
+      setMessage("You must be signed in to submit the form.");
       return;
     }
 
-    if (!latestForm?.id) {
-      setMessage("Form ID is missing.");
+    const missingRequired = form.questions.some((q, index) => {
+      return q.required && !answers[index];
+    });
+
+    if (missingRequired) {
+      setMessage("Please fill in all required fields before submitting.");
       return;
     }
 
     try {
-      const formData = {
-        userId: "anonymous",
-        responses: {},
-        submittedAt: new Date(),
-      };
+      const answeredQuestions = form.questions.map((q, index) => ({
+        question: q.text,
+        type: q.type,
+        required: q.required || false,
+        answer: answers[index] || "",
+      }));
 
-      latestForm?.fields.forEach((field) => {
-        if (responses[field.id]) {
-          formData.responses[field.label] = responses[field.id].value;
-        }
+      const userRef = doc(db, "Users", currentUser.uid);
+      const userSnap = await getDoc(userRef);
+      if (!userSnap.exists()) {
+        setMessage("User record not found in database.");
+        return;
+      }
+      const userInfo = userSnap.data();
+      const initialStatus = "Pending";
+
+      const searchIndex = [
+        (userInfo.firstName || "").toLowerCase(),
+        (userInfo.lastName || "").toLowerCase(),
+        `${(userInfo.firstName || "").toLowerCase()} ${(
+          userInfo.lastName || ""
+        ).toLowerCase()}`,
+        (userInfo.email || "").toLowerCase(),
+      ];
+
+      // Add response to form_responses
+      const responseRef = await addDoc(collection(db, "form_responses"), {
+        formId,
+        formTitle: form.title,
+        userId: currentUser.uid,
+        firstName: userInfo.firstName || "",
+        lastName: userInfo.lastName || "",
+        email: userInfo.email || "",
+        role: userInfo.role || "Researcher",
+        answeredQuestions,
+        status: initialStatus,
+        submittedAt: serverTimestamp(),
+        searchIndex,
       });
 
-      const formRef = doc(db, "forms", latestForm.id);
-      const responsesRef = collection(formRef, "responses");
+      // Add history entry
+      await addDoc(
+        collection(db, "form_responses", responseRef.id, "history"),
+        {
+          status: initialStatus,
+          updatedBy: `${userInfo.firstName || ""} ${userInfo.lastName || ""}`,
+          timestamp: serverTimestamp(),
+        }
+      );
 
-      await setDoc(doc(responsesRef), formData);
-      console.log("Form submitted:", formData);
+      // ✅ Add manuscript entry as Pending
+      await addDoc(collection(db, "manuscripts"), {
+        responseId: responseRef.id,
+        formId,
+        formTitle: form.title,
+        answeredQuestions,
+        userId: currentUser.uid,
+        firstName: userInfo.firstName || "",
+        lastName: userInfo.lastName || "",
+        role: userInfo.role || "Researcher",
+        submittedAt: serverTimestamp(),
+        status: initialStatus,
+      });
 
-      setFormSubmitted(true);
-      setMessage("Your response has been submitted.");
+      await updateDoc(userRef, { lastSubmittedAt: serverTimestamp() });
+
+      setCooldown(5);
+      setAnswers({});
+      setMessage("Form submitted successfully!");
     } catch (error) {
-      console.error("Error submitting form:", error);
-      setMessage("Error submitting form.");
+      console.error("Submit error:", error);
+      setMessage("Failed to submit form. Check console for details.");
     }
   };
 
-  const handleReset = () => {
-    setResponses({});
-    setFormSubmitted(false);
-    setMessage("");
-  };
-
-  if (loading) {
-    return <div>Loading...</div>;
-  }
+  if (loading) return <p className="text-center py-10">Loading...</p>;
+  if (!form) return <p className="text-center py-10">No form available.</p>;
 
   return (
-    <div className="flex flex-col min-h-screen">
-      <header className="bg-blue-500 text-white py-4 shadow-md">
-        <div className="container mx-auto px-4">
-          <h1 className="text-xl font-bold">Form</h1>
-        </div>
-      </header>
+    <div className="pt-36 pb-10 px-4 sm:py-36 sm:px-6 md:px-8 max-w-3xl mx-auto">
+      <h1 className="text-2xl sm:text-3xl font-bold mb-4 text-center sm:text-left">
+        {form.title}
+      </h1>
 
-      <main className="flex-1 flex justify-center items-center py-12 bg-gray-100">
-        <div className="w-full max-w-2xl bg-white shadow-md rounded-lg p-6">
-          <h1 className="text-2xl font-bold mb-4">{latestForm?.title}</h1>
-          {formSubmitted ? (
-            <div className="mb-4 text-green-600">
-              <p>{message}</p>
-              <p>Would you like to fill out the form again?</p>
-              <button
-                onClick={handleReset}
-                className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 mt-2"
-              >
-                Fill Again
-              </button>
-            </div>
-          ) : (
-            <form onSubmit={handleSubmit}>
-              {latestForm?.fields.map((field) => (
-                <div key={field.id} className="mb-4">
-                  <label className="block text-lg font-medium">
-                    {field.label}
-                  </label>
+      {form.questions.map((q, index) => (
+        <div key={index} className="mb-4">
+          <label className="block font-semibold mb-1">
+            {q.text} {q.required && <span className="text-red-500">*</span>}
+          </label>
+
+          {q.type === "text" && (
+            <input
+              type="text"
+              value={answers[index] || ""}
+              onChange={(e) => handleChange(index, e.target.value)}
+              className="border p-2 w-full rounded focus:outline-none focus:ring-2 focus:ring-green-400"
+            />
+          )}
+
+          {q.type === "textarea" && (
+            <textarea
+              value={answers[index] || ""}
+              onChange={(e) => handleChange(index, e.target.value)}
+              className="border p-2 w-full rounded focus:outline-none focus:ring-2 focus:ring-green-400"
+              rows={4}
+            />
+          )}
+
+          {q.type === "radio" && (
+            <div className="space-y-2">
+              {q.options?.map((option, optIndex) => (
+                <label key={optIndex} className="flex items-center space-x-2">
                   <input
-                    type={field.type}
-                    required={field.required}
-                    value={responses[field.id]?.value || ""}
-                    onChange={(e) =>
-                      handleInputChange(field.id, e.target.value, field.label)
-                    }
-                    className="w-full p-2 border border-gray-300 rounded"
-                    placeholder={field.placeholder}
+                    type="radio"
+                    name={`question-${index}`}
+                    value={option}
+                    checked={answers[index] === option}
+                    onChange={() => handleChange(index, option)}
+                    className="form-radio text-green-500"
                   />
-                </div>
+                  <span>{option}</span>
+                </label>
               ))}
-              <button
-                type="submit"
-                className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
-              >
-                Submit
-              </button>
-            </form>
+            </div>
+          )}
+
+          {/* ✅ Checkbox question type */}
+          {q.type === "checkbox" && (
+            <div className="space-y-2">
+              {q.options?.map((option, optIndex) => (
+                <label key={optIndex} className="flex items-center space-x-2">
+                  <input
+                    type="checkbox"
+                    value={option}
+                    checked={(answers[index] || []).includes(option)}
+                    onChange={() => handleChange(index, option, "checkbox")}
+                    className="form-checkbox text-green-500"
+                  />
+                  <span>{option}</span>
+                </label>
+              ))}
+            </div>
+          )}
+
+          {/* ✅ Select question type */}
+          {q.type === "select" && (
+            <select
+              value={answers[index] || ""}
+              onChange={(e) => handleChange(index, e.target.value)}
+              className="border p-2 w-full rounded focus:outline-none focus:ring-2 focus:ring-green-400"
+            >
+              <option value="">Select an option</option>
+              {q.options?.map((option, optIndex) => (
+                <option key={optIndex} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
           )}
         </div>
-      </main>
+      ))}
+
+      <button
+        onClick={submitAnswers}
+        className={`${
+          cooldown > 0 ? "bg-gray-400 cursor-not-allowed" : "bg-green-500"
+        } text-white px-4 py-2 rounded w-full sm:w-auto block sm:inline-block`}
+        disabled={!currentUser || cooldown > 0}
+      >
+        {cooldown > 0 ? `Please wait ${cooldown}s` : "Submit"}
+      </button>
+
+      {message && (
+        <p className="mt-2 text-center sm:text-left text-sm text-red-500">
+          {message}
+        </p>
+      )}
+
+      {!currentUser && (
+        <p className="text-red-500 mt-2 text-sm text-center sm:text-left">
+          You must be signed in to submit the form.
+        </p>
+      )}
     </div>
   );
-};
-
-export default SubmitManuscript;
+}
