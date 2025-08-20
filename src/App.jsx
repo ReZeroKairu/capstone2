@@ -105,6 +105,7 @@ function App() {
                 <Route path="/" element={<Navigate to="/home" />} />
                 <Route path="/home" element={<Home />} />
                 <Route path="/signup" element={<SignUp />} />
+                <Route path="/SignUp/peer" element={<SignUp />} />
                 <Route path="/signin" element={<SignIn />} />
                 <Route path="/forgot-password" element={<ForgotPassword />} />
                 <Route path="/announcement" element={<Announcement />} />

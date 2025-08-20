@@ -27,17 +27,26 @@ function SignIn() {
   };
 
   const checkEmailVerification = async (user) => {
-    await user.reload();
-    if (!user.emailVerified) {
+    try {
+      await user.reload(); // Reload user to get the latest emailVerified status
+      if (!user.emailVerified) {
+        setAlert({
+          message:
+            "Your email is not verified. Please check your inbox or spam folder.",
+          type: "error",
+        });
+        await auth.signOut(); // Sign out user if email not verified
+        return false;
+      }
+      return true;
+    } catch (err) {
+      console.error("Error checking email verification:", err);
       setAlert({
-        message:
-          "Please verify your email before logging in. Please check your email.",
+        message: "Unable to verify email. Please try again later.",
         type: "error",
       });
-      await auth.signOut();
       return false;
     }
-    return true;
   };
 
   // Log user action function
@@ -64,19 +73,13 @@ function SignIn() {
   };
 
   useEffect(() => {
-    const unsubscribe = auth.onAuthStateChanged(async (user) => {
-      if (user) {
-        // User is signed in, so navigate to home
-        navigate("/home");
-      } else {
-        // User is not signed in, show the sign-in form
-        setLoading(false); // Stop loading when auth state is ready
-      }
-      setIsAppReady(true); // Set app ready to true after auth state is checked
+    const unsubscribe = auth.onAuthStateChanged((user) => {
+      setIsAppReady(true);
+      setLoading(false);
     });
 
-    return () => unsubscribe(); // Cleanup on unmount
-  }, [navigate]);
+    return () => unsubscribe();
+  }, []);
 
   // While the app is not ready, show nothing or a loading spinner
   if (!isAppReady) {
@@ -95,32 +98,72 @@ function SignIn() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
+    setAlert({ message: "", type: "" });
+
     try {
+      if (!email || !password) {
+        setAlert({
+          message: "Please enter both email and password.",
+          type: "error",
+        });
+        setLoading(false);
+        return;
+      }
+
       const userCredential = await signInWithEmailAndPassword(
         auth,
         email,
         password
       );
       const user = userCredential.user;
+
+      // ✅ Check email verification first
       const verified = await checkEmailVerification(user);
-      if (verified) {
-        setAlert({ message: "User logged in successfully!", type: "success" });
-        await logUserAction(user, "Sign In"); // Log the user action
-        navigate("/home"); // Redirect to home page after successful login
+      if (!verified) {
+        setLoading(false);
+        return;
       }
+
+      const userDoc = await getDoc(doc(db, "Users", user.uid));
+      if (!userDoc.exists()) {
+        setAlert({
+          message:
+            "No user profile found. Please contact admin or sign up again.",
+          type: "error",
+        });
+        await auth.signOut();
+        setLoading(false);
+        return;
+      }
+
+      await logUserAction(user, "Sign In");
+
+      setAlert({ message: "User logged in successfully!", type: "success" });
+      navigate("/home"); // ✅ Navigate only after all checks pass
     } catch (error) {
-      console.error("Error during email/password sign-in:", error);
+      console.error("Error during sign-in:", error);
       let errorMessage = "Failed to sign in. Please check your credentials.";
-      if (error.code === "auth/invalid-email") {
-        errorMessage = "The email address is not valid. Please try again.";
-      } else if (error.code === "auth/user-not-found") {
-        errorMessage =
-          "No user found with this email address. Please sign up first.";
-      } else if (error.code === "auth/wrong-password") {
-        errorMessage = "Invalid email or password. Please try again.";
+
+      switch (error.code) {
+        case "auth/invalid-email":
+          errorMessage = "The email address is invalid.";
+          break;
+        case "auth/user-not-found":
+          errorMessage =
+            "No account found with this email. Please sign up first.";
+          break;
+        case "auth/wrong-password":
+          errorMessage = "Incorrect password. Please try again.";
+          break;
+        case "auth/too-many-requests":
+          errorMessage = "Too many failed attempts. Please try again later.";
+          break;
+        case "auth/invalid-credential":
+          errorMessage = "Invalid credentials. Please try signing in again.";
+          break;
       }
+
       setAlert({ message: errorMessage, type: "error" });
-      setTimeout(() => setAlert({ message: "", type: "" }), 5000);
     } finally {
       setLoading(false);
     }
@@ -215,7 +258,7 @@ function SignIn() {
             <button
               type="submit"
               className="btn btn-primary mt-2 bg-red-700 hover:bg-red-800 active:scale-95 active:bg-red-900 text-white p-2 rounded w-full sm:w-32"
-              disabled={loading}
+              disabled={loading || !email || !password} // Disable if loading OR fields are empty
             >
               {loading ? "Signing In..." : "Sign In"}
             </button>

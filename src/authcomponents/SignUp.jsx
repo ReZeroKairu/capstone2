@@ -1,3 +1,4 @@
+// src/pages/SignUp.jsx
 import React, { useEffect, useState, useRef } from "react";
 import {
   createUserWithEmailAndPassword,
@@ -6,7 +7,7 @@ import {
 } from "firebase/auth";
 import { auth, db } from "../firebase/firebase";
 import { setDoc, doc } from "firebase/firestore";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faEye,
@@ -17,45 +18,33 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 
 function SignUp() {
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  const role = location.pathname.includes("peer")
+    ? "Peer Reviewer"
+    : "Researcher";
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
 
-  // Error states
   const [errorMessage, setErrorMessage] = useState("");
   const [emailError, setEmailError] = useState("");
   const [passwordError, setPasswordError] = useState("");
   const [confirmPasswordError, setConfirmPasswordError] = useState("");
-
   const [successMessage, setSuccessMessage] = useState("");
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
-  const navigate = useNavigate();
 
   const errorRef = useRef(null);
 
   useEffect(() => {
-    if (errorMessage) {
-      errorRef.current?.scrollIntoView({ behavior: "smooth" });
-    }
+    if (errorMessage) errorRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [errorMessage]);
-
-  // Redirect if already authenticated
-  useEffect(() => {
-    const unsubscribe = auth.onAuthStateChanged((user) => {
-      if (user && !successMessage) {
-        setIsCheckingAuth(false);
-        navigate("/home");
-      } else {
-        setIsCheckingAuth(false);
-      }
-    });
-    return () => unsubscribe();
-  }, [navigate, successMessage]);
 
   const handleSignUp = async (e) => {
     e.preventDefault();
@@ -66,18 +55,8 @@ function SignUp() {
     setConfirmPasswordError("");
     setSuccessMessage("");
 
-    const trimmedFirstName = firstName.trim();
-    const trimmedLastName = lastName.trim();
-    const trimmedEmail = email.trim();
-
-    if (
-      !trimmedFirstName ||
-      !trimmedLastName ||
-      !trimmedEmail ||
-      !password ||
-      !confirmPassword
-    ) {
-      setErrorMessage("Please fill out all fields");
+    if (!firstName || !lastName || !email || !password || !confirmPassword) {
+      setErrorMessage("Please fill out all fields.");
       return;
     }
     if (password.length < 6) {
@@ -92,44 +71,51 @@ function SignUp() {
     setLoading(true);
 
     try {
-      // Create the user
+      // 1️⃣ Create the Auth user
       const userCredential = await createUserWithEmailAndPassword(
         auth,
-        trimmedEmail,
+        email,
         password
       );
       const user = userCredential.user;
 
-      // Log out immediately
-      await signOut(auth);
+      try {
+        // 2️⃣ Create Firestore document
+        await setDoc(doc(db, "Users", user.uid), {
+          uid: user.uid,
+          firstName,
+          lastName,
+          email: user.email,
+          role,
+          photo: null,
+        });
 
-      // Save to Firestore
-      await setDoc(doc(db, "Users", user.uid), {
-        uid: user.uid,
-        firstName: trimmedFirstName,
-        lastName: trimmedLastName,
-        email: user.email,
-        role: "Researcher",
-        photo: null,
-      });
+        // 3️⃣ Send verification email
+        await sendEmailVerification(user);
 
-      // Send verification email
-      await sendEmailVerification(user);
+        // 4️⃣ Sign out the user (optional, user must verify email)
+        await signOut(auth);
 
-      setSuccessMessage(
-        "User registered successfully! A verification email has been sent. Please check your inbox and verify your email before signing in."
-      );
+        // 5️⃣ Success message
+        setSuccessMessage(
+          "User registered successfully! A verification email has been sent. Please check your inbox before signing in."
+        );
 
-      setTimeout(() => {
-        navigate("/SignIn");
-      }, 5000);
-    } catch (error) {
-      console.error("Error creating user:", error.code, error.message);
-      if (error.code === "auth/email-already-in-use") {
-        setEmailError("Email already registered.");
-      } else {
-        setErrorMessage(error.message || "Failed to register user.");
+        setTimeout(() => navigate("/SignIn"), 5000);
+      } catch (firestoreError) {
+        console.error("Firestore error:", firestoreError);
+
+        // Rollback: delete Auth user if Firestore write fails
+        await user.delete();
+
+        setErrorMessage("Failed to create user profile. Please try again.");
       }
+    } catch (authError) {
+      console.error("Auth error:", authError.code, authError.message);
+
+      if (authError.code === "auth/email-already-in-use")
+        setEmailError("Email already registered.");
+      else setErrorMessage(authError.message || "Failed to register user.");
     } finally {
       setLoading(false);
     }
@@ -145,6 +131,7 @@ function SignUp() {
           zIndex: -1,
         }}
       ></div>
+
       <div className="min-h-screen flex flex-col justify-center items-center">
         <form
           onSubmit={handleSignUp}
@@ -155,6 +142,10 @@ function SignUp() {
             alt="Logo"
             className="h-20 w-auto mb-6 mx-auto"
           />
+          {/* Display role below logo */}
+          <p className="text-center text-black font-semibold text-lg mb-6">
+            {role + " Sign Up"}
+          </p>
 
           {errorMessage && (
             <div
@@ -170,6 +161,7 @@ function SignUp() {
             </div>
           )}
 
+          {/* First & Last Name */}
           <div className="relative mb-3">
             <label className="block text-sm font-medium text-gray-700">
               First Name:
@@ -202,6 +194,7 @@ function SignUp() {
             </span>
           </div>
 
+          {/* Email */}
           <div className="relative mb-3">
             <label className="block text-sm font-medium text-gray-700">
               Email address
@@ -227,6 +220,7 @@ function SignUp() {
             )}
           </div>
 
+          {/* Password */}
           <div className="relative mb-3">
             <label className="block text-sm font-medium text-black">
               Password
@@ -260,6 +254,7 @@ function SignUp() {
             )}
           </div>
 
+          {/* Confirm Password */}
           <div className="relative mb-3">
             <label className="block text-sm font-medium text-black">
               Confirm Password
@@ -295,6 +290,7 @@ function SignUp() {
             )}
           </div>
 
+          {/* Sign Up Button */}
           <div className="flex justify-center mt-4">
             <button
               type="submit"
@@ -305,11 +301,31 @@ function SignUp() {
             </button>
           </div>
 
-          <div className="text-center">
+          {/* Switch Roles */}
+          <div className="text-center mt-2">
+            {role === "Researcher" ? (
+              <a
+                href="/SignUp/peer"
+                className="text-red-700 hover:text-red-800 underline"
+              >
+                Sign up as Peer Reviewer
+              </a>
+            ) : (
+              <a
+                href="/SignUp"
+                className="text-red-700 hover:text-red-800 underline"
+              >
+                Sign up as Researcher
+              </a>
+            )}
+          </div>
+
+          {/* Sign In link */}
+          <div className="text-center mt-2">
             Already have an account?{" "}
             <a
               href="/SignIn"
-              className="text-red-700 hover:text-red-800 active:text-red-950 underline"
+              className="text-red-700 hover:text-red-800 underline"
             >
               Sign in
             </a>
