@@ -2,7 +2,7 @@ import { signInWithEmailAndPassword, signInWithPopup } from "firebase/auth";
 import React, { useEffect, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { auth, provider } from "../firebase/firebase";
-import { db } from "../firebase/firebase"; // Make sure to import Firestore
+import { db } from "../firebase/firebase"; // Firestore
 import { collection, addDoc, doc, getDoc } from "firebase/firestore"; // Firestore methods
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
@@ -88,9 +88,13 @@ function SignIn() {
     return () => unsubscribe();
   }, [navigate]);
 
-  // While the app is not ready, show nothing (prevents flicker)
+  // While the app is not ready, show "checking auth" to prevent flicker
   if (!isAppReady) {
-    return null;
+    return (
+      <div className="flex justify-center items-center min-h-screen">
+        <span>Checking authentication...</span>
+      </div>
+    );
   }
 
   if (loading) {
