@@ -81,7 +81,23 @@ function UserManagement() {
 
   const handleDelete = async () => {
     try {
+      // First, delete subcollections (like Notifications) if they exist
+      const notifColRef = collection(
+        db,
+        "Users",
+        deleteUserId,
+        "Notifications"
+      );
+      const notifSnap = await getDocs(notifColRef);
+      for (const notif of notifSnap.docs) {
+        await deleteDoc(
+          doc(db, "Users", deleteUserId, "Notifications", notif.id)
+        );
+      }
+
+      // Now delete the main user document
       await deleteDoc(doc(db, "Users", deleteUserId));
+
       setUsers((prev) => prev.filter((u) => u.id !== deleteUserId));
       setMessage("User deleted successfully.");
       setDeleteUserId(null);
