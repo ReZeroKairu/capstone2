@@ -28,14 +28,14 @@ function SignIn() {
 
   const checkEmailVerification = async (user) => {
     try {
-      await user.reload(); // Reload user to get the latest emailVerified status
+      await user.reload();
       if (!user.emailVerified) {
         setAlert({
           message:
             "Your email is not verified. Please check your inbox or spam folder.",
           type: "error",
         });
-        await auth.signOut(); // Sign out user if email not verified
+        await auth.signOut();
         return false;
       }
       return true;
@@ -51,7 +51,7 @@ function SignIn() {
 
   // Log user action function
   const logUserAction = async (user, action) => {
-    const userLogRef = collection(db, "UserLog"); // Reference to UserLog collection
+    const userLogRef = collection(db, "UserLog");
     const userDocRef = doc(db, "Users", user.uid);
     const userDoc = await getDoc(userDocRef);
     let adminId = null;
@@ -59,38 +59,44 @@ function SignIn() {
     if (userDoc.exists()) {
       const userData = userDoc.data();
       if (userData.role === "Admin") {
-        adminId = user.uid; // Set adminId to the user's UID if they are an admin
+        adminId = user.uid;
       }
     }
-    // Log the user action with the appropriate adminId
+
     await addDoc(userLogRef, {
-      userId: user.uid, // User ID
-      adminId: adminId, // Admin ID (null or user ID if admin)
-      action: action, // The action being performed (e.g., "SignIn" or "GoogleSignIn")
-      email: user.email, // User email
-      timestamp: new Date(), // Timestamp of the action
+      userId: user.uid,
+      adminId: adminId,
+      action: action,
+      email: user.email,
+      timestamp: new Date(),
     });
   };
 
+  // ✅ Fix the flicker issue here
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged((user) => {
-      setIsAppReady(true);
+      if (user) {
+        // Already signed in → redirect immediately
+        navigate("/home", { replace: true });
+      } else {
+        // No user → show Sign In form
+        setIsAppReady(true);
+      }
       setLoading(false);
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [navigate]);
 
-  // While the app is not ready, show nothing or a loading spinner
+  // While the app is not ready, show nothing (prevents flicker)
   if (!isAppReady) {
-    return null; // This prevents the SignIn page from showing while the auth state is being checked
+    return null;
   }
 
   if (loading) {
     return (
       <div className="flex justify-center items-center min-h-screen">
-        <span>Loading...</span>{" "}
-        {/* Replace with a custom loading spinner if desired */}
+        <span>Loading...</span>
       </div>
     );
   }
@@ -117,7 +123,6 @@ function SignIn() {
       );
       const user = userCredential.user;
 
-      // ✅ Check email verification first
       const verified = await checkEmailVerification(user);
       if (!verified) {
         setLoading(false);
@@ -139,7 +144,7 @@ function SignIn() {
       await logUserAction(user, "Sign In");
 
       setAlert({ message: "User logged in successfully!", type: "success" });
-      navigate("/home"); // ✅ Navigate only after all checks pass
+      navigate("/home");
     } catch (error) {
       console.error("Error during sign-in:", error);
       let errorMessage = "Failed to sign in. Please check your credentials.";
@@ -216,9 +221,9 @@ function SignIn() {
                 placeholder="Email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                autoComplete="email" // Ensure this is set for autofill to work
-                name="email" // Set the name attribute as 'email'
-                id="email" // Optional: use an explicit id for the email input field
+                autoComplete="email"
+                name="email"
+                id="email"
                 required
               />
             </div>
@@ -258,7 +263,7 @@ function SignIn() {
             <button
               type="submit"
               className="btn btn-primary mt-2 bg-red-700 hover:bg-red-800 active:scale-95 active:bg-red-900 text-white p-2 rounded w-full sm:w-32"
-              disabled={loading || !email || !password} // Disable if loading OR fields are empty
+              disabled={loading || !email || !password}
             >
               {loading ? "Signing In..." : "Sign In"}
             </button>
@@ -283,7 +288,6 @@ function SignIn() {
           </div>
         </form>
 
-        {/* Loading Indicator */}
         {loading && (
           <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50">
             <span className="text-white">Loading...</span>
