@@ -34,7 +34,7 @@ import NotFound from "./pages/NotFound";
 import Manuscripts from "./components/Manuscripts";
 import SubmitManuscript from "./pages/Researcher/SubmitManuscript";
 import CreateForm from "./formcomponents/CreateForm";
-import AnswerForm from "./formcomponents/AnswerForm";
+
 import FormResponses from "./formcomponents/FormResponses";
 import Dashboard from "./components/Dashboard";
 import Submissions from "./components/Submissions";
@@ -116,7 +116,6 @@ function App() {
                 <Route path="/unauthorized" element={<Unauthorized />} />
                 <Route path="/manuscripts" element={<Manuscripts />} />
                 <Route path="/createform" element={<CreateForm />} />
-                <Route path="/answerform" element={<AnswerForm />} />
                 <Route path="/formresponses" element={<FormResponses />} />
                 <Route path="/submissions" element={<Submissions />} />
                 <Route path="/dashboard" element={<Dashboard />} />
