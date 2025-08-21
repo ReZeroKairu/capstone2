@@ -11,7 +11,8 @@ import {
   orderBy,
   limit,
 } from "firebase/firestore";
-import { DragDropContext, Droppable, Draggable } from "react-beautiful-dnd";
+// ✅ Swap to the maintained fork
+import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 
 export default function CreateForm() {
   const [title, setTitle] = useState("");
@@ -54,8 +55,10 @@ export default function CreateForm() {
       ...questions,
       { text: "", type: "text", required: false, options: [] },
     ]);
+
   const removeQuestion = (index) =>
     setQuestions(questions.filter((_, i) => i !== index));
+
   const updateQuestion = (index, field, value) => {
     const updated = [...questions];
     updated[index][field] = value;
@@ -63,7 +66,7 @@ export default function CreateForm() {
       field === "type" &&
       !["multiple", "radio", "checkbox", "select"].includes(value)
     ) {
-      updated[index].options = []; // Clear options for non-choice types
+      updated[index].options = [];
     }
     setQuestions(updated);
   };
@@ -74,11 +77,13 @@ export default function CreateForm() {
     updated[qIndex].options.push("");
     setQuestions(updated);
   };
+
   const updateOption = (qIndex, oIndex, value) => {
     const updated = [...questions];
     updated[qIndex].options[oIndex] = value;
     setQuestions(updated);
   };
+
   const removeOption = (qIndex, oIndex) => {
     const updated = [...questions];
     updated[qIndex].options.splice(oIndex, 1);
@@ -172,6 +177,7 @@ export default function CreateForm() {
                         {...provided.dragHandleProps}
                         className="border p-4 rounded flex flex-col gap-2 bg-gray-50"
                       >
+                        {/* ✅ Question Input and Options */}
                         <input
                           type="text"
                           placeholder="Question text"
@@ -192,13 +198,10 @@ export default function CreateForm() {
                           <option value="textarea">Paragraph</option>
                           <option value="multiple">Multiple Choice</option>
                           <option value="radio">Radio</option>
-                          <option value="checkbox">Checkbox</option>{" "}
-                          {/* ✅ Added */}
-                          <option value="select">Dropdown</option>{" "}
-                          {/* ✅ Added */}
-                          <option value="number">Number</option>{" "}
-                          {/* ✅ Added */}
-                          <option value="date">Date</option> {/* ✅ Added */}
+                          <option value="checkbox">Checkbox</option>
+                          <option value="select">Dropdown</option>
+                          <option value="number">Number</option>
+                          <option value="date">Date</option>
                         </select>
 
                         <label className="flex items-center gap-2">
@@ -270,6 +273,7 @@ export default function CreateForm() {
 
       {previewMode && (
         <div className="mb-4">
+          {/* ✅ Preview Section */}
           <h2 className="text-xl font-semibold mb-4 text-center sm:text-left">
             Preview
           </h2>

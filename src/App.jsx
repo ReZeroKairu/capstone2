@@ -34,10 +34,14 @@ import NotFound from "./pages/NotFound";
 import Manuscripts from "./components/Manuscripts";
 import SubmitManuscript from "./pages/Researcher/SubmitManuscript";
 import CreateForm from "./formcomponents/CreateForm";
-
 import FormResponses from "./formcomponents/FormResponses";
 import Dashboard from "./components/Dashboard";
 import Submissions from "./components/Submissions";
+import ReviewManuscript from "./pages/PeerReviewer/ReviewManuscript";
+
+// ⬇️ New admin pages
+import Deadlines from "./pages/Admin/Deadlines";
+import PeerReviewerList from "./pages/Admin/PeerReviewerList";
 
 function App() {
   const [loading, setLoading] = useState(true);
@@ -120,6 +124,10 @@ function App() {
                 <Route path="/submissions" element={<Submissions />} />
                 <Route path="/dashboard" element={<Dashboard />} />
                 <Route
+                  path="/review-manuscript"
+                  element={<ReviewManuscript />}
+                />
+                <Route
                   path="/submit-manuscript"
                   element={<SubmitManuscript />}
                 />
@@ -157,6 +165,23 @@ function App() {
                   element={
                     <AdminRoute>
                       <UserManagement />
+                    </AdminRoute>
+                  }
+                />
+                {/* ⬇️ New Admin-only pages */}
+                <Route
+                  path="/admin/reviewer-list"
+                  element={
+                    <AdminRoute>
+                      <PeerReviewerList />
+                    </AdminRoute>
+                  }
+                />
+                <Route
+                  path="/admin/deadlines"
+                  element={
+                    <AdminRoute>
+                      <Deadlines />
                     </AdminRoute>
                   }
                 />
