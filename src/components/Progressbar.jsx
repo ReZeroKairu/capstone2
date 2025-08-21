@@ -1,12 +1,13 @@
 import React from "react";
-import ReactTooltip from "react-tooltip";
 
 const STATUS_ORDER = [
   "Pending",
-  "Peer Reviewer",
-  "Peer Review Complete",
-  "Revisions",
-  "Accepted",
+  "Assigning Peer Reviewer",
+  "Peer Reviewer Assigned",
+  "Peer Reviewer Reviewing",
+  "Back to Admin",
+  "For Revision",
+  "For Publication",
   "Rejected",
 ];
 
@@ -18,11 +19,11 @@ export default function ProgressBar({ currentStatus }) {
       {STATUS_ORDER.map((status, idx) => (
         <div
           key={status}
-          className="flex flex-col items-center relative w-1/6 min-w-[60px] mb-4 transition-all duration-500"
+          className="flex flex-col items-center relative w-1/9 min-w-[60px] mb-4 transition-all duration-500"
         >
           {/* Circle */}
           <div
-            data-tip={status}
+            title={status} // Use browser tooltip for full text
             className={`w-8 h-8 rounded-full border-2 flex items-center justify-center z-10 font-bold transition-all duration-500
               ${
                 idx < currentIndex
@@ -45,10 +46,11 @@ export default function ProgressBar({ currentStatus }) {
           )}
 
           {/* Label */}
-          <p className="text-xs text-center mt-2 w-20 truncate">{status}</p>
+          <p className="text-xs text-center mt-2 w-auto break-words">
+            {status}
+          </p>
         </div>
       ))}
-      <ReactTooltip place="top" type="dark" effect="solid" />
     </div>
   );
 }

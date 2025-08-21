@@ -20,7 +20,7 @@ export default function SubmitManuscript() {
   const [currentUser, setCurrentUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [cooldown, setCooldown] = useState(0);
-  const [message, setMessage] = useState(""); // ✅ Added for inline success/error messages
+  const [message, setMessage] = useState("");
 
   useEffect(() => {
     const fetchLatestForm = async () => {
@@ -103,10 +103,9 @@ export default function SubmitManuscript() {
       return;
     }
 
-    const missingRequired = form.questions.some((q, index) => {
-      return q.required && !answers[index];
-    });
-
+    const missingRequired = form.questions.some(
+      (q, index) => q.required && !answers[index]
+    );
     if (missingRequired) {
       setMessage("Please fill in all required fields before submitting.");
       return;
@@ -138,32 +137,38 @@ export default function SubmitManuscript() {
         (userInfo.email || "").toLowerCase(),
       ];
 
-      // Add response to form_responses
-      const responseRef = await addDoc(collection(db, "form_responses"), {
-        formId,
-        formTitle: form.title,
-        userId: currentUser.uid,
-        firstName: userInfo.firstName || "",
-        lastName: userInfo.lastName || "",
-        email: userInfo.email || "",
-        role: userInfo.role || "Researcher",
-        answeredQuestions,
-        status: initialStatus,
-        submittedAt: serverTimestamp(),
-        searchIndex,
-      });
-
-      // Add history entry
-      await addDoc(
-        collection(db, "form_responses", responseRef.id, "history"),
-        {
+      // ✅ Save in form_responses first
+      let responseRef;
+      try {
+        responseRef = await addDoc(collection(db, "form_responses"), {
+          formId,
+          formTitle: form.title,
+          userId: currentUser.uid,
+          firstName: userInfo.firstName || "",
+          lastName: userInfo.lastName || "",
+          email: userInfo.email || "",
+          role: userInfo.role || "Researcher",
+          answeredQuestions,
           status: initialStatus,
-          updatedBy: `${userInfo.firstName || ""} ${userInfo.lastName || ""}`,
-          timestamp: serverTimestamp(),
-        }
-      );
+          submittedAt: serverTimestamp(),
+          searchIndex,
+        });
 
-      // ✅ Add manuscript entry as Pending
+        await addDoc(
+          collection(db, "form_responses", responseRef.id, "history"),
+          {
+            status: initialStatus,
+            updatedBy: `${userInfo.firstName || ""} ${userInfo.lastName || ""}`,
+            timestamp: serverTimestamp(),
+          }
+        );
+      } catch (err) {
+        console.error("Failed to save in form_responses:", err);
+        setMessage("Failed to save submission. Check console for details.");
+        return; // ❌ Stop if we can't save here
+      }
+
+      // ✅ Then save in manuscripts
       await addDoc(collection(db, "manuscripts"), {
         responseId: responseRef.id,
         formId,
@@ -175,6 +180,9 @@ export default function SubmitManuscript() {
         role: userInfo.role || "Researcher",
         submittedAt: serverTimestamp(),
         status: initialStatus,
+        reasonForRejection: null,
+        assignedReviewers: [],
+        searchIndex,
       });
 
       await updateDoc(userRef, { lastSubmittedAt: serverTimestamp() });
@@ -223,41 +231,47 @@ export default function SubmitManuscript() {
 
           {q.type === "radio" && (
             <div className="space-y-2">
-              {q.options?.map((option, optIndex) => (
-                <label key={optIndex} className="flex items-center space-x-2">
-                  <input
-                    type="radio"
-                    name={`question-${index}`}
-                    value={option}
-                    checked={answers[index] === option}
-                    onChange={() => handleChange(index, option)}
-                    className="form-radio text-green-500"
-                  />
-                  <span>{option}</span>
-                </label>
-              ))}
+              {q.options?.map((option, optIndex) => {
+                const value =
+                  typeof option === "object" ? option.value : option;
+                return (
+                  <label key={optIndex} className="flex items-center space-x-2">
+                    <input
+                      type="radio"
+                      name={`question-${index}`}
+                      value={value}
+                      checked={answers[index] === value}
+                      onChange={() => handleChange(index, value)}
+                      className="form-radio text-green-500"
+                    />
+                    <span>{value}</span>
+                  </label>
+                );
+              })}
             </div>
           )}
 
-          {/* ✅ Checkbox question type */}
           {q.type === "checkbox" && (
             <div className="space-y-2">
-              {q.options?.map((option, optIndex) => (
-                <label key={optIndex} className="flex items-center space-x-2">
-                  <input
-                    type="checkbox"
-                    value={option}
-                    checked={(answers[index] || []).includes(option)}
-                    onChange={() => handleChange(index, option, "checkbox")}
-                    className="form-checkbox text-green-500"
-                  />
-                  <span>{option}</span>
-                </label>
-              ))}
+              {q.options?.map((option, optIndex) => {
+                const value =
+                  typeof option === "object" ? option.value : option;
+                return (
+                  <label key={optIndex} className="flex items-center space-x-2">
+                    <input
+                      type="checkbox"
+                      value={value}
+                      checked={(answers[index] || []).includes(value)}
+                      onChange={() => handleChange(index, value, "checkbox")}
+                      className="form-checkbox text-green-500"
+                    />
+                    <span>{value}</span>
+                  </label>
+                );
+              })}
             </div>
           )}
 
-          {/* ✅ Select question type */}
           {q.type === "select" && (
             <select
               value={answers[index] || ""}
@@ -265,11 +279,15 @@ export default function SubmitManuscript() {
               className="border p-2 w-full rounded focus:outline-none focus:ring-2 focus:ring-green-400"
             >
               <option value="">Select an option</option>
-              {q.options?.map((option, optIndex) => (
-                <option key={optIndex} value={option}>
-                  {option}
-                </option>
-              ))}
+              {q.options?.map((option, optIndex) => {
+                const value =
+                  typeof option === "object" ? option.value : option;
+                return (
+                  <option key={optIndex} value={value}>
+                    {value}
+                  </option>
+                );
+              })}
             </select>
           )}
         </div>

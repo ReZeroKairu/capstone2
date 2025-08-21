@@ -154,13 +154,13 @@ export default function FormResponses() {
       const resRef = doc(db, "form_responses", res.id);
 
       // Update status at the root level
-      await updateDoc(resRef, { status: "Accepted" });
+      await updateDoc(resRef, { status: "Assigning Peer Reviewer" });
 
       // Add history entry in subcollection
       await addDoc(collection(db, "form_responses", res.id, "history"), {
         timestamp: serverTimestamp(),
         updatedBy: currentUser.uid,
-        status: "Accepted",
+        status: "Assigning Peer Reviewer",
       });
 
       // Check if manuscript already exists for this response
@@ -172,7 +172,7 @@ export default function FormResponses() {
         // Update existing manuscript status
         snapshot.forEach(async (docSnap) => {
           await updateDoc(doc(db, "manuscripts", docSnap.id), {
-            status: "Accepted",
+            status: "Assigning Peer Reviewer",
           });
         });
       } else {
@@ -183,21 +183,32 @@ export default function FormResponses() {
           formTitle: res.formTitle,
           answeredQuestions: res.answeredQuestions,
           userId: res.userId,
+          coAuthors: res.coAuthors || [],
           submittedAt: serverTimestamp(),
-          status: "Accepted",
+          status: "Assigning Peer Reviewer",
         });
       }
 
-      // Notify researcher
-      await addDoc(collection(db, "Users", res.userId, "Notifications"), {
-        message: `Your manuscript "${res.formTitle}" has been accepted by the admin.`,
-        seen: false,
-        timestamp: serverTimestamp(),
-      });
+      // Notify main user + tagged co-authors
+      const notifyUsers = [
+        res.userId,
+        ...(res.coAuthors?.map((c) => c.id) || []),
+      ];
+      await Promise.all(
+        notifyUsers.map((uid) =>
+          addDoc(collection(db, "Users", uid, "Notifications"), {
+            message: `Your manuscript "${res.formTitle}" has been accepted by the admin.`,
+            seen: false,
+            timestamp: serverTimestamp(),
+          })
+        )
+      );
 
       // Update local state
       setResponses((prev) =>
-        prev.map((r) => (r.id === res.id ? { ...r, status: "Accepted" } : r))
+        prev.map((r) =>
+          r.id === res.id ? { ...r, status: "Assigning Peer Reviewer" } : r
+        )
       );
     } catch (err) {
       console.error("Error accepting response:", err);
@@ -239,17 +250,26 @@ export default function FormResponses() {
           formTitle: res.formTitle,
           answeredQuestions: res.answeredQuestions,
           userId: res.userId,
+          coAuthors: res.coAuthors || [],
           submittedAt: serverTimestamp(),
           status: "Rejected",
         });
       }
 
-      // Notify researcher
-      await addDoc(collection(db, "Users", res.userId, "Notifications"), {
-        message: `Your manuscript "${res.formTitle}" has been rejected by the admin.`,
-        seen: false,
-        timestamp: serverTimestamp(),
-      });
+      // Notify main user + tagged co-authors
+      const notifyUsers = [
+        res.userId,
+        ...(res.coAuthors?.map((c) => c.id) || []),
+      ];
+      await Promise.all(
+        notifyUsers.map((uid) =>
+          addDoc(collection(db, "Users", uid, "Notifications"), {
+            message: `Your manuscript "${res.formTitle}" has been rejected by the admin.`,
+            seen: false,
+            timestamp: serverTimestamp(),
+          })
+        )
+      );
 
       // Update local state
       setResponses((prev) =>
