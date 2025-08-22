@@ -1,3 +1,15 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Make Poppins the default font everywhere */
+@layer base {
+  html {
+    @apply font-sans;
+  }
+}
+
+/* Force ReactQuill editor to also use Poppins */
+.ql-editor {
+  font-family: "Poppins", sans-serif !important;
+}
