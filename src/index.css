@@ -7,6 +7,37 @@
   html {
     @apply font-sans;
   }
+
+  /* Headings use Poppins with proper weights & sizes */
+  h1 {
+    @apply font-bold text-3xl;
+  }
+
+  h2 {
+    @apply font-semibold text-2xl;
+  }
+
+  h3 {
+    @apply font-semibold text-xl;
+  }
+
+  h4 {
+    @apply font-medium text-lg;
+  }
+
+  h5 {
+    @apply font-medium text-base;
+  }
+
+  h6 {
+    @apply font-medium text-sm;
+  }
+
+  /* Strong & bold text */
+  strong,
+  b {
+    @apply font-semibold;
+  }
 }
 
 /* Force ReactQuill editor to also use Poppins */
