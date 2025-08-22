@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { getAuth } from "firebase/auth";
 import { doc, getDoc, collection, onSnapshot } from "firebase/firestore";
 import { db } from "../firebase/firebase";
-import ProgressBar from "./ProgressBar";
+import ProgressBar from "./ProgressBar.jsx";
 import { useNavigate } from "react-router-dom";
 
 const IN_PROGRESS_STATUSES = [
