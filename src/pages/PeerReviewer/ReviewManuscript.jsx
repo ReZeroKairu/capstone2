@@ -14,6 +14,7 @@ export default function ReviewManuscript() {
   const [manuscripts, setManuscripts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [reviews, setReviews] = useState({}); // Track comments & ratings per manuscript
+  const [decisions, setDecisions] = useState({}); // Accept or Reject per manuscript
 
   // Get logged-in reviewer ID
   useEffect(() => {
@@ -46,7 +47,6 @@ export default function ReviewManuscript() {
     fetchAssignedManuscripts();
   }, [reviewerId]);
 
-  // Update local review state as reviewer types
   const handleReviewChange = (manuscriptId, field, value) => {
     setReviews((prev) => ({
       ...prev,
@@ -57,14 +57,44 @@ export default function ReviewManuscript() {
     }));
   };
 
+  const handleDecision = async (manuscriptId, decision) => {
+    try {
+      const msRef = doc(db, "manuscripts", manuscriptId);
+      const selected = manuscripts.find((m) => m.id === manuscriptId);
+
+      let newStatus = "";
+      if (decision === "accept") {
+        newStatus = "Peer Reviewer is Reviewing";
+      } else {
+        newStatus = "Peer Reviewer Rejected";
+      }
+
+      // Update Firestore
+      await updateDoc(msRef, {
+        status: newStatus,
+      });
+
+      // Update local state
+      setManuscripts((prev) =>
+        prev.map((m) =>
+          m.id === manuscriptId ? { ...m, status: newStatus } : m
+        )
+      );
+
+      setDecisions((prev) => ({ ...prev, [manuscriptId]: decision }));
+    } catch (err) {
+      console.error("Error setting decision:", err);
+    }
+  };
+
   const submitReview = async (manuscriptId) => {
     const review = reviews[manuscriptId];
-    if (!review) return;
+    if (!review || decisions[manuscriptId] !== "accept") return;
 
     try {
       const msRef = doc(db, "manuscripts", manuscriptId);
+      const selected = manuscripts.find((m) => m.id === manuscriptId);
 
-      // Add reviewer review to Firestore
       await updateDoc(msRef, {
         reviewerSubmissions: arrayUnion({
           reviewerId,
@@ -73,17 +103,15 @@ export default function ReviewManuscript() {
           status: "Completed",
           completedAt: new Date(),
         }),
-        assignedReviewers: manuscripts
-          .find((m) => m.id === manuscriptId)
-          .assignedReviewers.filter((id) => id !== reviewerId),
+        assignedReviewers: (selected.assignedReviewers || []).filter(
+          (id) => id !== reviewerId
+        ),
         status:
-          manuscripts.find((m) => m.id === manuscriptId).assignedReviewers
-            .length === 1
+          (selected.assignedReviewers || []).length === 1
             ? "Back to Admin"
-            : manuscripts.find((m) => m.id === manuscriptId).status,
+            : selected.status,
       });
 
-      // Update local state
       setManuscripts((prev) =>
         prev.map((m) =>
           m.id === manuscriptId
@@ -135,7 +163,24 @@ export default function ReviewManuscript() {
                 : "N/A"}
             </p>
 
-            {m.assignedReviewers?.includes(reviewerId) && (
+            {!decisions[m.id] && m.assignedReviewers?.includes(reviewerId) && (
+              <div className="flex gap-2 mt-2">
+                <button
+                  onClick={() => handleDecision(m.id, "accept")}
+                  className="px-3 py-1 bg-green-500 text-white rounded hover:bg-green-600 text-sm"
+                >
+                  Accept
+                </button>
+                <button
+                  onClick={() => handleDecision(m.id, "reject")}
+                  className="px-3 py-1 bg-red-500 text-white rounded hover:bg-red-600 text-sm"
+                >
+                  Reject
+                </button>
+              </div>
+            )}
+
+            {decisions[m.id] === "accept" && (
               <div className="flex flex-col gap-2 mt-2">
                 <textarea
                   placeholder="Add your review comments"
@@ -163,6 +208,12 @@ export default function ReviewManuscript() {
                   Submit Review & Mark Completed
                 </button>
               </div>
+            )}
+
+            {decisions[m.id] === "reject" && (
+              <p className="mt-2 text-red-600 font-semibold">
+                You have rejected this manuscript.
+              </p>
             )}
           </li>
         ))}

@@ -5,6 +5,15 @@ import { db } from "../firebase/firebase";
 import ProgressBar from "./ProgressBar";
 import { useNavigate } from "react-router-dom";
 
+const IN_PROGRESS_STATUSES = [
+  "Pending",
+  "Assigning Peer Reviewer",
+  "Peer Reviewer Assigned",
+  "Peer Reviewer Reviewing",
+  "Back to Admin",
+  "For Revision",
+];
+
 const Dashboard = ({ sidebarOpen }) => {
   const [user, setUser] = useState(null);
   const [role, setRole] = useState(null);
@@ -79,8 +88,20 @@ const Dashboard = ({ sidebarOpen }) => {
       </div>
     );
 
-  const countByStatus = (status) =>
-    manuscripts.filter((m) => m.status === status).length;
+  // Count manuscripts by custom status logic
+  const countByCustomStatus = (status) => {
+    if (status === "In Progress") {
+      return manuscripts.filter((m) => IN_PROGRESS_STATUSES.includes(m.status))
+        .length;
+    }
+    if (status === "Rejected") {
+      return manuscripts.filter((m) => m.status === "Rejected").length;
+    }
+    if (status === "For Publication") {
+      return manuscripts.filter((m) => m.status === "For Publication").length;
+    }
+    return 0;
+  };
 
   const handleStatusClick = (status) => {
     navigate(`/manuscripts?status=${status}`);
@@ -98,18 +119,16 @@ const Dashboard = ({ sidebarOpen }) => {
 
       {/* Summary Counts */}
       <div className="grid grid-cols-1 sm:grid-cols-5 gap-4 mb-6">
-        {["Pending", "For Revision", "For Publication", "Rejected"].map(
-          (status) => (
-            <div
-              key={status}
-              className="bg-gray-100 p-4 rounded shadow-sm cursor-pointer hover:shadow-md text-center"
-              onClick={() => handleStatusClick(status)}
-            >
-              <p className="text-lg font-semibold">{status}</p>
-              <p className="text-2xl font-bold">{countByStatus(status)}</p>
-            </div>
-          )
-        )}
+        {["In Progress", "For Publication", "Rejected"].map((status) => (
+          <div
+            key={status}
+            className="bg-gray-100 p-4 rounded shadow-sm cursor-pointer hover:shadow-md text-center"
+            onClick={() => handleStatusClick(status)}
+          >
+            <p className="text-lg font-semibold">{status}</p>
+            <p className="text-2xl font-bold">{countByCustomStatus(status)}</p>
+          </div>
+        ))}
       </div>
 
       {/* Manuscript List */}
@@ -125,7 +144,11 @@ const Dashboard = ({ sidebarOpen }) => {
               ? m.submittedAt.toDate().toLocaleString()
               : new Date(m.submittedAt.seconds * 1000).toLocaleString()}
           </p>
-          <ProgressBar currentStatus={m.status} />
+          {/* Pass the custom in-progress logic to ProgressBar */}
+          <ProgressBar
+            currentStatus={m.status}
+            inProgressStatuses={IN_PROGRESS_STATUSES}
+          />
         </div>
       ))}
     </div>
