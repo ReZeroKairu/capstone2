@@ -1,15 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import ReactQuill from "react-quill";
 import "react-quill/dist/quill.snow.css";
-import {
-  doc,
-  updateDoc,
-  getDoc,
-  setDoc,
-  onSnapshot,
-  collection,
-  addDoc,
-} from "firebase/firestore";
+import { doc, updateDoc, getDoc, onSnapshot } from "firebase/firestore";
 import { auth, db } from "../firebase/firebase";
 import { onAuthStateChanged } from "firebase/auth";
 import { FaEdit, FaTrashAlt } from "react-icons/fa";
@@ -19,11 +11,27 @@ const quillModules = {
     [{ header: [1, 2, false] }],
     ["bold", "italic", "underline", "strike"],
     [{ color: [] }, { background: [] }],
-    [{ font: [] }, { size: [] }],
+    [
+      { font: ["sans-serif", "serif", "monospace"] },
+      { size: ["small", false, "large", "huge"] },
+    ],
     [{ align: [] }],
     ["clean"],
   ],
 };
+
+const quillFormats = [
+  "header",
+  "bold",
+  "italic",
+  "underline",
+  "strike",
+  "color",
+  "background",
+  "font",
+  "size",
+  "align",
+];
 
 const Toast = ({ message, type, onClose }) => (
   <div
@@ -51,18 +59,18 @@ const PubEthics = () => {
   const [newSectionContent, setNewSectionContent] = useState("");
   const [notifications, setNotifications] = useState([]);
   const notificationIdRef = useRef(0);
-  const [viewMode, setViewMode] = useState("admin");
 
-  // Notification helper
+  const originalContentRef = useRef({ header: "", footer: "", sections: [] });
+
   const showNotification = useCallback((message, type = "success") => {
     const id = notificationIdRef.current++;
     setNotifications((prev) => [...prev, { id, message, type }]);
-    setTimeout(() => {
-      setNotifications((prev) => prev.filter((n) => n.id !== id));
-    }, 4000);
+    setTimeout(
+      () => setNotifications((prev) => prev.filter((n) => n.id !== id)),
+      4000
+    );
   }, []);
 
-  // Load initial data
   useEffect(() => {
     const docRef = doc(db, "Content", "PubEthics");
     const unsubscribe = onSnapshot(docRef, (docSnap) => {
@@ -88,73 +96,81 @@ const PubEthics = () => {
     };
   }, []);
 
-  // Save header/footer
-  const saveContent = async (field, value) => {
+  const startEditing = () => {
+    originalContentRef.current = {
+      header: headerText,
+      footer: footerText,
+      sections: JSON.parse(JSON.stringify(sections)),
+    };
+    setIsEditing(true);
+  };
+
+  const cancelEditing = () => {
+    setHeaderText(originalContentRef.current.header);
+    setFooterText(originalContentRef.current.footer);
+    setSections(originalContentRef.current.sections);
+    setIsEditing(false);
+  };
+
+  const saveAllChanges = async () => {
+    const original = originalContentRef.current;
+    const changesMade =
+      headerText !== original.header ||
+      footerText !== original.footer ||
+      JSON.stringify(sections) !== JSON.stringify(original.sections);
+
+    if (!changesMade) {
+      showNotification("No changes made to save", "warning");
+      return;
+    }
+
     try {
       const docRef = doc(db, "Content", "PubEthics");
-      await updateDoc(docRef, { [field]: value });
-      showNotification(`${field} saved successfully!`, "success");
+      await updateDoc(docRef, {
+        header: headerText,
+        footer: footerText,
+        sections,
+      });
+      showNotification("All changes saved!", "success");
+      originalContentRef.current = {
+        header: headerText,
+        footer: footerText,
+        sections: JSON.parse(JSON.stringify(sections)),
+      };
+      setIsEditing(false);
     } catch (err) {
       console.error(err);
-      showNotification(`Error saving ${field}`, "error");
+      showNotification("Error saving changes", "error");
     }
   };
 
-  // Section update helper
-  const updateSection = async (id, field, value) => {
+  const updateSectionContent = (id, content) => {
     setSections((prev) =>
-      prev.map((s) => (s.id === id ? { ...s, [field]: value } : s))
+      prev.map((s) => (s.id === id ? { ...s, content } : s))
     );
-    try {
-      const docRef = doc(db, "Content", "PubEthics");
-      const updatedSections = sections.map((s) =>
-        s.id === id ? { ...s, [field]: value } : s
-      );
-      await updateDoc(docRef, { sections: updatedSections });
-      showNotification("Section updated!", "success");
-    } catch (err) {
-      console.error(err);
-      showNotification("Error updating section", "error");
-    }
   };
 
-  // Add new section
-  const addSection = async () => {
-    if (!newSectionTitle.trim() || !newSectionContent.trim()) {
+  const updateSectionTitle = (id, title) => {
+    setSections((prev) => prev.map((s) => (s.id === id ? { ...s, title } : s)));
+  };
+
+  const addSection = () => {
+    if (!newSectionTitle.trim() && !newSectionContent.trim()) {
       showNotification("Both title and content are required", "warning");
       return;
     }
-    const docRef = doc(db, "Content", "PubEthics");
     const newSection = {
       id: Date.now(),
       title: newSectionTitle,
       content: newSectionContent,
     };
-    const updatedSections = [...sections, newSection];
-    setSections(updatedSections);
+    setSections((prev) => [...prev, newSection]);
     setNewSectionTitle("");
     setNewSectionContent("");
-    try {
-      await updateDoc(docRef, { sections: updatedSections });
-      showNotification("Section added!", "success");
-    } catch (err) {
-      console.error(err);
-      showNotification("Error adding section", "error");
-    }
   };
 
-  // Remove section
-  const removeSection = async (id) => {
-    const updatedSections = sections.filter((s) => s.id !== id);
-    setSections(updatedSections);
-    try {
-      const docRef = doc(db, "Content", "PubEthics");
-      await updateDoc(docRef, { sections: updatedSections });
-      showNotification("Section removed!", "success");
-    } catch (err) {
-      console.error(err);
-      showNotification("Error removing section", "error");
-    }
+  const removeSection = (id) => {
+    setSections((prev) => prev.filter((s) => s.id !== id));
   };
 
   return (
@@ -163,7 +179,6 @@ const PubEthics = () => {
       style={{ backgroundImage: "url('/bg.jpg')" }}
     >
       <div className="w-full max-w-4xl mx-auto rounded-lg shadow-lg my-8">
-        {/* Toast Notifications */}
         {notifications.map((n) => (
           <Toast
             key={n.id}
@@ -187,11 +202,9 @@ const PubEthics = () => {
             {isEditing ? (
               <ReactQuill
                 value={headerText}
-                onChange={(value) => {
-                  setHeaderText(value);
-                  saveContent("header", value);
-                }}
+                onChange={setHeaderText}
                 modules={quillModules}
+                formats={quillFormats}
                 theme="snow"
                 className="bg-white text-black rounded mb-2"
               />
@@ -213,17 +226,16 @@ const PubEthics = () => {
                       type="text"
                       value={section.title}
                       onChange={(e) =>
-                        updateSection(section.id, "title", e.target.value)
+                        updateSectionTitle(section.id, e.target.value)
                       }
                       className="w-full p-2 mb-2 text-black rounded"
                       placeholder="Section Title"
                     />
                     <ReactQuill
                       value={section.content}
-                      onChange={(val) =>
-                        updateSection(section.id, "content", val)
-                      }
+                      onChange={(val) => updateSectionContent(section.id, val)}
                       modules={quillModules}
+                      formats={quillFormats}
                       theme="snow"
                       className="bg-white text-black rounded mb-2"
                     />
@@ -240,14 +252,6 @@ const PubEthics = () => {
                     <div
                       dangerouslySetInnerHTML={{ __html: section.content }}
                     />
-                    {viewMode === "admin" && isAdmin && (
-                      <button
-                        onClick={() => setIsEditing(true)}
-                        className="bg-yellow-600 hover:bg-yellow-700 text-white px-4 py-2 rounded font-semibold mt-2"
-                      >
-                        <FaEdit /> Edit
-                      </button>
-                    )}
                   </>
                 )}
               </div>
@@ -266,6 +270,7 @@ const PubEthics = () => {
                   value={newSectionContent}
                   onChange={setNewSectionContent}
                   modules={quillModules}
+                  formats={quillFormats}
                   theme="snow"
                   className="bg-white text-black rounded mb-2"
                 />
@@ -284,11 +289,9 @@ const PubEthics = () => {
             {isEditing ? (
               <ReactQuill
                 value={footerText}
-                onChange={(value) => {
-                  setFooterText(value);
-                  saveContent("footer", value);
-                }}
+                onChange={setFooterText}
                 modules={quillModules}
+                formats={quillFormats}
                 theme="snow"
                 className="bg-white text-black rounded mb-2"
               />
@@ -298,28 +301,31 @@ const PubEthics = () => {
           </div>
 
           {/* Controls */}
-          {viewMode === "admin" && isAdmin && (
+          {isAdmin && (
             <div className="text-center mt-8 flex justify-center gap-4">
-              {!isEditing && (
+              {!isEditing ? (
                 <button
-                  onClick={() => setIsEditing(true)}
+                  onClick={startEditing}
                   className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded font-semibold"
                 >
                   <FaEdit className="inline mr-2" /> Edit Publication Ethics
                 </button>
+              ) : (
+                <>
+                  <button
+                    onClick={saveAllChanges}
+                    className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded font-semibold"
+                  >
+                    Save
+                  </button>
+                  <button
+                    onClick={cancelEditing}
+                    className="bg-gray-600 hover:bg-gray-700 text-white px-6 py-3 rounded font-semibold"
+                  >
+                    Cancel
+                  </button>
+                </>
               )}
-              <button
-                onClick={() =>
-                  setViewMode(viewMode === "admin" ? "user" : "admin")
-                }
-                className={`${
-                  viewMode === "admin" ? "bg-gray-600" : "bg-blue-600"
-                } text-white px-6 py-3 rounded font-semibold`}
-              >
-                {viewMode === "admin"
-                  ? "Switch to User Mode"
-                  : "Switch to Admin Mode"}
-              </button>
             </div>
           )}
         </div>
