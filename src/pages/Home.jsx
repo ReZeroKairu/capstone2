@@ -9,18 +9,18 @@ function Home() {
         style={{ backgroundImage: "url('/bg.jpg')" }}
       />
 
-      {/* Logo */}
-      <div className="max-sm:flex max-sm:flex-1 max-sm:items-center max-sm:justify-center">
-        <img
-          src="/pubtracklogo.png"
-          alt="PubTrack Logo"
-          className="
-      h-[300px] sm:h-[280px] md:h-[350px] lg:h-[420px] 
-      absolute bottom-[50px] right-[70px] 
-      max-sm:relative max-sm:h-[300px] max-sm:ml-36 max-sm:z-10
-    "
-        />
-      </div>
+      {/* Logo manually placed inside magnifying glass */}
+      <img
+        src="/pubtracklogo.png"
+        alt="PubTrack Logo"
+        className="
+          absolute
+          h-[380px] sm:h-[420px] md:h-[480px] lg:h-[520px]  /* bigger */
+          left-[70%] top-[50%]   /* higher */
+          -translate-x-1/2 -translate-y-1/2
+          z-10
+        "
+      />
     </div>
   );
 }
