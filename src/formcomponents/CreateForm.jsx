@@ -11,15 +11,19 @@ import {
   orderBy,
   limit,
 } from "firebase/firestore";
-// ✅ Swap to the maintained fork
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
+
+const maroon = "#7B2E19";
+const gray = "#e0e0e0";
+const green = "#4CC97B";
+const darkGray = "#6B6B6B";
 
 export default function CreateForm() {
   const [title, setTitle] = useState("");
   const [questions, setQuestions] = useState([]);
   const [isAdmin, setIsAdmin] = useState(false);
   const [formId, setFormId] = useState(null);
-  const [previewMode, setPreviewMode] = useState(false);
+  const [editingTitle, setEditingTitle] = useState(false);
 
   useEffect(() => {
     const checkAdminAndFetch = async () => {
@@ -130,54 +134,185 @@ export default function CreateForm() {
 
   if (!isAdmin)
     return (
-      <p className="p-6 sm:p-12 md:p-28 text-red-500">
+      <p className="p-6 sm:p-12 md:p-28 text-red-500" style={{ fontFamily: "Poppins, Arial, sans-serif" }}>
         You do not have permission to create forms.
       </p>
     );
 
+  // 0.5 inch is about 48px
   return (
-    <div className="p-4 sm:p-6 md:p-8 lg:p-12 md:pt-24 lg:pt-32 max-w-full sm:max-w-xl md:max-w-3xl lg:max-w-5xl mx-auto">
-      <h1 className="text-2xl font-bold mb-4">
-        {formId ? "Edit Form" : "Create a Form"}
-      </h1>
-      <input
-        type="text"
-        placeholder="Form title"
-        value={title}
-        onChange={(e) => setTitle(e.target.value)}
-        className="border p-2 w-full mb-4 rounded"
-      />
-
-      <button
-        onClick={() => setPreviewMode(!previewMode)}
-        className="bg-gray-500 text-white px-4 py-2 rounded mb-4 w-full sm:w-auto"
+    <div
+      className="min-h-screen px-4 md:py-12 lg:py-16 mx-auto"
+      style={{
+        fontFamily: "Poppins, Arial, sans-serif",
+        fontSize: "1rem",
+        background: "#fff",
+        maxWidth: "900px",
+        marginTop: "48px"
+      }}
+    >
+      {/* Header: Edit Form */}
+      <h1
+        style={{
+          fontFamily: "Poppins, Arial, sans-serif",
+          fontWeight: 600,
+          fontSize: "2rem",
+          marginBottom: "0.5rem",
+          color: "#111",
+        }}
       >
-        {previewMode ? "Edit Mode" : "Preview Mode"}
-      </button>
+        Edit Form
+      </h1>
 
-      {!previewMode && (
-        <DragDropContext onDragEnd={onDragEnd}>
-          <Droppable droppableId="questions">
-            {(provided) => (
-              <div
-                {...provided.droppableProps}
-                ref={provided.innerRef}
-                className="flex flex-col gap-4"
+      {/* Form Title Section */}
+      <div style={{ marginBottom: "32px" }}>
+        <div
+          style={{
+            fontStyle: "italic",
+            marginBottom: "0.5rem",
+            color: "#222",
+            fontSize: "1.15rem",
+            fontFamily: "Poppins, Arial, sans-serif",
+          }}
+        >
+          Title
+        </div>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "24px",
+            maxWidth: "100%",
+            marginBottom: "0.5rem"
+          }}
+        >
+          {editingTitle ? (
+            <>
+              <input
+                type="text"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                className="w-full"
+                style={{
+                  fontFamily: "Poppins, Arial, sans-serif",
+                  fontWeight: 500,
+                  borderRadius: "36px",
+                  background: gray,
+                  border: "none",
+                  padding: "7px 18px",
+                  color: "#222",
+                  height: "43px",
+                  boxSizing: "border-box",
+                  fontSize: "1.35rem",
+                }}
+                autoFocus
+              />
+              <button
+                style={{
+                  background: maroon,
+                  color: "#fff",
+                  borderRadius: "36px",
+                  padding: "0 24px",
+                  fontWeight: 500,
+                  height: "43px",
+                  border: "none",
+                  minWidth: "120px",
+                  display: "flex",
+                  justifyContent: "center",
+                  alignItems: "center",
+                  fontSize: "1.05rem",
+                  fontStyle: "italic",
+                  fontFamily: "Poppins, Arial, sans-serif",
+                  whiteSpace: "nowrap",
+                }}
+                onClick={() => setEditingTitle(false)}
               >
-                {questions.map((q, index) => (
-                  <Draggable
-                    key={index}
-                    draggableId={`q-${index}`}
-                    index={index}
-                  >
-                    {(provided) => (
-                      <div
-                        ref={provided.innerRef}
-                        {...provided.draggableProps}
-                        {...provided.dragHandleProps}
-                        className="border p-4 rounded flex flex-col gap-2 bg-gray-50"
-                      >
-                        {/* ✅ Question Input and Options */}
+                Save Title
+              </button>
+            </>
+          ) : (
+            <>
+              <div
+                className="w-full"
+                style={{
+                  fontFamily: "Poppins, Arial, sans-serif",
+                  fontWeight: 500,
+                  borderRadius: "36px",
+                  background: gray,
+                  border: "none",
+                  padding: "7px 18px",
+                  color: "#222",
+                  height: "43px",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                  boxSizing: "border-box",
+                  display: "flex",
+                  alignItems: "center",
+                  fontSize: "1.35rem"
+                }}
+              >
+                {title}
+              </div>
+              <button
+                style={{
+                  background: maroon,
+                  color: "#fff",
+                  borderRadius: "36px",
+                  padding: "0 24px",
+                  fontWeight: 500,
+                  height: "43px",
+                  border: "none",
+                  minWidth: "120px",
+                  display: "flex",
+                  justifyContent: "center",
+                  alignItems: "center",
+                  fontSize: "1.05rem",
+                  fontStyle: "italic",
+                  fontFamily: "Poppins, Arial, sans-serif",
+                  whiteSpace: "nowrap"
+                }}
+                onClick={() => setEditingTitle(true)}
+              >
+                Edit Title
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Questions */}
+      <DragDropContext onDragEnd={onDragEnd}>
+        <Droppable droppableId="questions">
+          {(provided) => (
+            <div
+              {...provided.droppableProps}
+              ref={provided.innerRef}
+              className="flex flex-col gap-6"
+            >
+              {questions.map((q, index) => (
+                <Draggable
+                  key={index}
+                  draggableId={`q-${index}`}
+                  index={index}
+                >
+                  {(provided) => (
+                    <div
+                      ref={provided.innerRef}
+                      {...provided.draggableProps}
+                      {...provided.dragHandleProps}
+                      style={{
+                        background: gray,
+                        borderRadius: "16px",
+                        padding: "12px 15px",
+                        marginBottom: "0px",
+                        ...provided.draggableProps.style,
+                        fontSize: "1rem",
+                        fontFamily: "Poppins, Arial, sans-serif"
+                      }}
+                      className="flex flex-col gap-2"
+                    >
+                      <div className="flex items-center gap-4">
                         <input
                           type="text"
                           placeholder="Question text"
@@ -185,155 +320,174 @@ export default function CreateForm() {
                           onChange={(e) =>
                             updateQuestion(index, "text", e.target.value)
                           }
-                          className="border p-2 w-full rounded"
+                          className="italic font-normal rounded-lg px-3 py-1 w-full mb-0"
+                          style={{
+                            background: "#fff",
+                            border: "none",
+                            color: "#222",
+                            fontSize: "1rem",
+                            fontFamily: "Poppins, Arial, sans-serif"
+                          }}
                         />
-                        <select
-                          value={q.type}
-                          onChange={(e) =>
-                            updateQuestion(index, "type", e.target.value)
-                          }
-                          className="border p-2 w-full rounded"
-                        >
-                          <option value="text">Short Answer</option>
-                          <option value="textarea">Paragraph</option>
-                          <option value="multiple">Multiple Choice</option>
-                          <option value="radio">Radio</option>
-                          <option value="checkbox">Checkbox</option>
-                          <option value="select">Dropdown</option>
-                          <option value="number">Number</option>
-                          <option value="date">Date</option>
-                        </select>
-
-                        <label className="flex items-center gap-2">
-                          <input
-                            type="checkbox"
-                            checked={q.required || false}
-                            onChange={(e) =>
-                              updateQuestion(
-                                index,
-                                "required",
-                                e.target.checked
-                              )
-                            }
-                          />
-                          Required
-                        </label>
-
-                        {(q.type === "multiple" ||
-                          q.type === "radio" ||
-                          q.type === "checkbox" ||
-                          q.type === "select") && (
-                          <div className="flex flex-col gap-2">
-                            {q.options?.map((opt, oIndex) => (
-                              <div
-                                key={oIndex}
-                                className="flex flex-wrap gap-2"
-                              >
-                                <input
-                                  type="text"
-                                  value={opt}
-                                  onChange={(e) =>
-                                    updateOption(index, oIndex, e.target.value)
-                                  }
-                                  className="border p-2 flex-1 min-w-[120px] rounded"
-                                />
-                                <button
-                                  onClick={() => removeOption(index, oIndex)}
-                                  className="bg-red-500 text-white px-2 rounded"
-                                >
-                                  Remove
-                                </button>
-                              </div>
-                            ))}
-                            <button
-                              onClick={() => addOption(index)}
-                              className="bg-blue-500 text-white px-3 py-1 rounded mt-1 w-full sm:w-auto"
-                            >
-                              Add Option
-                            </button>
-                          </div>
-                        )}
-
-                        <button
-                          onClick={() => removeQuestion(index)}
-                          className="bg-red-500 text-white px-3 py-1 rounded mt-2 w-full sm:w-auto"
-                        >
-                          Remove Question
-                        </button>
                       </div>
-                    )}
-                  </Draggable>
-                ))}
-                {provided.placeholder}
-              </div>
-            )}
-          </Droppable>
-        </DragDropContext>
-      )}
-
-      {previewMode && (
-        <div className="mb-4">
-          {/* ✅ Preview Section */}
-          <h2 className="text-xl font-semibold mb-4 text-center sm:text-left">
-            Preview
-          </h2>
-          {questions.map((q, idx) => (
-            <div key={idx} className="mb-4 border p-3 rounded bg-gray-50">
-              <p className="font-medium mb-2 break-words">
-                {q.text} {q.required && <span className="text-red-500">*</span>}
-              </p>
-
-              {q.type === "text" && (
-                <input type="text" className="border p-2 w-full rounded mb-2" />
-              )}
-              {q.type === "textarea" && (
-                <textarea className="border p-2 w-full rounded mb-2" />
-              )}
-              {q.type === "number" && (
-                <input
-                  type="number"
-                  className="border p-2 w-full rounded mb-2"
-                />
-              )}
-              {q.type === "date" && (
-                <input type="date" className="border p-2 w-full rounded mb-2" />
-              )}
-
-              {(q.type === "multiple" ||
-                q.type === "radio" ||
-                q.type === "checkbox" ||
-                q.type === "select") &&
-                q.options?.map((opt, i) => (
-                  <label key={i} className="flex items-center gap-2">
-                    <input
-                      type={
-                        q.type === "radio"
-                          ? "radio"
-                          : q.type === "checkbox"
-                          ? "checkbox"
-                          : "radio"
-                      }
-                      name={`q${idx}`}
-                      className="accent-blue-500"
-                    />
-                    <span className="break-words">{opt}</span>
-                  </label>
-                ))}
+                      {/* Only the dropdown, no background bar or maroon triangle */}
+                      <select
+                        value={q.type}
+                        onChange={(e) =>
+                          updateQuestion(index, "type", e.target.value)
+                        }
+                        className="bg-[#f3f2ee] rounded-lg px-3 py-1 w-fit"
+                        style={{
+                          fontSize: "1rem",
+                          color: "#222",
+                          fontWeight: 500,
+                          border: "none",
+                          boxShadow: "0 1px 3px #0001",
+                          appearance: "auto",
+                          marginBottom: "6px",
+                          fontFamily: "Poppins, Arial, sans-serif"
+                        }}
+                      >
+                        <option value="text">Short Answer</option>
+                        <option value="textarea">Paragraph</option>
+                        <option value="multiple">Multiple Choice</option>
+                        <option value="radio">Radio</option>
+                        <option value="checkbox">Checkbox</option>
+                        <option value="select">Dropdown</option>
+                        <option value="number">Number</option>
+                        <option value="date">Date</option>
+                      </select>
+                      {/* Required checkbox ONLY, left side, no check icon */}
+                      <div
+                        className="text-sm flex items-center gap-2"
+                        style={{ color: "#222", fontSize: "1rem", marginLeft: 2, fontFamily: "Poppins, Arial, sans-serif" }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={q.required || false}
+                          onChange={(e) =>
+                            updateQuestion(
+                              index,
+                              "required",
+                              e.target.checked
+                            )
+                          }
+                          className="accent-green-500 scale-110"
+                          style={{ fontSize: "1rem" }}
+                        />
+                        <span>Required</span>
+                      </div>
+                      {/* Options */}
+                      {(q.type === "multiple" ||
+                        q.type === "radio" ||
+                        q.type === "checkbox" ||
+                        q.type === "select") && (
+                        <div className="flex flex-col gap-2 mt-2">
+                          {q.options?.map((opt, oIndex) => (
+                            <div key={oIndex} className="flex gap-2">
+                              <input
+                                type="text"
+                                value={opt}
+                                onChange={(e) =>
+                                  updateOption(index, oIndex, e.target.value)
+                                }
+                                className="rounded-lg px-3 py-1 flex-1 min-w-[120px] border-none"
+                                style={{ background: "#fff", color: "#222", fontSize: "1rem", fontFamily: "Poppins, Arial, sans-serif" }}
+                              />
+                              <button
+                                onClick={() => removeOption(index, oIndex)}
+                                style={{
+                                  background: maroon,
+                                  color: "#fff",
+                                  borderRadius: "7px",
+                                  fontWeight: "bold",
+                                  padding: "0px 14px",
+                                  border: "none",
+                                  fontSize: "1rem",
+                                  fontFamily: "Poppins, Arial, sans-serif"
+                                }}
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          ))}
+                          <button
+                            onClick={() => addOption(index)}
+                            style={{
+                              background: darkGray,
+                              color: "#fff",
+                              borderRadius: "7px",
+                              fontWeight: "bold",
+                              padding: "7px 16px",
+                              border: "none",
+                              marginTop: "5px",
+                              fontSize: "1rem",
+                              width: "fit-content",
+                              fontFamily: "Poppins, Arial, sans-serif"
+                            }}
+                          >
+                            Add Option
+                          </button>
+                        </div>
+                      )}
+                      <button
+                        onClick={() => removeQuestion(index)}
+                        style={{
+                          background: maroon,
+                          color: "#fff",
+                          borderRadius: "8px",
+                          fontWeight: "bold",
+                          padding: "8px 20px",
+                          border: "none",
+                          marginTop: "12px",
+                          width: "fit-content",
+                          fontSize: "1rem",
+                          fontFamily: "Poppins, Arial, sans-serif"
+                        }}
+                      >
+                        Remove Question
+                      </button>
+                    </div>
+                  )}
+                </Draggable>
+              ))}
+              {provided.placeholder}
             </div>
-          ))}
-        </div>
-      )}
+          )}
+        </Droppable>
+      </DragDropContext>
 
-      <div className="flex flex-wrap gap-2 mt-4">
+      {/* Footer Actions */}
+      <div className="flex gap-6 mt-10 justify-between">
         <button
           onClick={addQuestion}
-          className="bg-blue-500 text-white px-4 py-2 rounded w-full sm:w-auto"
+          style={{
+            background: darkGray,
+            color: "#fff",
+            fontSize: "1rem",
+            borderRadius: "11px",
+            padding: "0 22px",
+            height: "38px",
+            fontWeight: 500,
+            border: "none",
+            fontFamily: "Poppins, Arial, sans-serif"
+          }}
         >
           Add Question
         </button>
         <button
           onClick={saveForm}
-          className="bg-green-500 text-white px-4 py-2 rounded w-full sm:w-auto"
+          style={{
+            background: green,
+            color: "#fff",
+            fontSize: "1rem",
+            borderRadius: "11px",
+            padding: "0 22px",
+            height: "38px",
+            fontWeight: 500,
+            border: "none",
+            fontFamily: "Poppins, Arial, sans-serif"
+          }}
         >
           {formId ? "Update Form" : "Save Form"}
         </button>
