@@ -134,7 +134,10 @@ export default function CreateForm() {
 
   if (!isAdmin)
     return (
-      <p className="p-6 sm:p-12 md:p-28 text-red-500" style={{ fontFamily: "Poppins, Arial, sans-serif" }}>
+      <p
+        className="p-6 sm:p-12 md:p-28 text-red-500"
+        style={{ fontFamily: "Poppins, Arial, sans-serif" }}
+      >
         You do not have permission to create forms.
       </p>
     );
@@ -148,7 +151,7 @@ export default function CreateForm() {
         fontSize: "1rem",
         background: "#fff",
         maxWidth: "900px",
-        marginTop: "48px"
+        marginTop: "48px",
       }}
     >
       {/* Header: Edit Form */}
@@ -183,7 +186,7 @@ export default function CreateForm() {
             alignItems: "center",
             gap: "24px",
             maxWidth: "100%",
-            marginBottom: "0.5rem"
+            marginBottom: "0.5rem",
           }}
         >
           {editingTitle ? (
@@ -249,7 +252,7 @@ export default function CreateForm() {
                   boxSizing: "border-box",
                   display: "flex",
                   alignItems: "center",
-                  fontSize: "1.35rem"
+                  fontSize: "1.35rem",
                 }}
               >
                 {title}
@@ -270,7 +273,7 @@ export default function CreateForm() {
                   fontSize: "1.05rem",
                   fontStyle: "italic",
                   fontFamily: "Poppins, Arial, sans-serif",
-                  whiteSpace: "nowrap"
+                  whiteSpace: "nowrap",
                 }}
                 onClick={() => setEditingTitle(true)}
               >
@@ -291,11 +294,7 @@ export default function CreateForm() {
               className="flex flex-col gap-6"
             >
               {questions.map((q, index) => (
-                <Draggable
-                  key={index}
-                  draggableId={`q-${index}`}
-                  index={index}
-                >
+                <Draggable key={index} draggableId={`q-${index}`} index={index}>
                   {(provided) => (
                     <div
                       ref={provided.innerRef}
@@ -308,7 +307,7 @@ export default function CreateForm() {
                         marginBottom: "0px",
                         ...provided.draggableProps.style,
                         fontSize: "1rem",
-                        fontFamily: "Poppins, Arial, sans-serif"
+                        fontFamily: "Poppins, Arial, sans-serif",
                       }}
                       className="flex flex-col gap-2"
                     >
@@ -326,7 +325,7 @@ export default function CreateForm() {
                             border: "none",
                             color: "#222",
                             fontSize: "1rem",
-                            fontFamily: "Poppins, Arial, sans-serif"
+                            fontFamily: "Poppins, Arial, sans-serif",
                           }}
                         />
                       </div>
@@ -345,7 +344,7 @@ export default function CreateForm() {
                           boxShadow: "0 1px 3px #0001",
                           appearance: "auto",
                           marginBottom: "6px",
-                          fontFamily: "Poppins, Arial, sans-serif"
+                          fontFamily: "Poppins, Arial, sans-serif",
                         }}
                       >
                         <option value="text">Short Answer</option>
@@ -360,17 +359,18 @@ export default function CreateForm() {
                       {/* Required checkbox ONLY, left side, no check icon */}
                       <div
                         className="text-sm flex items-center gap-2"
-                        style={{ color: "#222", fontSize: "1rem", marginLeft: 2, fontFamily: "Poppins, Arial, sans-serif" }}
+                        style={{
+                          color: "#222",
+                          fontSize: "1rem",
+                          marginLeft: 2,
+                          fontFamily: "Poppins, Arial, sans-serif",
+                        }}
                       >
                         <input
                           type="checkbox"
                           checked={q.required || false}
                           onChange={(e) =>
-                            updateQuestion(
-                              index,
-                              "required",
-                              e.target.checked
-                            )
+                            updateQuestion(index, "required", e.target.checked)
                           }
                           className="accent-green-500 scale-110"
                           style={{ fontSize: "1rem" }}
@@ -392,7 +392,12 @@ export default function CreateForm() {
                                   updateOption(index, oIndex, e.target.value)
                                 }
                                 className="rounded-lg px-3 py-1 flex-1 min-w-[120px] border-none"
-                                style={{ background: "#fff", color: "#222", fontSize: "1rem", fontFamily: "Poppins, Arial, sans-serif" }}
+                                style={{
+                                  background: "#fff",
+                                  color: "#222",
+                                  fontSize: "1rem",
+                                  fontFamily: "Poppins, Arial, sans-serif",
+                                }}
                               />
                               <button
                                 onClick={() => removeOption(index, oIndex)}
@@ -404,7 +409,7 @@ export default function CreateForm() {
                                   padding: "0px 14px",
                                   border: "none",
                                   fontSize: "1rem",
-                                  fontFamily: "Poppins, Arial, sans-serif"
+                                  fontFamily: "Poppins, Arial, sans-serif",
                                 }}
                               >
                                 Remove
@@ -423,7 +428,7 @@ export default function CreateForm() {
                               marginTop: "5px",
                               fontSize: "1rem",
                               width: "fit-content",
-                              fontFamily: "Poppins, Arial, sans-serif"
+                              fontFamily: "Poppins, Arial, sans-serif",
                             }}
                           >
                             Add Option
@@ -442,7 +447,7 @@ export default function CreateForm() {
                           marginTop: "12px",
                           width: "fit-content",
                           fontSize: "1rem",
-                          fontFamily: "Poppins, Arial, sans-serif"
+                          fontFamily: "Poppins, Arial, sans-serif",
                         }}
                       >
                         Remove Question
@@ -470,7 +475,7 @@ export default function CreateForm() {
             height: "38px",
             fontWeight: 500,
             border: "none",
-            fontFamily: "Poppins, Arial, sans-serif"
+            fontFamily: "Poppins, Arial, sans-serif",
           }}
         >
           Add Question
@@ -486,7 +491,7 @@ export default function CreateForm() {
             height: "38px",
             fontWeight: 500,
             border: "none",
-            fontFamily: "Poppins, Arial, sans-serif"
+            fontFamily: "Poppins, Arial, sans-serif",
           }}
         >
           {formId ? "Update Form" : "Save Form"}
