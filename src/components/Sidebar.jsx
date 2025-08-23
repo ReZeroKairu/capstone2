@@ -1,12 +1,9 @@
 import React, { useEffect } from "react";
-import { MdTrendingUp } from "react-icons/md";
 import { HiTrendingUp } from "react-icons/hi";
-import { FaChartLine } from "react-icons/fa";
 import {
   FaHome,
   FaBullhorn,
   FaUsers,
-  FaTachometerAlt,
   FaFileUpload,
   FaBook,
   FaBars,
@@ -98,9 +95,9 @@ const Sidebar = ({ role, isOpen, toggleSidebar }) => {
         <Link
           to={link.path}
           onClick={handleLinkClick}
-          className={`flex items-center justify-center md:justify-start px-4 py-3 mb-1 rounded-lg ${
+          className={`flex items-center justify-center md:justify-start px-4 py-3 mb-2 rounded-lg mx-3 ${
             location.pathname === link.path
-              ? "bg-white text-black font-bold "
+              ? "bg-white text-black font-bold"
               : "text-white hover:bg-white hover:text-black hover:font-bold"
           }`}
         >
@@ -119,8 +116,17 @@ const Sidebar = ({ role, isOpen, toggleSidebar }) => {
         }`}
       >
         {isOpen && (
-          <div className="py-4 pt-28 pl-24 px-6">
-            <span className="text-xl font-semibold">Menu</span>
+          <div className="flex items-center py-4 pt-28 px-4">
+            {/* X button */}
+            <button
+              type="button"
+              onClick={() => toggleSidebar(false)}
+              className="bg-red-800 border border-white text-white w-10 h-10 flex items-center justify-center rounded hover:bg-red-700"
+            >
+              <FaTimes />
+            </button>
+            {/* Menu label */}
+            <span className="text-xl font-semibold ml-3">Menu</span>
           </div>
         )}
         {isOpen && (
@@ -133,15 +139,17 @@ const Sidebar = ({ role, isOpen, toggleSidebar }) => {
         )}
       </div>
 
-      {/* Desktop burger/X toggle */}
-      <button
-        type="button"
-        onClick={() => toggleSidebar(!isOpen)}
-        className="hidden md:flex bg-red-700 hover:bg-red-600 active:bg-red-500 text-white w-10 h-10 items-center justify-center rounded z-30 outline-none focus:outline-none"
-        style={{ position: "fixed", top: "5.5rem", left: "0.5rem" }}
-      >
-        {isOpen ? <FaTimes /> : <FaBars />}
-      </button>
+      {/* Desktop burger toggle (only visible when sidebar is closed) */}
+      {!isOpen && (
+        <button
+          type="button"
+          onClick={() => toggleSidebar(true)}
+          className="hidden md:flex bg-red-800 border border-white text-white w-10 h-10 items-center justify-center rounded hover:bg-red-700 z-30 outline-none focus:outline-none"
+          style={{ position: "fixed", top: "5.5rem", left: "0.5rem" }}
+        >
+          <FaBars />
+        </button>
+      )}
 
       {/* Mobile Bottom Menu - always stick to bottom */}
       <div className="md:hidden fixed bottom-0 left-0 w-full bg-red-800 text-white z-30 flex justify-around p-2 h-16">
