@@ -19,6 +19,10 @@ import { getAuth } from "firebase/auth";
 const yellow = "#F9D563";
 const brown = "#7B2E19";
 
+// Fixed container width and min-height for consistent layout
+const DATA_CONTAINER_MAX_WIDTH = 1100;
+const DATA_CONTAINER_MIN_HEIGHT = 430; // Adjust for ideal minimum height
+
 function UserManagement() {
   const { currentUser, loading: authLoading } = useAuth();
   const navigate = useNavigate();
@@ -30,7 +34,7 @@ function UserManagement() {
   const [editingUser, setEditingUser] = useState(null);
   const [deleteUserId, setDeleteUserId] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
-  const [usersPerPage, setUsersPerPage] = useState(8); // Default to 8
+  const [usersPerPage, setUsersPerPage] = useState(8);
   const [searchQuery, setSearchQuery] = useState("");
   const auth = getAuth(app);
 
@@ -45,7 +49,6 @@ function UserManagement() {
         navigate("/unauthorized");
       }
     } catch (error) {
-      console.error("Check admin status error:", error);
       setMessage("Failed to verify admin status.");
     } finally {
       setLoading(false);
@@ -63,7 +66,6 @@ function UserManagement() {
       }));
       setUsers(usersList);
     } catch (error) {
-      console.error("Fetch users error:", error);
       setMessage("Failed to fetch users.");
     } finally {
       setLoading(false);
@@ -85,7 +87,6 @@ function UserManagement() {
 
   const handleDelete = async () => {
     try {
-      // Delete subcollections (like Notifications)
       const notifColRef = collection(db, "Users", deleteUserId, "Notifications");
       const notifSnap = await getDocs(notifColRef);
       for (const notif of notifSnap.docs) {
@@ -96,7 +97,6 @@ function UserManagement() {
       setMessage("User deleted successfully.");
       setDeleteUserId(null);
     } catch (error) {
-      console.error("Delete user error:", error);
       setMessage("Failed to delete user.");
     }
   };
@@ -125,8 +125,7 @@ function UserManagement() {
             seen: false,
           };
           await addDoc(notifColRef, newNotif);
-        } catch (notifError) {
-          console.error("Failed to create notification:", notifError);
+        } catch {
           setMessage("User updated but failed to create notification.");
         }
       }
@@ -136,8 +135,7 @@ function UserManagement() {
       setMessage("User updated successfully.");
       setIsEditing(false);
       setEditingUser(null);
-    } catch (error) {
-      console.error("Update user error:", error);
+    } catch {
       setMessage("Failed to update user.");
     }
   };
@@ -188,7 +186,7 @@ function UserManagement() {
       <div
         className="relative mb-6 w-full max-w-md mx-auto flex items-center"
         style={{
-          border: `2px solid ${brown}`, // thinner border
+          border: `2px solid ${brown}`,
           borderRadius: "18px",
           background: "#fff",
           padding: "8px 20px",
@@ -201,14 +199,17 @@ function UserManagement() {
         />
         <input
           type="text"
-          placeholder="Search user"
+          placeholder="Search User..."
           value={searchQuery}
           onChange={(e) => {
             setSearchQuery(e.target.value);
             setCurrentPage(1);
           }}
           className="w-full border-none outline-none bg-transparent text-lg"
-          style={{ color: brown }}
+          style={{
+            color: brown,
+            fontStyle: "italic", // <-- italic placeholder and text!
+          }}
         />
       </div>
 
@@ -234,28 +235,53 @@ function UserManagement() {
       <div
         className="overflow-x-auto mx-auto"
         style={{
-          maxWidth: "1100px",
-          border: `2px solid ${brown}`, // thinner border
+          width: "100%",
+          maxWidth: `${DATA_CONTAINER_MAX_WIDTH}px`,
+          minHeight: `${DATA_CONTAINER_MIN_HEIGHT}px`,
+          border: `2px solid ${brown}`,
           borderRadius: "20px",
           background: "#fff",
+          margin: "0 auto",
+          display: "flex",
+          flexDirection: "column",
+          justifyContent: "flex-start",
         }}
       >
-        <table className="w-full">
+        <table
+          className="w-full"
+          style={{
+            tableLayout: "fixed",
+            width: "100%",
+            borderCollapse: "separate",
+            borderSpacing: 0,
+            fontFamily: "Poppins, Arial, sans-serif",
+          }}
+        >
           <thead>
             <tr style={{ background: yellow }}>
-              <th className="py-3 px-4 text-left font-bold" style={{ color: brown }}>
+              <th style={{
+                color: brown, width: "31%", textAlign: "left", fontWeight: "bold", padding: "14px 18px", fontSize: "1.05em", overflow: "hidden"
+              }}>
                 Email
               </th>
-              <th className="py-3 px-4 text-left font-bold" style={{ color: brown }}>
+              <th style={{
+                color: brown, width: "15%", textAlign: "left", fontWeight: "bold", padding: "14px 18px", fontSize: "1.05em", overflow: "hidden"
+              }}>
                 First
               </th>
-              <th className="py-3 px-4 text-left font-bold" style={{ color: brown }}>
+              <th style={{
+                color: brown, width: "16%", textAlign: "left", fontWeight: "bold", padding: "14px 18px", fontSize: "1.05em", overflow: "hidden"
+              }}>
                 Last
               </th>
-              <th className="py-3 px-4 text-left font-bold" style={{ color: brown }}>
+              <th style={{
+                color: brown, width: "14%", textAlign: "left", fontWeight: "bold", padding: "14px 18px", fontSize: "1.05em", overflow: "hidden"
+              }}>
                 Role
               </th>
-              <th className="py-3 px-4 text-left font-bold" style={{ color: brown }}>
+              <th style={{
+                color: brown, width: "24%", textAlign: "left", fontWeight: "bold", padding: "14px 18px", fontSize: "1.05em", overflow: "hidden"
+              }}>
                 Action
               </th>
             </tr>
@@ -270,50 +296,107 @@ function UserManagement() {
             ) : (
               currentUsers.map((user) => (
                 <tr key={user.id} style={{ borderBottom: "none" }}>
-                  <td className="py-2 px-4 text-left" style={{ color: brown }}>
+                  <td
+                    style={{
+                      color: brown,
+                      padding: "10px 18px",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                      fontSize: "1.03em",
+                      verticalAlign: "middle",
+                      fontFamily: "inherit"
+                    }}
+                  >
                     {user.email}
                   </td>
-                  <td className="py-2 px-4 text-left" style={{ color: brown }}>
+                  <td
+                    style={{
+                      color: brown,
+                      padding: "10px 18px",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                      fontSize: "1.03em",
+                      verticalAlign: "middle",
+                      fontFamily: "inherit"
+                    }}
+                  >
                     {user.firstName}
                   </td>
-                  <td className="py-2 px-4 text-left" style={{ color: brown }}>
+                  <td
+                    style={{
+                      color: brown,
+                      padding: "10px 18px",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                      fontSize: "1.03em",
+                      verticalAlign: "middle",
+                      fontFamily: "inherit"
+                    }}
+                  >
                     {user.lastName}
                   </td>
-                  <td className="py-2 px-4 text-left" style={{ color: brown }}>
+                  <td
+                    style={{
+                      color: brown,
+                      padding: "10px 18px",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                      fontSize: "1.03em",
+                      verticalAlign: "middle",
+                      fontFamily: "inherit"
+                    }}
+                  >
                     {user.role}
                   </td>
-                  <td className="py-2 px-4 text-left flex gap-2">
-                    <button
-                      className="font-bold py-2 px-5"
-                      style={{
-                        background: yellow,
-                        color: brown,
-                        borderRadius: "12px",
-                        boxShadow:
-                          isEditing && editingUser?.id === user.id
-                            ? "0 0 0 2px #a259f7"
-                            : "none",
-                        outline: isEditing && editingUser?.id === user.id ? "2px solid #a259f7" : "none",
-                        border: "none",
-                        transition: "box-shadow 0.2s",
-                      }}
-                      onClick={() => handleEdit(user)}
-                    >
-                      Edit
-                    </button>
-                    <button
-                      className="font-bold py-2 px-5"
-                      style={{
-                        background: yellow,
-                        color: brown,
-                        borderRadius: "12px",
-                        border: "none",
-                        transition: "box-shadow 0.2s",
-                      }}
-                      onClick={() => handleDeleteConfirmation(user.id)}
-                    >
-                      Delete
-                    </button>
+                  <td
+                    style={{
+                      color: brown,
+                      padding: "10px 18px",
+                      verticalAlign: "middle",
+                      fontFamily: "inherit"
+                    }}
+                  >
+                    <div style={{ display: "flex", gap: "12px" }}>
+                      <button
+                        className="font-bold py-2 px-5"
+                        style={{
+                          background: yellow,
+                          color: brown,
+                          borderRadius: "12px",
+                          boxShadow:
+                            isEditing && editingUser?.id === user.id
+                              ? "0 0 0 2px #a259f7"
+                              : "none",
+                          outline: isEditing && editingUser?.id === user.id ? "2px solid #a259f7" : "none",
+                          border: "none",
+                          transition: "box-shadow 0.2s",
+                          fontWeight: "bold",
+                          fontFamily: "inherit"
+                        }}
+                        onClick={() => handleEdit(user)}
+                      >
+                        Edit
+                      </button>
+                      <button
+                        className="font-bold py-2 px-5"
+                        style={{
+                          background: yellow,
+                          color: brown,
+                          borderRadius: "12px",
+                          border: "none",
+                          transition: "box-shadow 0.2s",
+                          fontWeight: "bold",
+                          fontFamily: "inherit"
+                        }}
+                        onClick={() => handleDeleteConfirmation(user.id)}
+                      >
+                        Delete
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))
@@ -322,121 +405,19 @@ function UserManagement() {
         </table>
       </div>
 
-      {/* Delete Modal */}
-      {deleteUserId && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center p-4 z-50">
-          <div style={{ background: "#fff", borderRadius: "20px", padding: "32px", boxShadow: "0 4px 24px #0001" }}>
-            <p style={{ color: brown, fontWeight: 600 }}>Are you sure you want to delete this user?</p>
-            <div className="flex gap-3 mt-5 justify-end">
-              <button
-                style={{
-                  background: yellow,
-                  color: brown,
-                  borderRadius: "10px",
-                  fontWeight: "bold",
-                  padding: "10px 28px",
-                  border: "none",
-                }}
-                onClick={handleDelete}
-              >
-                Yes
-              </button>
-              <button
-                style={{
-                  background: "#eee",
-                  color: brown,
-                  borderRadius: "10px",
-                  fontWeight: "bold",
-                  padding: "10px 28px",
-                  border: "none",
-                }}
-                onClick={() => setDeleteUserId(null)}
-              >
-                No
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Edit Modal */}
-      {isEditing && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center p-4 z-50">
-          <div style={{ background: "#fff", borderRadius: "22px", padding: "32px", boxShadow: "0 4px 24px #0001", minWidth: "320px" }}>
-            <h3 className="text-lg font-bold mb-4" style={{ color: brown }}>Edit User</h3>
-            <input
-              type="text"
-              placeholder="First Name"
-              value={editingUser.firstName}
-              onChange={(e) =>
-                setEditingUser({ ...editingUser, firstName: e.target.value })
-              }
-              className="w-full mb-2 px-4 py-2"
-              style={{ borderRadius: "10px", border: `2px solid ${yellow}`, color: brown, background: "#fff" }}
-            />
-            <input
-              type="text"
-              placeholder="Last Name"
-              value={editingUser.lastName}
-              onChange={(e) =>
-                setEditingUser({ ...editingUser, lastName: e.target.value })
-              }
-              className="w-full mb-2 px-4 py-2"
-              style={{ borderRadius: "10px", border: `2px solid ${yellow}`, color: brown, background: "#fff" }}
-            />
-            <select
-              value={editingUser.role}
-              onChange={(e) =>
-                setEditingUser({ ...editingUser, role: e.target.value })
-              }
-              className="w-full mb-2 px-4 py-2"
-              style={{ borderRadius: "10px", border: `2px solid ${yellow}`, color: brown, background: "#fff" }}
-            >
-              <option value="Researcher">Researcher</option>
-              <option value="Admin">Admin</option>
-              <option value="Peer Reviewer">Peer Reviewer</option>
-            </select>
-            <div className="flex gap-3 mt-5 justify-end">
-              <button
-                style={{
-                  background: yellow,
-                  color: brown,
-                  borderRadius: "10px",
-                  fontWeight: "bold",
-                  padding: "10px 28px",
-                  border: "none",
-                }}
-                onClick={handleUpdateUser}
-              >
-                Update
-              </button>
-              <button
-                style={{
-                  background: "#eee",
-                  color: brown,
-                  borderRadius: "10px",
-                  fontWeight: "bold",
-                  padding: "10px 28px",
-                  border: "none",
-                }}
-                onClick={() => setIsEditing(false)}
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Pagination Bar */}
+      {/* Pagination Bar - force same width as table container */}
       <div
-        className="mt-6 mx-auto flex flex-col sm:flex-row justify-between items-center gap-5"
+        className="mt-6 flex flex-col sm:flex-row justify-between items-center gap-5"
         style={{
           background: yellow,
           borderRadius: "16px",
           padding: "18px 24px",
-          maxWidth: "1100px",
-          marginTop: "2rem",
+          width: "100%",
+          maxWidth: `${DATA_CONTAINER_MAX_WIDTH}px`,
+          margin: "2rem auto 0 auto",
+          boxSizing: "border-box",
+          display: "flex",
+          flexDirection: "row",
         }}
       >
         <div className="flex items-center gap-2 flex-wrap">
@@ -550,6 +531,112 @@ function UserManagement() {
           </button>
         </div>
       </div>
+
+      {/* Delete Modal */}
+      {deleteUserId && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center p-4 z-50">
+          <div style={{ background: "#fff", borderRadius: "20px", padding: "32px", boxShadow: "0 4px 24px #0001" }}>
+            <p style={{ color: brown, fontWeight: 600 }}>Are you sure you want to delete this user?</p>
+            <div className="flex gap-3 mt-5 justify-end">
+              <button
+                style={{
+                  background: yellow,
+                  color: brown,
+                  borderRadius: "10px",
+                  fontWeight: "bold",
+                  padding: "10px 28px",
+                  border: "none",
+                }}
+                onClick={handleDelete}
+              >
+                Yes
+              </button>
+              <button
+                style={{
+                  background: "#eee",
+                  color: brown,
+                  borderRadius: "10px",
+                  fontWeight: "bold",
+                  padding: "10px 28px",
+                  border: "none",
+                }}
+                onClick={() => setDeleteUserId(null)}
+              >
+                No
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Modal */}
+      {isEditing && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center p-4 z-50">
+          <div style={{ background: "#fff", borderRadius: "22px", padding: "32px", boxShadow: "0 4px 24px #0001", minWidth: "320px" }}>
+            <h3 className="text-lg font-bold mb-4" style={{ color: brown }}>Edit User</h3>
+            <input
+              type="text"
+              placeholder="First Name"
+              value={editingUser.firstName}
+              onChange={(e) =>
+                setEditingUser({ ...editingUser, firstName: e.target.value })
+              }
+              className="w-full mb-2 px-4 py-2"
+              style={{ borderRadius: "10px", border: `2px solid ${yellow}`, color: brown, background: "#fff" }}
+            />
+            <input
+              type="text"
+              placeholder="Last Name"
+              value={editingUser.lastName}
+              onChange={(e) =>
+                setEditingUser({ ...editingUser, lastName: e.target.value })
+              }
+              className="w-full mb-2 px-4 py-2"
+              style={{ borderRadius: "10px", border: `2px solid ${yellow}`, color: brown, background: "#fff" }}
+            />
+            <select
+              value={editingUser.role}
+              onChange={(e) =>
+                setEditingUser({ ...editingUser, role: e.target.value })
+              }
+              className="w-full mb-2 px-4 py-2"
+              style={{ borderRadius: "10px", border: `2px solid ${yellow}`, color: brown, background: "#fff" }}
+            >
+              <option value="Researcher">Researcher</option>
+              <option value="Admin">Admin</option>
+              <option value="Peer Reviewer">Peer Reviewer</option>
+            </select>
+            <div className="flex gap-3 mt-5 justify-end">
+              <button
+                style={{
+                  background: yellow,
+                  color: brown,
+                  borderRadius: "10px",
+                  fontWeight: "bold",
+                  padding: "10px 28px",
+                  border: "none",
+                }}
+                onClick={handleUpdateUser}
+              >
+                Update
+              </button>
+              <button
+                style={{
+                  background: "#eee",
+                  color: brown,
+                  borderRadius: "10px",
+                  fontWeight: "bold",
+                  padding: "10px 28px",
+                  border: "none",
+                }}
+                onClick={() => setIsEditing(false)}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
