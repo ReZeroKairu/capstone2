@@ -189,10 +189,7 @@ export default function SubmitManuscript() {
 
       setCooldown(5);
       setAnswers({});
-      <div>
-        classname ={"text-green-400"}
-        setMessage("Form submitted successfully!");
-      </div>;
+      setMessage("Form submitted successfully!");
     } catch (error) {
       console.error("Submit error:", error);
       setMessage("Failed to submit form. Check console for details.");

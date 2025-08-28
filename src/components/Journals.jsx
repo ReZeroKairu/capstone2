@@ -82,22 +82,6 @@ const journals = [
     image: "journals/ldcuj9.jpg",
     link: "/journals/asian-journal-of-social-sciences",
   },
-  {
-    title: "ADVANCING PSYCHOLOGY RESEARCH",
-    discipline: "Physical Theraphy",
-    publisher: "Liceo de Cagayan University",
-    publisherLink: "https://liceo.edu.ph",
-    image: "journals/ldcuj11.jpg",
-    link: "https://asianscientificjournals.com/new/publication/index_php/apsyr/",
-  },
-  {
-    title: "ADVANCING PHYSICAL THERAPY RESEARCH",
-    discipline: "EducationPsychology",
-    publisher: "Liceo de Cagayan University",
-    publisherLink: "https://liceo.edu.ph",
-    image: "journals/ldcuj10.jpg",
-    link: "https://asianscientificjournals.com/new/publication/index_php/aptr/",
-  },
 ];
 
 const Journals = () => {
