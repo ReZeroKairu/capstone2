@@ -87,10 +87,17 @@ function UserManagement() {
 
   const handleDelete = async () => {
     try {
-      const notifColRef = collection(db, "Users", deleteUserId, "Notifications");
+      const notifColRef = collection(
+        db,
+        "Users",
+        deleteUserId,
+        "Notifications"
+      );
       const notifSnap = await getDocs(notifColRef);
       for (const notif of notifSnap.docs) {
-        await deleteDoc(doc(db, "Users", deleteUserId, "Notifications", notif.id));
+        await deleteDoc(
+          doc(db, "Users", deleteUserId, "Notifications", notif.id)
+        );
       }
       await deleteDoc(doc(db, "Users", deleteUserId));
       setUsers((prev) => prev.filter((u) => u.id !== deleteUserId));
@@ -118,7 +125,12 @@ function UserManagement() {
       });
       if (prevRole !== editingUser.role) {
         try {
-          const notifColRef = collection(db, "Users", editingUser.id, "Notifications");
+          const notifColRef = collection(
+            db,
+            "Users",
+            editingUser.id,
+            "Notifications"
+          );
           const newNotif = {
             message: `Your role has been changed from ${prevRole} to ${editingUser.role}`,
             timestamp: serverTimestamp(),
@@ -130,7 +142,9 @@ function UserManagement() {
         }
       }
       setUsers((prev) =>
-        prev.map((u) => (u.id === editingUser.id ? { ...u, ...editingUser } : u))
+        prev.map((u) =>
+          u.id === editingUser.id ? { ...u, ...editingUser } : u
+        )
       );
       setMessage("User updated successfully.");
       setIsEditing(false);
@@ -178,7 +192,10 @@ function UserManagement() {
       className="min-h-screen pt-28 md:pt-24 relative mb-11 flex flex-col"
       style={{ background: "#fff" }}
     >
-      <h2 className="text-3xl font-bold text-center mb-7" style={{ color: "#000" }}>
+      <h2
+        className="text-3xl font-bold text-center mb-7"
+        style={{ color: "#000" }}
+      >
         Manage Users
       </h2>
 
@@ -218,12 +235,11 @@ function UserManagement() {
         <div
           className="p-2 mb-2 rounded-md text-white text-center w-full max-w-md mx-auto"
           style={{
-            background:
-              message.includes("success")
-                ? "#3CB371"
-                : message.includes("Failed")
-                ? "#FF5252"
-                : "#7B2E19",
+            background: message.includes("success")
+              ? "#3CB371"
+              : message.includes("Failed")
+              ? "#FF5252"
+              : "#7B2E19",
           }}
           role="alert"
         >
@@ -259,29 +275,69 @@ function UserManagement() {
         >
           <thead>
             <tr style={{ background: yellow }}>
-              <th style={{
-                color: brown, width: "31%", textAlign: "left", fontWeight: "bold", padding: "14px 18px", fontSize: "1.05em", overflow: "hidden"
-              }}>
+              <th
+                style={{
+                  color: brown,
+                  width: "31%",
+                  textAlign: "left",
+                  fontWeight: "bold",
+                  padding: "14px 18px",
+                  fontSize: "1.05em",
+                  overflow: "hidden",
+                }}
+              >
                 Email
               </th>
-              <th style={{
-                color: brown, width: "15%", textAlign: "left", fontWeight: "bold", padding: "14px 18px", fontSize: "1.05em", overflow: "hidden"
-              }}>
+              <th
+                style={{
+                  color: brown,
+                  width: "15%",
+                  textAlign: "left",
+                  fontWeight: "bold",
+                  padding: "14px 18px",
+                  fontSize: "1.05em",
+                  overflow: "hidden",
+                }}
+              >
                 First
               </th>
-              <th style={{
-                color: brown, width: "16%", textAlign: "left", fontWeight: "bold", padding: "14px 18px", fontSize: "1.05em", overflow: "hidden"
-              }}>
+              <th
+                style={{
+                  color: brown,
+                  width: "16%",
+                  textAlign: "left",
+                  fontWeight: "bold",
+                  padding: "14px 18px",
+                  fontSize: "1.05em",
+                  overflow: "hidden",
+                }}
+              >
                 Last
               </th>
-              <th style={{
-                color: brown, width: "14%", textAlign: "left", fontWeight: "bold", padding: "14px 18px", fontSize: "1.05em", overflow: "hidden"
-              }}>
+              <th
+                style={{
+                  color: brown,
+                  width: "14%",
+                  textAlign: "left",
+                  fontWeight: "bold",
+                  padding: "14px 18px",
+                  fontSize: "1.05em",
+                  overflow: "hidden",
+                }}
+              >
                 Role
               </th>
-              <th style={{
-                color: brown, width: "24%", textAlign: "left", fontWeight: "bold", padding: "14px 18px", fontSize: "1.05em", overflow: "hidden"
-              }}>
+              <th
+                style={{
+                  color: brown,
+                  width: "24%",
+                  textAlign: "left",
+                  fontWeight: "bold",
+                  padding: "14px 18px",
+                  fontSize: "1.05em",
+                  overflow: "hidden",
+                }}
+              >
                 Action
               </th>
             </tr>
@@ -289,7 +345,11 @@ function UserManagement() {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={5} className="py-5 text-center" style={{ color: brown }}>
+                <td
+                  colSpan={5}
+                  className="py-5 text-center"
+                  style={{ color: brown }}
+                >
                   Loading users...
                 </td>
               </tr>
@@ -305,7 +365,7 @@ function UserManagement() {
                       whiteSpace: "nowrap",
                       fontSize: "1.03em",
                       verticalAlign: "middle",
-                      fontFamily: "inherit"
+                      fontFamily: "inherit",
                     }}
                   >
                     {user.email}
@@ -319,7 +379,7 @@ function UserManagement() {
                       whiteSpace: "nowrap",
                       fontSize: "1.03em",
                       verticalAlign: "middle",
-                      fontFamily: "inherit"
+                      fontFamily: "inherit",
                     }}
                   >
                     {user.firstName}
@@ -333,7 +393,7 @@ function UserManagement() {
                       whiteSpace: "nowrap",
                       fontSize: "1.03em",
                       verticalAlign: "middle",
-                      fontFamily: "inherit"
+                      fontFamily: "inherit",
                     }}
                   >
                     {user.lastName}
@@ -347,7 +407,7 @@ function UserManagement() {
                       whiteSpace: "nowrap",
                       fontSize: "1.03em",
                       verticalAlign: "middle",
-                      fontFamily: "inherit"
+                      fontFamily: "inherit",
                     }}
                   >
                     {user.role}
@@ -357,7 +417,7 @@ function UserManagement() {
                       color: brown,
                       padding: "10px 18px",
                       verticalAlign: "middle",
-                      fontFamily: "inherit"
+                      fontFamily: "inherit",
                     }}
                   >
                     <div style={{ display: "flex", gap: "12px" }}>
@@ -371,11 +431,14 @@ function UserManagement() {
                             isEditing && editingUser?.id === user.id
                               ? "0 0 0 2px #a259f7"
                               : "none",
-                          outline: isEditing && editingUser?.id === user.id ? "2px solid #a259f7" : "none",
+                          outline:
+                            isEditing && editingUser?.id === user.id
+                              ? "2px solid #a259f7"
+                              : "none",
                           border: "none",
                           transition: "box-shadow 0.2s",
                           fontWeight: "bold",
-                          fontFamily: "inherit"
+                          fontFamily: "inherit",
                         }}
                         onClick={() => handleEdit(user)}
                       >
@@ -390,7 +453,7 @@ function UserManagement() {
                           border: "none",
                           transition: "box-shadow 0.2s",
                           fontWeight: "bold",
-                          fontFamily: "inherit"
+                          fontFamily: "inherit",
                         }}
                         onClick={() => handleDeleteConfirmation(user.id)}
                       >
@@ -481,7 +544,12 @@ function UserManagement() {
           </button>
           {getPageNumbers().map((num, idx) =>
             num === "..." ? (
-              <span key={idx} style={{ color: brown, fontWeight: "bold", padding: "0 8px" }}>...</span>
+              <span
+                key={idx}
+                style={{ color: brown, fontWeight: "bold", padding: "0 8px" }}
+              >
+                ...
+              </span>
             ) : (
               <button
                 key={num}
@@ -500,7 +568,9 @@ function UserManagement() {
             )
           )}
           <button
-            onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
+            onClick={() =>
+              setCurrentPage((prev) => Math.min(prev + 1, totalPages))
+            }
             disabled={currentPage === totalPages}
             style={{
               background: yellow,
@@ -535,8 +605,17 @@ function UserManagement() {
       {/* Delete Modal */}
       {deleteUserId && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center p-4 z-50">
-          <div style={{ background: "#fff", borderRadius: "20px", padding: "32px", boxShadow: "0 4px 24px #0001" }}>
-            <p style={{ color: brown, fontWeight: 600 }}>Are you sure you want to delete this user?</p>
+          <div
+            style={{
+              background: "#fff",
+              borderRadius: "20px",
+              padding: "32px",
+              boxShadow: "0 4px 24px #0001",
+            }}
+          >
+            <p style={{ color: brown, fontWeight: 600 }}>
+              Are you sure you want to delete this user?
+            </p>
             <div className="flex gap-3 mt-5 justify-end">
               <button
                 style={{
@@ -572,8 +651,18 @@ function UserManagement() {
       {/* Edit Modal */}
       {isEditing && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center p-4 z-50">
-          <div style={{ background: "#fff", borderRadius: "22px", padding: "32px", boxShadow: "0 4px 24px #0001", minWidth: "320px" }}>
-            <h3 className="text-lg font-bold mb-4" style={{ color: brown }}>Edit User</h3>
+          <div
+            style={{
+              background: "#fff",
+              borderRadius: "22px",
+              padding: "32px",
+              boxShadow: "0 4px 24px #0001",
+              minWidth: "320px",
+            }}
+          >
+            <h3 className="text-lg font-bold mb-4" style={{ color: brown }}>
+              Edit User
+            </h3>
             <input
               type="text"
               placeholder="First Name"
@@ -582,7 +671,12 @@ function UserManagement() {
                 setEditingUser({ ...editingUser, firstName: e.target.value })
               }
               className="w-full mb-2 px-4 py-2"
-              style={{ borderRadius: "10px", border: `2px solid ${yellow}`, color: brown, background: "#fff" }}
+              style={{
+                borderRadius: "10px",
+                border: `2px solid ${yellow}`,
+                color: brown,
+                background: "#fff",
+              }}
             />
             <input
               type="text"
@@ -592,7 +686,12 @@ function UserManagement() {
                 setEditingUser({ ...editingUser, lastName: e.target.value })
               }
               className="w-full mb-2 px-4 py-2"
-              style={{ borderRadius: "10px", border: `2px solid ${yellow}`, color: brown, background: "#fff" }}
+              style={{
+                borderRadius: "10px",
+                border: `2px solid ${yellow}`,
+                color: brown,
+                background: "#fff",
+              }}
             />
             <select
               value={editingUser.role}
@@ -600,7 +699,12 @@ function UserManagement() {
                 setEditingUser({ ...editingUser, role: e.target.value })
               }
               className="w-full mb-2 px-4 py-2"
-              style={{ borderRadius: "10px", border: `2px solid ${yellow}`, color: brown, background: "#fff" }}
+              style={{
+                borderRadius: "10px",
+                border: `2px solid ${yellow}`,
+                color: brown,
+                background: "#fff",
+              }}
             >
               <option value="Researcher">Researcher</option>
               <option value="Admin">Admin</option>
