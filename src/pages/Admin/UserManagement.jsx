@@ -8,21 +8,13 @@ import {
   addDoc,
   deleteDoc,
   updateDoc,
+  setDoc,
   serverTimestamp,
 } from "firebase/firestore";
 import { useAuth } from "../../authcontext/AuthContext";
 import { useNavigate } from "react-router-dom";
 import { FaSearch } from "react-icons/fa";
 import { getAuth } from "firebase/auth";
-
-// Custom colors
-const yellow = "#F9D563";
-const brown = "#7B2E19";
-
-// Fixed container width and min-height for consistent layout
-const DATA_CONTAINER_MAX_WIDTH = 1100;
-const DATA_CONTAINER_MIN_HEIGHT = 430; // Adjust for ideal minimum height
-
 function UserManagement() {
   const { currentUser, loading: authLoading } = useAuth();
   const navigate = useNavigate();
@@ -34,7 +26,7 @@ function UserManagement() {
   const [editingUser, setEditingUser] = useState(null);
   const [deleteUserId, setDeleteUserId] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
-  const [usersPerPage, setUsersPerPage] = useState(8);
+  const [usersPerPage, setUsersPerPage] = useState(5);
   const [searchQuery, setSearchQuery] = useState("");
   const auth = getAuth(app);
 
@@ -49,6 +41,7 @@ function UserManagement() {
         navigate("/unauthorized");
       }
     } catch (error) {
+      console.error("Check admin status error:", error);
       setMessage("Failed to verify admin status.");
     } finally {
       setLoading(false);
@@ -66,6 +59,7 @@ function UserManagement() {
       }));
       setUsers(usersList);
     } catch (error) {
+      console.error("Fetch users error:", error);
       setMessage("Failed to fetch users.");
     } finally {
       setLoading(false);
@@ -87,6 +81,7 @@ function UserManagement() {
 
   const handleDelete = async () => {
     try {
+      // First, delete subcollections (like Notifications) if they exist
       const notifColRef = collection(
         db,
         "Users",
@@ -99,30 +94,42 @@ function UserManagement() {
           doc(db, "Users", deleteUserId, "Notifications", notif.id)
         );
       }
+
+      // Now delete the main user document
       await deleteDoc(doc(db, "Users", deleteUserId));
+
       setUsers((prev) => prev.filter((u) => u.id !== deleteUserId));
       setMessage("User deleted successfully.");
       setDeleteUserId(null);
     } catch (error) {
+      console.error("Delete user error:", error);
       setMessage("Failed to delete user.");
     }
   };
 
   const handleUpdateUser = async () => {
     if (!editingUser) return;
+
     try {
       const userRef = doc(db, "Users", editingUser.id);
+
+      // Fetch previous user data
       const userSnap = await getDoc(userRef);
       if (!userSnap.exists()) {
         setMessage("User does not exist.");
         return;
       }
+
       const prevRole = userSnap.data().role;
+
+      // Update the user document
       await updateDoc(userRef, {
         firstName: editingUser.firstName,
         lastName: editingUser.lastName,
         role: editingUser.role,
       });
+
+      // If role changed, create a notification
       if (prevRole !== editingUser.role) {
         try {
           const notifColRef = collection(
@@ -131,32 +138,41 @@ function UserManagement() {
             editingUser.id,
             "Notifications"
           );
+
           const newNotif = {
             message: `Your role has been changed from ${prevRole} to ${editingUser.role}`,
             timestamp: serverTimestamp(),
             seen: false,
           };
-          await addDoc(notifColRef, newNotif);
-        } catch {
+
+          console.log("Attempting to create notification...");
+          const notifDocRef = await addDoc(notifColRef, newNotif);
+          console.log("Notification created with ID:", notifDocRef.id);
+        } catch (notifError) {
+          console.error("Failed to create notification:", notifError);
           setMessage("User updated but failed to create notification.");
         }
       }
+
+      // Update local state
       setUsers((prev) =>
         prev.map((u) =>
           u.id === editingUser.id ? { ...u, ...editingUser } : u
         )
       );
+
       setMessage("User updated successfully.");
       setIsEditing(false);
       setEditingUser(null);
-    } catch {
+    } catch (error) {
+      console.error("Update user error:", error);
       setMessage("Failed to update user.");
     }
   };
 
   // Improved search for firstName, lastName, email, or role
   const filteredUsers = users.filter((user) => {
-    if (!searchQuery) return true;
+    if (!searchQuery) return true; // show all if empty
     const queryWords = searchQuery.toLowerCase().split(" ");
     return queryWords.every((word) =>
       [user.firstName, user.lastName, user.email, user.role].some((field) =>
@@ -170,475 +186,108 @@ function UserManagement() {
   const currentUsers = filteredUsers.slice(indexOfFirstUser, indexOfLastUser);
   const totalPages = Math.ceil(filteredUsers.length / usersPerPage);
 
-  // For ellipsis pagination
-  const getPageNumbers = () => {
-    const pages = [];
-    if (totalPages <= 7) {
-      for (let i = 1; i <= totalPages; i++) pages.push(i);
-    } else {
-      pages.push(1);
-      if (currentPage > 3) pages.push("...");
-      let start = Math.max(2, currentPage - 1);
-      let end = Math.min(totalPages - 1, currentPage + 1);
-      for (let i = start; i <= end; i++) pages.push(i);
-      if (currentPage < totalPages - 2) pages.push("...");
-      pages.push(totalPages);
-    }
-    return pages;
-  };
-
   return (
-    <div
-      className="min-h-screen pt-28 md:pt-24 relative mb-11 flex flex-col"
-      style={{ background: "#fff" }}
-    >
-      <h2
-        className="text-3xl font-bold text-center mb-7"
-        style={{ color: "#000" }}
-      >
+    <div className="p-4 sm:p-8 bg-gray-50 min-h-screen pt-28 md:pt-24 relative mb-11">
+      <h2 className="text-2xl sm:text-3xl font-bold text-center mb-6 sm:mb-10 text-gray-800">
         Manage Users
       </h2>
-
-      {/* Search Bar */}
-      <div
-        className="relative mb-6 w-full max-w-md mx-auto flex items-center"
-        style={{
-          border: `2px solid ${brown}`,
-          borderRadius: "18px",
-          background: "#fff",
-          padding: "8px 20px",
-        }}
-      >
-        <FaSearch
-          className="mr-3"
-          size={26}
-          style={{ color: yellow, background: "transparent" }}
-        />
-        <input
-          type="text"
-          placeholder="Search User..."
-          value={searchQuery}
-          onChange={(e) => {
-            setSearchQuery(e.target.value);
-            setCurrentPage(1);
-          }}
-          className="w-full border-none outline-none bg-transparent text-lg"
-          style={{
-            color: brown,
-            fontStyle: "italic", // <-- italic placeholder and text!
-          }}
-        />
-      </div>
 
       {/* Message */}
       {message && (
         <div
-          className="p-2 mb-2 rounded-md text-white text-center w-full max-w-md mx-auto"
-          style={{
-            background: message.includes("success")
-              ? "#3CB371"
+          className={`p-2 mb-2 rounded-md text-white text-center w-full sm:w-64 mx-auto ${
+            message.includes("success")
+              ? "bg-green-600"
               : message.includes("Failed")
-              ? "#FF5252"
-              : "#7B2E19",
-          }}
+              ? "bg-red-600"
+              : "bg-blue-600"
+          }`}
           role="alert"
         >
           {message}
         </div>
       )}
 
-      {/* Users Table */}
-      <div
-        className="overflow-x-auto mx-auto"
-        style={{
-          width: "100%",
-          maxWidth: `${DATA_CONTAINER_MAX_WIDTH}px`,
-          minHeight: `${DATA_CONTAINER_MIN_HEIGHT}px`,
-          border: `2px solid ${brown}`,
-          borderRadius: "20px",
-          background: "#fff",
-          margin: "0 auto",
-          display: "flex",
-          flexDirection: "column",
-          justifyContent: "flex-start",
-        }}
-      >
-        <table
-          className="w-full"
-          style={{
-            tableLayout: "fixed",
-            width: "100%",
-            borderCollapse: "separate",
-            borderSpacing: 0,
-            fontFamily: "Poppins, Arial, sans-serif",
+      {/* Search */}
+      <div className="relative mb-4 w-full sm:w-72 mx-auto">
+        <input
+          type="text"
+          placeholder="Search users..."
+          value={searchQuery}
+          onChange={(e) => {
+            setSearchQuery(e.target.value);
+            setCurrentPage(1);
           }}
-        >
-          <thead>
-            <tr style={{ background: yellow }}>
-              <th
-                style={{
-                  color: brown,
-                  width: "31%",
-                  textAlign: "left",
-                  fontWeight: "bold",
-                  padding: "14px 18px",
-                  fontSize: "1.05em",
-                  overflow: "hidden",
-                }}
-              >
-                Email
-              </th>
-              <th
-                style={{
-                  color: brown,
-                  width: "15%",
-                  textAlign: "left",
-                  fontWeight: "bold",
-                  padding: "14px 18px",
-                  fontSize: "1.05em",
-                  overflow: "hidden",
-                }}
-              >
-                First
-              </th>
-              <th
-                style={{
-                  color: brown,
-                  width: "16%",
-                  textAlign: "left",
-                  fontWeight: "bold",
-                  padding: "14px 18px",
-                  fontSize: "1.05em",
-                  overflow: "hidden",
-                }}
-              >
-                Last
-              </th>
-              <th
-                style={{
-                  color: brown,
-                  width: "14%",
-                  textAlign: "left",
-                  fontWeight: "bold",
-                  padding: "14px 18px",
-                  fontSize: "1.05em",
-                  overflow: "hidden",
-                }}
-              >
-                Role
-              </th>
-              <th
-                style={{
-                  color: brown,
-                  width: "24%",
-                  textAlign: "left",
-                  fontWeight: "bold",
-                  padding: "14px 18px",
-                  fontSize: "1.05em",
-                  overflow: "hidden",
-                }}
-              >
-                Action
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? (
-              <tr>
-                <td
-                  colSpan={5}
-                  className="py-5 text-center"
-                  style={{ color: brown }}
-                >
-                  Loading users...
-                </td>
-              </tr>
-            ) : (
-              currentUsers.map((user) => (
-                <tr key={user.id} style={{ borderBottom: "none" }}>
-                  <td
-                    style={{
-                      color: brown,
-                      padding: "10px 18px",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                      fontSize: "1.03em",
-                      verticalAlign: "middle",
-                      fontFamily: "inherit",
-                    }}
-                  >
-                    {user.email}
-                  </td>
-                  <td
-                    style={{
-                      color: brown,
-                      padding: "10px 18px",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                      fontSize: "1.03em",
-                      verticalAlign: "middle",
-                      fontFamily: "inherit",
-                    }}
-                  >
-                    {user.firstName}
-                  </td>
-                  <td
-                    style={{
-                      color: brown,
-                      padding: "10px 18px",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                      fontSize: "1.03em",
-                      verticalAlign: "middle",
-                      fontFamily: "inherit",
-                    }}
-                  >
-                    {user.lastName}
-                  </td>
-                  <td
-                    style={{
-                      color: brown,
-                      padding: "10px 18px",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                      fontSize: "1.03em",
-                      verticalAlign: "middle",
-                      fontFamily: "inherit",
-                    }}
-                  >
-                    {user.role}
-                  </td>
-                  <td
-                    style={{
-                      color: brown,
-                      padding: "10px 18px",
-                      verticalAlign: "middle",
-                      fontFamily: "inherit",
-                    }}
-                  >
-                    <div style={{ display: "flex", gap: "12px" }}>
-                      <button
-                        className="font-bold py-2 px-5"
-                        style={{
-                          background: yellow,
-                          color: brown,
-                          borderRadius: "12px",
-                          boxShadow:
-                            isEditing && editingUser?.id === user.id
-                              ? "0 0 0 2px #a259f7"
-                              : "none",
-                          outline:
-                            isEditing && editingUser?.id === user.id
-                              ? "2px solid #a259f7"
-                              : "none",
-                          border: "none",
-                          transition: "box-shadow 0.2s",
-                          fontWeight: "bold",
-                          fontFamily: "inherit",
-                        }}
-                        onClick={() => handleEdit(user)}
-                      >
-                        Edit
-                      </button>
-                      <button
-                        className="font-bold py-2 px-5"
-                        style={{
-                          background: yellow,
-                          color: brown,
-                          borderRadius: "12px",
-                          border: "none",
-                          transition: "box-shadow 0.2s",
-                          fontWeight: "bold",
-                          fontFamily: "inherit",
-                        }}
-                        onClick={() => handleDeleteConfirmation(user.id)}
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+          className="w-full pl-10 pr-2 py-1 sm:py-2 border border-gray-500 rounded-md text-sm sm:text-base"
+        />
+        <FaSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500" />
       </div>
 
-      {/* Pagination Bar - force same width as table container */}
-      <div
-        className="mt-6 flex flex-col sm:flex-row justify-between items-center gap-5"
-        style={{
-          background: yellow,
-          borderRadius: "16px",
-          padding: "18px 24px",
-          width: "100%",
-          maxWidth: `${DATA_CONTAINER_MAX_WIDTH}px`,
-          margin: "2rem auto 0 auto",
-          boxSizing: "border-box",
-          display: "flex",
-          flexDirection: "row",
-        }}
-      >
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="font-bold" style={{ color: brown }}>
-            Page Size:
-          </span>
-          <select
-            value={usersPerPage}
-            onChange={(e) => {
-              setUsersPerPage(Number(e.target.value));
-              setCurrentPage(1);
-            }}
-            style={{
-              background: yellow,
-              color: brown,
-              borderRadius: "9px",
-              fontWeight: "bold",
-              border: `2px solid ${brown}`,
-              padding: "2px 8px",
-              outline: "none",
-              fontSize: "1rem",
-            }}
-          >
-            <option value={8}>8</option>
-            <option value={5}>5</option>
-            <option value={10}>10</option>
-            <option value={20}>20</option>
-            <option value={50}>50</option>
-          </select>
+      {/* Users table */}
+      {loading ? (
+        <p className="text-center text-gray-500">Loading users...</p>
+      ) : (
+        <div className="overflow-x-auto shadow-lg rounded-lg max-h-[400px]">
+          <table className="table-auto w-full border-collapse bg-white text-sm sm:text-base">
+            <thead>
+              <tr className="bg-indigo-600 text-white">
+                <th className="p-2 sm:p-3 font-semibold">Email</th>
+                <th className="p-2 sm:p-3 font-semibold">First</th>
+                <th className="p-2 sm:p-3 font-semibold">Last</th>
+                <th className="p-2 sm:p-3 font-semibold">Role</th>
+                <th className="p-2 sm:p-3 font-semibold">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {currentUsers.map((user) => (
+                <tr key={user.id} className="hover:bg-gray-100">
+                  <td className="p-1 sm:p-3 border-b text-center">
+                    {user.email}
+                  </td>
+                  <td className="p-1 sm:p-3 border-b text-center">
+                    {user.firstName}
+                  </td>
+                  <td className="p-1 sm:p-3 border-b text-center">
+                    {user.lastName}
+                  </td>
+                  <td className="p-1 sm:p-3 border-b text-center">
+                    {user.role}
+                  </td>
+                  <td className="p-1 sm:p-3 border-b text-center flex flex-col sm:flex-row justify-center items-center gap-1 sm:gap-2">
+                    <button
+                      className="bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-500 text-xs sm:text-sm"
+                      onClick={() => handleEdit(user)}
+                    >
+                      Edit
+                    </button>
+                    <button
+                      className="bg-red-600 text-white px-2 py-1 rounded hover:bg-red-500 text-xs sm:text-sm"
+                      onClick={() => handleDeleteConfirmation(user.id)}
+                    >
+                      Delete
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
-        <div className="flex items-center flex-wrap gap-1 text-sm">
-          <button
-            onClick={() => setCurrentPage(1)}
-            disabled={currentPage === 1}
-            style={{
-              background: yellow,
-              color: brown,
-              borderRadius: "8px",
-              fontWeight: "bold",
-              padding: "4px 16px",
-              border: `2px solid ${brown}`,
-              opacity: currentPage === 1 ? 0.5 : 1,
-            }}
-          >
-            First
-          </button>
-          <button
-            onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
-            disabled={currentPage === 1}
-            style={{
-              background: yellow,
-              color: brown,
-              borderRadius: "8px",
-              fontWeight: "bold",
-              padding: "4px 16px",
-              border: `2px solid ${brown}`,
-              opacity: currentPage === 1 ? 0.5 : 1,
-            }}
-          >
-            Prev
-          </button>
-          {getPageNumbers().map((num, idx) =>
-            num === "..." ? (
-              <span
-                key={idx}
-                style={{ color: brown, fontWeight: "bold", padding: "0 8px" }}
-              >
-                ...
-              </span>
-            ) : (
-              <button
-                key={num}
-                onClick={() => setCurrentPage(num)}
-                style={{
-                  background: num === currentPage ? brown : yellow,
-                  color: num === currentPage ? yellow : brown,
-                  borderRadius: "8px",
-                  fontWeight: "bold",
-                  border: `2px solid ${brown}`,
-                  padding: "4px 16px",
-                }}
-              >
-                {num}
-              </button>
-            )
-          )}
-          <button
-            onClick={() =>
-              setCurrentPage((prev) => Math.min(prev + 1, totalPages))
-            }
-            disabled={currentPage === totalPages}
-            style={{
-              background: yellow,
-              color: brown,
-              borderRadius: "8px",
-              fontWeight: "bold",
-              padding: "4px 16px",
-              border: `2px solid ${brown}`,
-              opacity: currentPage === totalPages ? 0.5 : 1,
-            }}
-          >
-            Next
-          </button>
-          <button
-            onClick={() => setCurrentPage(totalPages)}
-            disabled={currentPage === totalPages}
-            style={{
-              background: yellow,
-              color: brown,
-              borderRadius: "8px",
-              fontWeight: "bold",
-              padding: "4px 16px",
-              border: `2px solid ${brown}`,
-              opacity: currentPage === totalPages ? 0.5 : 1,
-            }}
-          >
-            Last
-          </button>
-        </div>
-      </div>
+      )}
 
       {/* Delete Modal */}
       {deleteUserId && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center p-4 z-50">
-          <div
-            style={{
-              background: "#fff",
-              borderRadius: "20px",
-              padding: "32px",
-              boxShadow: "0 4px 24px #0001",
-            }}
-          >
-            <p style={{ color: brown, fontWeight: 600 }}>
-              Are you sure you want to delete this user?
-            </p>
-            <div className="flex gap-3 mt-5 justify-end">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center p-4">
+          <div className="bg-white p-4 rounded shadow-lg w-full max-w-sm">
+            <p>Are you sure you want to delete this user?</p>
+            <div className="flex flex-col sm:flex-row justify-end gap-2 mt-2">
               <button
-                style={{
-                  background: yellow,
-                  color: brown,
-                  borderRadius: "10px",
-                  fontWeight: "bold",
-                  padding: "10px 28px",
-                  border: "none",
-                }}
+                className="bg-red-500 text-white p-2 rounded"
                 onClick={handleDelete}
               >
                 Yes
               </button>
               <button
-                style={{
-                  background: "#eee",
-                  color: brown,
-                  borderRadius: "10px",
-                  fontWeight: "bold",
-                  padding: "10px 28px",
-                  border: "none",
-                }}
+                className="bg-gray-300 text-black p-2 rounded"
                 onClick={() => setDeleteUserId(null)}
               >
                 No
@@ -650,19 +299,9 @@ function UserManagement() {
 
       {/* Edit Modal */}
       {isEditing && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center p-4 z-50">
-          <div
-            style={{
-              background: "#fff",
-              borderRadius: "22px",
-              padding: "32px",
-              boxShadow: "0 4px 24px #0001",
-              minWidth: "320px",
-            }}
-          >
-            <h3 className="text-lg font-bold mb-4" style={{ color: brown }}>
-              Edit User
-            </h3>
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center p-4">
+          <div className="bg-white p-4 rounded shadow-lg w-full max-w-sm">
+            <h3 className="text-lg font-bold mb-2">Edit User</h3>
             <input
               type="text"
               placeholder="First Name"
@@ -670,13 +309,7 @@ function UserManagement() {
               onChange={(e) =>
                 setEditingUser({ ...editingUser, firstName: e.target.value })
               }
-              className="w-full mb-2 px-4 py-2"
-              style={{
-                borderRadius: "10px",
-                border: `2px solid ${yellow}`,
-                color: brown,
-                background: "#fff",
-              }}
+              className="border p-2 w-full mb-2 text-sm"
             />
             <input
               type="text"
@@ -685,54 +318,28 @@ function UserManagement() {
               onChange={(e) =>
                 setEditingUser({ ...editingUser, lastName: e.target.value })
               }
-              className="w-full mb-2 px-4 py-2"
-              style={{
-                borderRadius: "10px",
-                border: `2px solid ${yellow}`,
-                color: brown,
-                background: "#fff",
-              }}
+              className="border p-2 w-full mb-2 text-sm"
             />
             <select
               value={editingUser.role}
               onChange={(e) =>
                 setEditingUser({ ...editingUser, role: e.target.value })
               }
-              className="w-full mb-2 px-4 py-2"
-              style={{
-                borderRadius: "10px",
-                border: `2px solid ${yellow}`,
-                color: brown,
-                background: "#fff",
-              }}
+              className="border p-2 w-full mb-2 text-sm"
             >
               <option value="Researcher">Researcher</option>
               <option value="Admin">Admin</option>
               <option value="Peer Reviewer">Peer Reviewer</option>
             </select>
-            <div className="flex gap-3 mt-5 justify-end">
+            <div className="flex flex-col sm:flex-row justify-end gap-2 mt-2">
               <button
-                style={{
-                  background: yellow,
-                  color: brown,
-                  borderRadius: "10px",
-                  fontWeight: "bold",
-                  padding: "10px 28px",
-                  border: "none",
-                }}
+                className="bg-blue-500 text-white p-2 rounded text-sm"
                 onClick={handleUpdateUser}
               >
                 Update
               </button>
               <button
-                style={{
-                  background: "#eee",
-                  color: brown,
-                  borderRadius: "10px",
-                  fontWeight: "bold",
-                  padding: "10px 28px",
-                  border: "none",
-                }}
+                className="bg-gray-300 text-black p-2 rounded text-sm"
                 onClick={() => setIsEditing(false)}
               >
                 Cancel
@@ -741,6 +348,70 @@ function UserManagement() {
           </div>
         </div>
       )}
+
+      {/* Pagination */}
+      <div className="mt-4 p-2 bg-white shadow-lg flex flex-col sm:flex-row justify-between items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-sm">Page Size:</span>
+          <select
+            value={usersPerPage}
+            onChange={(e) => {
+              setUsersPerPage(Number(e.target.value));
+              setCurrentPage(1);
+            }}
+            className="border rounded text-sm"
+          >
+            <option value={5}>5</option>
+            <option value={10}>10</option>
+            <option value={20}>20</option>
+          </select>
+        </div>
+        <div className="flex items-center flex-wrap gap-1 text-sm">
+          <button
+            onClick={() => setCurrentPage(1)}
+            disabled={currentPage === 1}
+            className="px-2 py-1 bg-blue-600 text-white rounded disabled:bg-gray-300"
+          >
+            First
+          </button>
+          <button
+            onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
+            disabled={currentPage === 1}
+            className="px-2 py-1 bg-blue-600 text-white rounded disabled:bg-gray-300"
+          >
+            Prev
+          </button>
+          {Array.from({ length: totalPages }, (_, i) => i + 1).map((num) => (
+            <button
+              key={num}
+              onClick={() => setCurrentPage(num)}
+              className={`px-2 py-1 rounded ${
+                num === currentPage
+                  ? "bg-blue-600 text-white"
+                  : "bg-gray-200 text-gray-600"
+              }`}
+            >
+              {num}
+            </button>
+          ))}
+          <button
+            onClick={() =>
+              setCurrentPage((prev) => Math.min(prev + 1, totalPages))
+            }
+            disabled={currentPage === totalPages}
+            className="px-2 py-1 bg-blue-600 text-white rounded disabled:bg-gray-300"
+          >
+            Next
+          </button>
+          <button
+            onClick={() => setCurrentPage(totalPages)}
+            disabled={currentPage === totalPages}
+            className="px-2 py-1 bg-blue-600 text-white rounded disabled:bg-gray-300"
+          >
+            Last
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
