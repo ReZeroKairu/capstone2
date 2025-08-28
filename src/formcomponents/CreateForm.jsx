@@ -13,11 +13,6 @@ import {
 } from "firebase/firestore";
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 
-const maroon = "#7B2E19";
-const gray = "#e0e0e0";
-const green = "#4CC97B";
-const darkGray = "#6B6B6B";
-
 export default function CreateForm() {
   const [title, setTitle] = useState("");
   const [questions, setQuestions] = useState([]);
@@ -134,148 +129,48 @@ export default function CreateForm() {
 
   if (!isAdmin)
     return (
-      <p
-        className="p-6 sm:p-12 md:p-28 text-red-500"
-        style={{ fontFamily: "Poppins, Arial, sans-serif" }}
-      >
+      <p className="p-6 sm:p-12 md:p-28 text-red-500 font-poppins">
         You do not have permission to create forms.
       </p>
     );
 
-  // 0.5 inch is about 48px
   return (
-    <div
-      className="min-h-screen px-4 md:py-12 lg:py-16 mx-auto"
-      style={{
-        fontFamily: "Poppins, Arial, sans-serif",
-        fontSize: "1rem",
-        background: "#fff",
-        maxWidth: "900px",
-        marginTop: "48px",
-      }}
-    >
-      {/* Header: Edit Form */}
-      <h1
-        style={{
-          fontFamily: "Poppins, Arial, sans-serif",
-          fontWeight: 600,
-          fontSize: "2rem",
-          marginBottom: "0.5rem",
-          color: "#111",
-        }}
-      >
+    <div className="min-h-screen px-4 md:py-12 lg:py-16 mx-auto bg-white font-poppins text-base max-w-[900px] mt-12">
+      {/* Header */}
+      <h1 className="font-poppins font-semibold text-2xl text-gray-900 mb-2">
         Edit Form
       </h1>
 
-      {/* Form Title Section */}
-      <div style={{ marginBottom: "32px" }}>
-        <div
-          style={{
-            fontStyle: "italic",
-            marginBottom: "0.5rem",
-            color: "#222",
-            fontSize: "1.15rem",
-            fontFamily: "Poppins, Arial, sans-serif",
-          }}
-        >
+      {/* Form Title */}
+      <div className="mb-8">
+        <div className="italic mb-2 text-gray-800 text-lg font-poppins">
           Title
         </div>
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "24px",
-            maxWidth: "100%",
-            marginBottom: "0.5rem",
-          }}
-        >
+        <div className="flex items-center gap-6 max-w-full mb-2">
           {editingTitle ? (
             <>
               <input
                 type="text"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                className="w-full"
-                style={{
-                  fontFamily: "Poppins, Arial, sans-serif",
-                  fontWeight: 500,
-                  borderRadius: "36px",
-                  background: gray,
-                  border: "none",
-                  padding: "7px 18px",
-                  color: "#222",
-                  height: "43px",
-                  boxSizing: "border-box",
-                  fontSize: "1.35rem",
-                }}
+                className="w-full font-poppins font-medium rounded-full bg-gray-200 px-4 py-2 text-gray-800 text-xl"
                 autoFocus
               />
               <button
-                style={{
-                  background: maroon,
-                  color: "#fff",
-                  borderRadius: "36px",
-                  padding: "0 24px",
-                  fontWeight: 500,
-                  height: "43px",
-                  border: "none",
-                  minWidth: "120px",
-                  display: "flex",
-                  justifyContent: "center",
-                  alignItems: "center",
-                  fontSize: "1.05rem",
-                  fontStyle: "italic",
-                  fontFamily: "Poppins, Arial, sans-serif",
-                  whiteSpace: "nowrap",
-                }}
                 onClick={() => setEditingTitle(false)}
+                className="bg-[#7B2E19] text-white rounded-full px-6 h-11 min-w-[120px] flex justify-center items-center font-medium italic font-poppins text-base"
               >
                 Save Title
               </button>
             </>
           ) : (
             <>
-              <div
-                className="w-full"
-                style={{
-                  fontFamily: "Poppins, Arial, sans-serif",
-                  fontWeight: 500,
-                  borderRadius: "36px",
-                  background: gray,
-                  border: "none",
-                  padding: "7px 18px",
-                  color: "#222",
-                  height: "43px",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                  boxSizing: "border-box",
-                  display: "flex",
-                  alignItems: "center",
-                  fontSize: "1.35rem",
-                }}
-              >
+              <div className="w-full font-poppins font-medium rounded-full bg-gray-200 px-4 py-2 text-gray-800 text-xl flex items-center truncate">
                 {title}
               </div>
               <button
-                style={{
-                  background: maroon,
-                  color: "#fff",
-                  borderRadius: "36px",
-                  padding: "0 24px",
-                  fontWeight: 500,
-                  height: "43px",
-                  border: "none",
-                  minWidth: "120px",
-                  display: "flex",
-                  justifyContent: "center",
-                  alignItems: "center",
-                  fontSize: "1.05rem",
-                  fontStyle: "italic",
-                  fontFamily: "Poppins, Arial, sans-serif",
-                  whiteSpace: "nowrap",
-                }}
                 onClick={() => setEditingTitle(true)}
+                className="bg-[#7B2E19] text-white rounded-full px-6 h-11 min-w-[120px] flex justify-center items-center font-medium italic font-poppins text-base"
               >
                 Edit Title
               </button>
@@ -300,16 +195,8 @@ export default function CreateForm() {
                       ref={provided.innerRef}
                       {...provided.draggableProps}
                       {...provided.dragHandleProps}
-                      style={{
-                        background: gray,
-                        borderRadius: "16px",
-                        padding: "12px 15px",
-                        marginBottom: "0px",
-                        ...provided.draggableProps.style,
-                        fontSize: "1rem",
-                        fontFamily: "Poppins, Arial, sans-serif",
-                      }}
-                      className="flex flex-col gap-2"
+                      className="flex flex-col gap-2 bg-gray-200 rounded-xl p-4 font-poppins text-base"
+                      style={provided.draggableProps.style}
                     >
                       <div className="flex items-center gap-4">
                         <input
@@ -319,33 +206,17 @@ export default function CreateForm() {
                           onChange={(e) =>
                             updateQuestion(index, "text", e.target.value)
                           }
-                          className="italic font-normal rounded-lg px-3 py-1 w-full mb-0"
-                          style={{
-                            background: "#fff",
-                            border: "none",
-                            color: "#222",
-                            fontSize: "1rem",
-                            fontFamily: "Poppins, Arial, sans-serif",
-                          }}
+                          className="italic font-normal rounded-lg px-3 py-2 w-full bg-white text-gray-800 text-base"
                         />
                       </div>
-                      {/* Only the dropdown, no background bar or maroon triangle */}
+
+                      {/* Question Type */}
                       <select
                         value={q.type}
                         onChange={(e) =>
                           updateQuestion(index, "type", e.target.value)
                         }
-                        className="bg-[#f3f2ee] rounded-lg px-3 py-1 w-fit"
-                        style={{
-                          fontSize: "1rem",
-                          color: "#222",
-                          fontWeight: 500,
-                          border: "none",
-                          boxShadow: "0 1px 3px #0001",
-                          appearance: "auto",
-                          marginBottom: "6px",
-                          fontFamily: "Poppins, Arial, sans-serif",
-                        }}
+                        className="bg-gray-100 rounded-lg px-3 py-2 w-fit text-gray-800 font-medium shadow-sm"
                       >
                         <option value="text">Short Answer</option>
                         <option value="textarea">Paragraph</option>
@@ -356,16 +227,9 @@ export default function CreateForm() {
                         <option value="number">Number</option>
                         <option value="date">Date</option>
                       </select>
-                      {/* Required checkbox ONLY, left side, no check icon */}
-                      <div
-                        className="text-sm flex items-center gap-2"
-                        style={{
-                          color: "#222",
-                          fontSize: "1rem",
-                          marginLeft: 2,
-                          fontFamily: "Poppins, Arial, sans-serif",
-                        }}
-                      >
+
+                      {/* Required */}
+                      <div className="text-sm flex items-center gap-2 text-gray-800 text-base">
                         <input
                           type="checkbox"
                           checked={q.required || false}
@@ -373,10 +237,10 @@ export default function CreateForm() {
                             updateQuestion(index, "required", e.target.checked)
                           }
                           className="accent-green-500 scale-110"
-                          style={{ fontSize: "1rem" }}
                         />
                         <span>Required</span>
                       </div>
+
                       {/* Options */}
                       {(q.type === "multiple" ||
                         q.type === "radio" ||
@@ -391,26 +255,11 @@ export default function CreateForm() {
                                 onChange={(e) =>
                                   updateOption(index, oIndex, e.target.value)
                                 }
-                                className="rounded-lg px-3 py-1 flex-1 min-w-[120px] border-none"
-                                style={{
-                                  background: "#fff",
-                                  color: "#222",
-                                  fontSize: "1rem",
-                                  fontFamily: "Poppins, Arial, sans-serif",
-                                }}
+                                className="rounded-lg px-3 py-2 flex-1 min-w-[120px] bg-white text-gray-800 text-base"
                               />
                               <button
                                 onClick={() => removeOption(index, oIndex)}
-                                style={{
-                                  background: maroon,
-                                  color: "#fff",
-                                  borderRadius: "7px",
-                                  fontWeight: "bold",
-                                  padding: "0px 14px",
-                                  border: "none",
-                                  fontSize: "1rem",
-                                  fontFamily: "Poppins, Arial, sans-serif",
-                                }}
+                                className="bg-[#7B2E19] text-white rounded-md font-bold px-4 py-1 text-base"
                               >
                                 Remove
                               </button>
@@ -418,37 +267,16 @@ export default function CreateForm() {
                           ))}
                           <button
                             onClick={() => addOption(index)}
-                            style={{
-                              background: darkGray,
-                              color: "#fff",
-                              borderRadius: "7px",
-                              fontWeight: "bold",
-                              padding: "7px 16px",
-                              border: "none",
-                              marginTop: "5px",
-                              fontSize: "1rem",
-                              width: "fit-content",
-                              fontFamily: "Poppins, Arial, sans-serif",
-                            }}
+                            className="bg-gray-600 text-white rounded-md font-bold px-4 py-2 mt-1 text-base w-fit"
                           >
                             Add Option
                           </button>
                         </div>
                       )}
+
                       <button
                         onClick={() => removeQuestion(index)}
-                        style={{
-                          background: maroon,
-                          color: "#fff",
-                          borderRadius: "8px",
-                          fontWeight: "bold",
-                          padding: "8px 20px",
-                          border: "none",
-                          marginTop: "12px",
-                          width: "fit-content",
-                          fontSize: "1rem",
-                          fontFamily: "Poppins, Arial, sans-serif",
-                        }}
+                        className="bg-[#7B2E19] text-white rounded-md font-bold px-5 py-2 mt-3 text-base w-fit"
                       >
                         Remove Question
                       </button>
@@ -466,33 +294,13 @@ export default function CreateForm() {
       <div className="flex gap-6 mt-10 justify-between">
         <button
           onClick={addQuestion}
-          style={{
-            background: darkGray,
-            color: "#fff",
-            fontSize: "1rem",
-            borderRadius: "11px",
-            padding: "0 22px",
-            height: "38px",
-            fontWeight: 500,
-            border: "none",
-            fontFamily: "Poppins, Arial, sans-serif",
-          }}
+          className="bg-gray-600 text-white text-base rounded-lg px-6 h-10 font-medium font-poppins"
         >
           Add Question
         </button>
         <button
           onClick={saveForm}
-          style={{
-            background: green,
-            color: "#fff",
-            fontSize: "1rem",
-            borderRadius: "11px",
-            padding: "0 22px",
-            height: "38px",
-            fontWeight: 500,
-            border: "none",
-            fontFamily: "Poppins, Arial, sans-serif",
-          }}
+          className="bg-green-500 text-white text-base rounded-lg px-6 h-10 font-medium font-poppins"
         >
           {formId ? "Update Form" : "Save Form"}
         </button>
