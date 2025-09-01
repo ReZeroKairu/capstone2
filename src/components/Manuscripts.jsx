@@ -143,6 +143,14 @@ const Manuscripts = () => {
 
           const hasReviewer = m.assignedReviewers?.length > 0;
 
+          // 🔹 Extract Manuscript Title flexibly
+          const manuscriptTitle =
+            m.title ||
+            m.answeredQuestions?.find((q) =>
+              q.question?.toLowerCase().trim().startsWith("manuscript title")
+            )?.answer ||
+            "Untitled";
+
           return (
             <li
               key={m.id}
@@ -152,7 +160,7 @@ const Manuscripts = () => {
                 className="font-semibold text-lg cursor-pointer break-words"
                 onClick={() => toggleExpand(m.id)}
               >
-                {m.title || "Untitled"}
+                {manuscriptTitle}
               </p>
               <p className="text-sm text-gray-600 break-words">
                 By {m.firstName || "Unknown"} {m.lastName || ""} (
@@ -235,11 +243,19 @@ const Manuscripts = () => {
 
               {expanded[m.id] && (
                 <div className="mt-2 border-t pt-2 max-h-96 overflow-y-auto">
-                  {m.answeredQuestions?.map((q, idx) => (
-                    <p key={idx} className="text-sm sm:text-base break-words">
-                      <strong>{q.question}:</strong> {q.answer}
-                    </p>
-                  ))}
+                  {m.answeredQuestions
+                    ?.filter(
+                      (q) =>
+                        !q.question
+                          ?.toLowerCase()
+                          .trim()
+                          .startsWith("manuscript title")
+                    )
+                    .map((q, idx) => (
+                      <p key={idx} className="text-sm sm:text-base break-words">
+                        <strong>{q.question}:</strong> {q.answer}
+                      </p>
+                    ))}
                 </div>
               )}
             </li>
