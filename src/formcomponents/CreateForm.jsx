@@ -1,3 +1,4 @@
+// ✅ Same imports
 import React, { useState, useEffect } from "react";
 import { db, auth } from "../firebase/firebase";
 import {
@@ -11,7 +12,6 @@ import {
   orderBy,
   limit,
 } from "firebase/firestore";
-// ✅ Swap to the maintained fork
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 
 export default function CreateForm() {
@@ -21,6 +21,7 @@ export default function CreateForm() {
   const [formId, setFormId] = useState(null);
   const [previewMode, setPreviewMode] = useState(false);
 
+  // ✅ Check admin and fetch latest form
   useEffect(() => {
     const checkAdminAndFetch = async () => {
       auth.onAuthStateChanged(async (user) => {
@@ -50,24 +51,63 @@ export default function CreateForm() {
     checkAdminAndFetch();
   }, []);
 
+  // ✅ Always ensure Manuscript Title exists and is locked
+  useEffect(() => {
+    setQuestions((prev) => {
+      const hasMT = prev.some((q) => q.isManuscriptTitle);
+      if (!hasMT) {
+        return [
+          {
+            text: "Manuscript Title",
+            type: "text",
+            required: true,
+            options: [],
+            isManuscriptTitle: true,
+          },
+          ...prev,
+        ];
+      }
+      return prev.map((q) =>
+        q.isManuscriptTitle ? { ...q, type: "text", required: true } : q
+      );
+    });
+  }, [questions]);
+
   const addQuestion = () =>
     setQuestions([
       ...questions,
       { text: "", type: "text", required: false, options: [] },
     ]);
 
-  const removeQuestion = (index) =>
+  const removeQuestion = (index) => {
+    if (questions[index].isManuscriptTitle) return; // ❌ Cannot remove
     setQuestions(questions.filter((_, i) => i !== index));
+  };
 
   const updateQuestion = (index, field, value) => {
     const updated = [...questions];
+
+    // ✅ Manuscript Title handling
+    if (updated[index].isManuscriptTitle) {
+      if (field === "type") return; // always text
+      if (
+        field === "text" &&
+        !value.toLowerCase().includes("manuscript title")
+      ) {
+        alert('This field must contain "Manuscript Title"');
+        return;
+      }
+    }
+
     updated[index][field] = value;
+
     if (
       field === "type" &&
       !["multiple", "radio", "checkbox", "select"].includes(value)
     ) {
       updated[index].options = [];
     }
+
     setQuestions(updated);
   };
 
@@ -94,7 +134,13 @@ export default function CreateForm() {
     if (!result.destination) return;
     const reordered = Array.from(questions);
     const [removed] = reordered.splice(result.source.index, 1);
-    reordered.splice(result.destination.index, 0, removed);
+
+    // Keep Manuscript Title at top
+    if (removed.isManuscriptTitle) {
+      reordered.unshift(removed);
+    } else {
+      reordered.splice(result.destination.index, 0, removed);
+    }
     setQuestions(reordered);
   };
 
@@ -102,6 +148,10 @@ export default function CreateForm() {
     if (!title.trim()) return alert("Form title is required!");
     if (questions.some((q) => !q.text.trim()))
       return alert("All questions must have text!");
+
+    const hasMT = questions.some((q) => q.isManuscriptTitle);
+    if (!hasMT) return alert('Your form must include "Manuscript Title"!');
+
     if (
       questions.some(
         (q) =>
@@ -175,9 +225,12 @@ export default function CreateForm() {
                         ref={provided.innerRef}
                         {...provided.draggableProps}
                         {...provided.dragHandleProps}
-                        className="border p-4 rounded flex flex-col gap-2 bg-gray-50"
+                        className={`border p-4 rounded flex flex-col gap-2 ${
+                          q.isManuscriptTitle
+                            ? "bg-yellow-50 border-yellow-400"
+                            : "bg-gray-50"
+                        }`}
                       >
-                        {/* ✅ Question Input and Options */}
                         <input
                           type="text"
                           placeholder="Question text"
@@ -193,6 +246,7 @@ export default function CreateForm() {
                             updateQuestion(index, "type", e.target.value)
                           }
                           className="border p-2 w-full rounded"
+                          disabled={q.isManuscriptTitle}
                         >
                           <option value="text">Short Answer</option>
                           <option value="textarea">Paragraph</option>
@@ -254,12 +308,14 @@ export default function CreateForm() {
                           </div>
                         )}
 
-                        <button
-                          onClick={() => removeQuestion(index)}
-                          className="bg-red-500 text-white px-3 py-1 rounded mt-2 w-full sm:w-auto"
-                        >
-                          Remove Question
-                        </button>
+                        {!q.isManuscriptTitle && (
+                          <button
+                            onClick={() => removeQuestion(index)}
+                            className="bg-red-500 text-white px-3 py-1 rounded mt-2 w-full sm:w-auto"
+                          >
+                            Remove Question
+                          </button>
+                        )}
                       </div>
                     )}
                   </Draggable>
@@ -273,7 +329,6 @@ export default function CreateForm() {
 
       {previewMode && (
         <div className="mb-4">
-          {/* ✅ Preview Section */}
           <h2 className="text-xl font-semibold mb-4 text-center sm:text-left">
             Preview
           </h2>

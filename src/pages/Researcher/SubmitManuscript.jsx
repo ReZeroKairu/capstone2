@@ -103,11 +103,29 @@ export default function SubmitManuscript() {
       return;
     }
 
+    // ✅ Check required fields
     const missingRequired = form.questions.some(
       (q, index) => q.required && !answers[index]
     );
     if (missingRequired) {
       setMessage("Please fill in all required fields before submitting.");
+      return;
+    }
+
+    // ✅ Find Manuscript Title field using special flag
+    const manuscriptTitleIndex = form.questions.findIndex(
+      (q) => q.isManuscriptTitle
+    );
+
+    if (manuscriptTitleIndex === -1) {
+      setMessage("The form must include a 'Manuscript Title' field.");
+      return;
+    }
+
+    const manuscriptTitleAnswer = answers[manuscriptTitleIndex] || "";
+
+    if (!manuscriptTitleAnswer.trim()) {
+      setMessage("Please enter a Manuscript Title before submitting.");
       return;
     }
 
@@ -135,6 +153,7 @@ export default function SubmitManuscript() {
           userInfo.lastName || ""
         ).toLowerCase()}`,
         (userInfo.email || "").toLowerCase(),
+        manuscriptTitleAnswer.toLowerCase(), // ✅ Add manuscript title to search
       ];
 
       // ✅ Save in form_responses first
@@ -143,6 +162,7 @@ export default function SubmitManuscript() {
         responseRef = await addDoc(collection(db, "form_responses"), {
           formId,
           formTitle: form.title,
+          manuscriptTitle: manuscriptTitleAnswer, // ✅ Store explicitly
           userId: currentUser.uid,
           firstName: userInfo.firstName || "",
           lastName: userInfo.lastName || "",
@@ -173,6 +193,7 @@ export default function SubmitManuscript() {
         responseId: responseRef.id,
         formId,
         formTitle: form.title,
+        manuscriptTitle: manuscriptTitleAnswer, // ✅ Store explicitly
         answeredQuestions,
         userId: currentUser.uid,
         firstName: userInfo.firstName || "",
