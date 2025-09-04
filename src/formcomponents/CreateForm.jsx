@@ -208,7 +208,7 @@ export default function CreateForm() {
 
       {/* Form Title */}
       <div className="mb-8">
-        <p className=" mb-2 text-[1.15rem]">Title</p>
+        <p className="italic mb-2 text-[1.15rem]">Title</p>
         <input
           type="text"
           value={title}
@@ -244,7 +244,7 @@ export default function CreateForm() {
                           onChange={(e) =>
                             updateQuestion(index, "text", e.target.value)
                           }
-                          className={` rounded-lg px-3 py-2 w-full bg-white text-base ${
+                          className={`italic rounded-lg px-3 py-2 w-full bg-white text-base ${
                             q.isManuscriptTitle && mtError
                               ? "border-2 border-red-500"
                               : "border-none"
