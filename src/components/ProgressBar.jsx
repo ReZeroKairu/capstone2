@@ -11,7 +11,7 @@ const STATUS_ORDER = [
   "Rejected",
 ];
 
-export default function ProgressBar({ currentStatus }) {
+export default function Progressbar({ currentStatus }) {
   const currentIndex = STATUS_ORDER.indexOf(currentStatus);
 
   return (
