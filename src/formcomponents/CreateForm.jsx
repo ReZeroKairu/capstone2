@@ -1,5 +1,4 @@
-// ✅ Same imports
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { db, auth } from "../firebase/firebase";
 import {
   collection,
@@ -19,7 +18,8 @@ export default function CreateForm() {
   const [questions, setQuestions] = useState([]);
   const [isAdmin, setIsAdmin] = useState(false);
   const [formId, setFormId] = useState(null);
-  const [previewMode, setPreviewMode] = useState(false);
+  const [mtError, setMtError] = useState(false); // error state
+  const manuscriptTitleRef = useRef(null);
 
   // ✅ Check admin and fetch latest form
   useEffect(() => {
@@ -40,9 +40,18 @@ export default function CreateForm() {
             const snapshot = await getDocs(q);
             if (!snapshot.empty) {
               const latestForm = snapshot.docs[0];
+              const formData = latestForm.data();
+
               setFormId(latestForm.id);
-              setTitle(latestForm.data().title);
-              setQuestions(latestForm.data().questions || []);
+              setTitle(formData.title);
+              // ✅ Backward compatibility: if no manuscriptTitle, fallback to MT question
+              const manuscriptTitle =
+                formData.manuscriptTitle ||
+                formData.questions?.find((q) => q.isManuscriptTitle)?.text ||
+                "";
+
+              setQuestions(formData.questions || []);
+              // We don’t set manuscriptTitle in state directly, just keep it in questions
             }
           }
         }
@@ -51,7 +60,7 @@ export default function CreateForm() {
     checkAdminAndFetch();
   }, []);
 
-  // ✅ Always ensure Manuscript Title exists and is locked
+  // ✅ Always ensure Manuscript Title exists
   useEffect(() => {
     setQuestions((prev) => {
       const hasMT = prev.some((q) => q.isManuscriptTitle);
@@ -80,26 +89,20 @@ export default function CreateForm() {
     ]);
 
   const removeQuestion = (index) => {
-    if (questions[index].isManuscriptTitle) return; // ❌ Cannot remove
+    if (questions[index].isManuscriptTitle) return; // ❌ Cannot remove MT
     setQuestions(questions.filter((_, i) => i !== index));
   };
 
+  // ✅ Update question (with MT validation clearing)
   const updateQuestion = (index, field, value) => {
     const updated = [...questions];
+    updated[index][field] = value;
 
-    // ✅ Manuscript Title handling
-    if (updated[index].isManuscriptTitle) {
-      if (field === "type") return; // always text
-      if (
-        field === "text" &&
-        !value.toLowerCase().includes("manuscript title")
-      ) {
-        alert('This field must contain "Manuscript Title"');
-        return;
+    if (updated[index].isManuscriptTitle && field === "text") {
+      if (/manuscript title/i.test(value.trim())) {
+        setMtError(false); // clear error if fixed
       }
     }
-
-    updated[index][field] = value;
 
     if (
       field === "type" &&
@@ -135,9 +138,8 @@ export default function CreateForm() {
     const reordered = Array.from(questions);
     const [removed] = reordered.splice(result.source.index, 1);
 
-    // Keep Manuscript Title at top
     if (removed.isManuscriptTitle) {
-      reordered.unshift(removed);
+      reordered.splice(result.destination.index, 0, removed); // ✅ MT can move, but not removed
     } else {
       reordered.splice(result.destination.index, 0, removed);
     }
@@ -149,8 +151,13 @@ export default function CreateForm() {
     if (questions.some((q) => !q.text.trim()))
       return alert("All questions must have text!");
 
-    const hasMT = questions.some((q) => q.isManuscriptTitle);
-    if (!hasMT) return alert('Your form must include "Manuscript Title"!');
+    const mtQuestion = questions.find((q) => q.isManuscriptTitle);
+    if (!mtQuestion || !/manuscript title/i.test(mtQuestion.text.trim())) {
+      setMtError(true);
+      manuscriptTitleRef.current?.focus();
+      return;
+    }
+    setMtError(false);
 
     if (
       questions.some(
@@ -164,7 +171,14 @@ export default function CreateForm() {
         "All required choice questions must have at least one option!"
       );
 
-    const data = { title, questions, updatedAt: new Date() };
+    // ✅ Save top-level manuscriptTitle too
+    const data = {
+      title,
+      questions,
+      manuscriptTitle: mtQuestion.text.trim(),
+      updatedAt: new Date(),
+    };
+
     if (formId) {
       await updateDoc(doc(db, "forms", formId), data);
       alert("Form updated successfully!");
@@ -186,51 +200,43 @@ export default function CreateForm() {
     );
 
   return (
-    <div className="p-4 sm:p-6 md:p-8 lg:p-12 md:pt-24 lg:pt-32 max-w-full sm:max-w-xl md:max-w-3xl lg:max-w-5xl mx-auto">
-      <h1 className="text-2xl font-bold mb-4">
+    <div className="min-h-screen px-4 md:py-12 lg:py-16 mx-auto max-w-3xl mt-12 bg-white text-[#222]">
+      {/* Header */}
+      <h1 className="text-2xl font-semibold mb-2 text-[#111]">
         {formId ? "Edit Form" : "Create a Form"}
       </h1>
-      <input
-        type="text"
-        placeholder="Form title"
-        value={title}
-        onChange={(e) => setTitle(e.target.value)}
-        className="border p-2 w-full mb-4 rounded"
-      />
 
-      <button
-        onClick={() => setPreviewMode(!previewMode)}
-        className="bg-gray-500 text-white px-4 py-2 rounded mb-4 w-full sm:w-auto"
-      >
-        {previewMode ? "Edit Mode" : "Preview Mode"}
-      </button>
+      {/* Form Title */}
+      <div className="mb-8">
+        <p className=" mb-2 text-[1.15rem]">Title</p>
+        <input
+          type="text"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          className="w-full font-medium rounded-full bg-[#e0e0e0] border-none px-[18px] py-[7px] h-[43px] text-xl text-[#222]"
+        />
+      </div>
 
-      {!previewMode && (
-        <DragDropContext onDragEnd={onDragEnd}>
-          <Droppable droppableId="questions">
-            {(provided) => (
-              <div
-                {...provided.droppableProps}
-                ref={provided.innerRef}
-                className="flex flex-col gap-4"
-              >
-                {questions.map((q, index) => (
-                  <Draggable
-                    key={index}
-                    draggableId={`q-${index}`}
-                    index={index}
-                  >
-                    {(provided) => (
-                      <div
-                        ref={provided.innerRef}
-                        {...provided.draggableProps}
-                        {...provided.dragHandleProps}
-                        className={`border p-4 rounded flex flex-col gap-2 ${
-                          q.isManuscriptTitle
-                            ? "bg-yellow-50 border-yellow-400"
-                            : "bg-gray-50"
-                        }`}
-                      >
+      {/* Questions (drag & drop) */}
+      <DragDropContext onDragEnd={onDragEnd}>
+        <Droppable droppableId="questions">
+          {(provided) => (
+            <div
+              {...provided.droppableProps}
+              ref={provided.innerRef}
+              className="flex flex-col gap-6"
+            >
+              {questions.map((q, index) => (
+                <Draggable key={index} draggableId={`q-${index}`} index={index}>
+                  {(provided) => (
+                    <div
+                      ref={provided.innerRef}
+                      {...provided.draggableProps}
+                      {...provided.dragHandleProps}
+                      className="bg-[#e0e0e0] rounded-xl p-4 flex flex-col gap-2"
+                    >
+                      {/* Question */}
+                      <div className="flex flex-col gap-1">
                         <input
                           type="text"
                           placeholder="Question text"
@@ -238,157 +244,115 @@ export default function CreateForm() {
                           onChange={(e) =>
                             updateQuestion(index, "text", e.target.value)
                           }
-                          className="border p-2 w-full rounded"
+                          className={` rounded-lg px-3 py-2 w-full bg-white text-base ${
+                            q.isManuscriptTitle && mtError
+                              ? "border-2 border-red-500"
+                              : "border-none"
+                          }`}
+                          ref={q.isManuscriptTitle ? manuscriptTitleRef : null}
                         />
-                        <select
-                          value={q.type}
-                          onChange={(e) =>
-                            updateQuestion(index, "type", e.target.value)
-                          }
-                          className="border p-2 w-full rounded"
-                          disabled={q.isManuscriptTitle}
-                        >
-                          <option value="text">Short Answer</option>
-                          <option value="textarea">Paragraph</option>
-                          <option value="multiple">Multiple Choice</option>
-                          <option value="radio">Radio</option>
-                          <option value="checkbox">Checkbox</option>
-                          <option value="select">Dropdown</option>
-                          <option value="number">Number</option>
-                          <option value="date">Date</option>
-                        </select>
-
-                        <label className="flex items-center gap-2">
-                          <input
-                            type="checkbox"
-                            checked={q.required || false}
-                            onChange={(e) =>
-                              updateQuestion(
-                                index,
-                                "required",
-                                e.target.checked
-                              )
-                            }
-                          />
-                          Required
-                        </label>
-
-                        {(q.type === "multiple" ||
-                          q.type === "radio" ||
-                          q.type === "checkbox" ||
-                          q.type === "select") && (
-                          <div className="flex flex-col gap-2">
-                            {q.options?.map((opt, oIndex) => (
-                              <div
-                                key={oIndex}
-                                className="flex flex-wrap gap-2"
-                              >
-                                <input
-                                  type="text"
-                                  value={opt}
-                                  onChange={(e) =>
-                                    updateOption(index, oIndex, e.target.value)
-                                  }
-                                  className="border p-2 flex-1 min-w-[120px] rounded"
-                                />
-                                <button
-                                  onClick={() => removeOption(index, oIndex)}
-                                  className="bg-red-500 text-white px-2 rounded"
-                                >
-                                  Remove
-                                </button>
-                              </div>
-                            ))}
-                            <button
-                              onClick={() => addOption(index)}
-                              className="bg-blue-500 text-white px-3 py-1 rounded mt-1 w-full sm:w-auto"
-                            >
-                              Add Option
-                            </button>
-                          </div>
-                        )}
-
-                        {!q.isManuscriptTitle && (
-                          <button
-                            onClick={() => removeQuestion(index)}
-                            className="bg-red-500 text-white px-3 py-1 rounded mt-2 w-full sm:w-auto"
-                          >
-                            Remove Question
-                          </button>
+                        {q.isManuscriptTitle && mtError && (
+                          <p className="text-sm text-red-600">
+                            This field must contain "Manuscript Title".
+                          </p>
                         )}
                       </div>
-                    )}
-                  </Draggable>
-                ))}
-                {provided.placeholder}
-              </div>
-            )}
-          </Droppable>
-        </DragDropContext>
-      )}
 
-      {previewMode && (
-        <div className="mb-4">
-          <h2 className="text-xl font-semibold mb-4 text-center sm:text-left">
-            Preview
-          </h2>
-          {questions.map((q, idx) => (
-            <div key={idx} className="mb-4 border p-3 rounded bg-gray-50">
-              <p className="font-medium mb-2 break-words">
-                {q.text} {q.required && <span className="text-red-500">*</span>}
-              </p>
+                      {/* Type */}
+                      <select
+                        value={q.type}
+                        onChange={(e) =>
+                          updateQuestion(index, "type", e.target.value)
+                        }
+                        className="bg-[#f3f2ee] rounded-lg px-3 py-1 w-fit text-base font-medium border-none shadow-sm"
+                        disabled={q.isManuscriptTitle} // MT is always text
+                      >
+                        <option value="text">Short Answer</option>
+                        <option value="textarea">Paragraph</option>
+                        <option value="multiple">Multiple Choice</option>
+                        <option value="radio">Radio</option>
+                        <option value="checkbox">Checkbox</option>
+                        <option value="select">Dropdown</option>
+                        <option value="number">Number</option>
+                        <option value="date">Date</option>
+                      </select>
 
-              {q.type === "text" && (
-                <input type="text" className="border p-2 w-full rounded mb-2" />
-              )}
-              {q.type === "textarea" && (
-                <textarea className="border p-2 w-full rounded mb-2" />
-              )}
-              {q.type === "number" && (
-                <input
-                  type="number"
-                  className="border p-2 w-full rounded mb-2"
-                />
-              )}
-              {q.type === "date" && (
-                <input type="date" className="border p-2 w-full rounded mb-2" />
-              )}
+                      {/* Required */}
+                      <label className="flex items-center gap-2 text-base">
+                        <input
+                          type="checkbox"
+                          checked={q.required || false}
+                          onChange={(e) =>
+                            updateQuestion(index, "required", e.target.checked)
+                          }
+                          className="accent-[#4CC97B] scale-110"
+                        />
+                        Required
+                      </label>
 
-              {(q.type === "multiple" ||
-                q.type === "radio" ||
-                q.type === "checkbox" ||
-                q.type === "select") &&
-                q.options?.map((opt, i) => (
-                  <label key={i} className="flex items-center gap-2">
-                    <input
-                      type={
-                        q.type === "radio"
-                          ? "radio"
-                          : q.type === "checkbox"
-                          ? "checkbox"
-                          : "radio"
-                      }
-                      name={`q${idx}`}
-                      className="accent-blue-500"
-                    />
-                    <span className="break-words">{opt}</span>
-                  </label>
-                ))}
+                      {/* Options */}
+                      {(q.type === "multiple" ||
+                        q.type === "radio" ||
+                        q.type === "checkbox" ||
+                        q.type === "select") && (
+                        <div className="flex flex-col gap-2 mt-2">
+                          {q.options?.map((opt, oIndex) => (
+                            <div key={oIndex} className="flex gap-2">
+                              <input
+                                type="text"
+                                value={opt}
+                                onChange={(e) =>
+                                  updateOption(index, oIndex, e.target.value)
+                                }
+                                className="rounded-lg px-3 py-1 flex-1 bg-white border-none"
+                              />
+                              <button
+                                onClick={() => removeOption(index, oIndex)}
+                                className="bg-[#7B2E19] text-white rounded-md px-3 font-bold"
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          ))}
+                          <button
+                            onClick={() => addOption(index)}
+                            className="bg-[#6B6B6B] text-white rounded-md px-4 py-1 font-bold mt-1 w-fit"
+                          >
+                            Add Option
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Remove question */}
+                      {!q.isManuscriptTitle && (
+                        <button
+                          onClick={() => removeQuestion(index)}
+                          className="bg-[#7B2E19] text-white rounded-md px-4 py-2 font-bold mt-2 w-fit"
+                        >
+                          Remove Question
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </Draggable>
+              ))}
+              {provided.placeholder}
             </div>
-          ))}
-        </div>
-      )}
+          )}
+        </Droppable>
+      </DragDropContext>
 
-      <div className="flex flex-wrap gap-2 mt-4">
+      {/* Footer */}
+      <div className="flex gap-4 mt-8 justify-between">
         <button
           onClick={addQuestion}
-          className="bg-blue-500 text-white px-4 py-2 rounded w-full sm:w-auto"
+          className="bg-[#6B6B6B] text-white text-base rounded-lg px-[22px] h-[38px] font-medium"
         >
           Add Question
         </button>
         <button
           onClick={saveForm}
-          className="bg-green-500 text-white px-4 py-2 rounded w-full sm:w-auto"
+          className="bg-[#4CC97B] text-white text-base rounded-lg px-[22px] h-[38px] font-medium"
         >
           {formId ? "Update Form" : "Save Form"}
         </button>
