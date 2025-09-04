@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { getAuth } from "firebase/auth";
 import { doc, getDoc, collection, onSnapshot } from "firebase/firestore";
 import { db } from "../firebase/firebase";
-import ProgressBar from "./Progressbar.jsx";
+import Progressbar from "./Progressbar.jsx";
 import { useNavigate } from "react-router-dom";
 
 const IN_PROGRESS_STATUSES = [
@@ -145,7 +145,7 @@ const Dashboard = ({ sidebarOpen }) => {
               : new Date(m.submittedAt.seconds * 1000).toLocaleString()}
           </p>
           {/* Pass the custom in-progress logic to ProgressBar */}
-          <ProgressBar
+          <Progressbar
             currentStatus={m.status}
             inProgressStatuses={IN_PROGRESS_STATUSES}
           />
