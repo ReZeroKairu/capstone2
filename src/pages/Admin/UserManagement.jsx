@@ -212,15 +212,16 @@ function UserManagement() {
       <div className="relative mb-4 w-full sm:w-72 mx-auto">
         <input
           type="text"
-          placeholder="Search users..."
+          placeholder="Search user"
           value={searchQuery}
           onChange={(e) => {
             setSearchQuery(e.target.value);
             setCurrentPage(1);
           }}
-          className="w-full pl-10 pr-2 py-1 sm:py-2 border border-gray-500 rounded-md text-sm sm:text-base"
+          className="w-full pl-10 pr-2 py-1 sm:py-2  border-[3px] border-red-900 rounded text-sm sm:text-base 
+               focus:outline-none focus:border-red-900 focus:ring-2 focus:ring-red-900"
         />
-        <FaSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500" />
+        <FaSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-yellow-400" />
       </div>
 
       {/* Users table */}
@@ -230,7 +231,7 @@ function UserManagement() {
         <div className="overflow-x-auto shadow-lg rounded-lg max-h-[400px]">
           <table className="table-auto w-full border-collapse bg-white text-sm sm:text-base">
             <thead>
-              <tr className="bg-indigo-600 text-white">
+              <tr className="bg-yellow-400 text-red-800 ">
                 <th className="p-2 sm:p-3 font-semibold">Email</th>
                 <th className="p-2 sm:p-3 font-semibold">First</th>
                 <th className="p-2 sm:p-3 font-semibold">Last</th>
@@ -240,28 +241,28 @@ function UserManagement() {
             </thead>
             <tbody>
               {currentUsers.map((user) => (
-                <tr key={user.id} className="hover:bg-gray-100">
-                  <td className="p-1 sm:p-3 border-b text-center">
+                <tr key={user.id} className="hover:bg-gray-100 border ">
+                  <td className="p-1 sm:p-3 border-b text-center text-red-800  ">
                     {user.email}
                   </td>
-                  <td className="p-1 sm:p-3 border-b text-center">
+                  <td className="p-1 sm:p-3 border-b text-center text-red-800 ">
                     {user.firstName}
                   </td>
-                  <td className="p-1 sm:p-3 border-b text-center">
+                  <td className="p-1 sm:p-3 border-b text-center text-red-800 ">
                     {user.lastName}
                   </td>
-                  <td className="p-1 sm:p-3 border-b text-center">
+                  <td className="p-1 sm:p-3 border-b text-center text-red-800  ">
                     {user.role}
                   </td>
                   <td className="p-1 sm:p-3 border-b text-center flex flex-col sm:flex-row justify-center items-center gap-1 sm:gap-2">
                     <button
-                      className="bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-500 text-xs sm:text-sm"
+                      className="bg-blue-500 text-white px-2 py-1 rounded hover:bg-blue-600 text-xs sm:text-sm"
                       onClick={() => handleEdit(user)}
                     >
                       Edit
                     </button>
                     <button
-                      className="bg-red-600 text-white px-2 py-1 rounded hover:bg-red-500 text-xs sm:text-sm"
+                      className="bg-red-700 text-white px-2 py-1 rounded hover:bg-red-800 text-xs sm:text-sm"
                       onClick={() => handleDeleteConfirmation(user.id)}
                     >
                       Delete
@@ -309,7 +310,7 @@ function UserManagement() {
               onChange={(e) =>
                 setEditingUser({ ...editingUser, firstName: e.target.value })
               }
-              className="border p-2 w-full mb-2 text-sm"
+              className="border p-2 w-full mb-2 text-sm "
             />
             <input
               type="text"
@@ -350,7 +351,7 @@ function UserManagement() {
       )}
 
       {/* Pagination */}
-      <div className="mt-4 p-2 bg-white shadow-lg flex flex-col sm:flex-row justify-between items-center gap-2">
+      <div className="mt-4 p-2 bg-yellow-400 shadow-lg flex flex-col sm:flex-row justify-between items-center gap-2 rounded-sm">
         <div className="flex items-center gap-2 flex-wrap">
           <span className="text-sm">Page Size:</span>
           <select
@@ -359,7 +360,7 @@ function UserManagement() {
               setUsersPerPage(Number(e.target.value));
               setCurrentPage(1);
             }}
-            className="border rounded text-sm"
+            className="border rounded-md text-red-900 font-bold text-sm"
           >
             <option value={5}>5</option>
             <option value={10}>10</option>
@@ -370,14 +371,14 @@ function UserManagement() {
           <button
             onClick={() => setCurrentPage(1)}
             disabled={currentPage === 1}
-            className="px-2 py-1 bg-blue-600 text-white rounded disabled:bg-gray-300"
+            className="px-2 py-1 bg-yellow-400 text-red-900 rounded-sm border border-red-900 disabled:bg-gray-100"
           >
             First
           </button>
           <button
             onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
             disabled={currentPage === 1}
-            className="px-2 py-1 bg-blue-600 text-white rounded disabled:bg-gray-300"
+            className="px-2 py-1 bg-yellow-400 text-red-900 rounded-sm border border-red-900 disabled:bg-gray-100"
           >
             Prev
           </button>
@@ -385,10 +386,10 @@ function UserManagement() {
             <button
               key={num}
               onClick={() => setCurrentPage(num)}
-              className={`px-2 py-1 rounded ${
+              className={`px-3 py-1 rounded-lg ${
                 num === currentPage
-                  ? "bg-blue-600 text-white"
-                  : "bg-gray-200 text-gray-600"
+                  ? "bg-red-900 text-white border border-red-900"
+                  : "bg-yellow-400 text-red-900 rounded-sm border border-red-900"
               }`}
             >
               {num}
@@ -399,14 +400,14 @@ function UserManagement() {
               setCurrentPage((prev) => Math.min(prev + 1, totalPages))
             }
             disabled={currentPage === totalPages}
-            className="px-2 py-1 bg-blue-600 text-white rounded disabled:bg-gray-300"
+            className="px-2 py-1 bg-yellow-400 text-red-900 rounded-sm border border-red-900 disabled:bg-gray-100"
           >
             Next
           </button>
           <button
             onClick={() => setCurrentPage(totalPages)}
             disabled={currentPage === totalPages}
-            className="px-2 py-1 bg-blue-600 text-white rounded disabled:bg-gray-300"
+            className="px-2 py-1 bg-yellow-400 text-red-900 rounded-sm border border-red-900 disabled:bg-gray-100"
           >
             Last
           </button>
