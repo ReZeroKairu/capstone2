@@ -14,6 +14,7 @@ import {
   addDoc,
   serverTimestamp,
 } from "firebase/firestore";
+import { MagnifyingGlassIcon } from "@heroicons/react/24/outline";
 
 const PAGE_SIZE = 5;
 
@@ -29,45 +30,85 @@ export default function FormResponses() {
   const [endDate, setEndDate] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [loading, setLoading] = useState(false);
+  const [totalResponses, setTotalResponses] = useState(0);
+  const [pageCursors, setPageCursors] = useState([null]);
+  const [currentPage, setCurrentPage] = useState(1);
 
-  // Fetch current user & check admin role
+  // modal
+  const [selectedResponse, setSelectedResponse] = useState(null);
+
+  // fetch current user & role
   useEffect(() => {
     const unsub = auth.onAuthStateChanged(async (user) => {
-      if (!user) return setCurrentUser(null);
+      if (!user) {
+        setCurrentUser(null);
+        setIsAdmin(false);
+        return;
+      }
       setCurrentUser(user);
-
-      const userSnapshot = await getDocs(
-        query(collection(db, "Users"), where("__name__", "==", user.uid))
-      );
-      const userData = userSnapshot.docs[0]?.data();
-      setIsAdmin(userData?.role === "Admin");
+      try {
+        const userSnapshot = await getDocs(
+          query(collection(db, "Users"), where("__name__", "==", user.uid))
+        );
+        const userData = userSnapshot.docs[0]?.data();
+        setIsAdmin(userData?.role === "Admin");
+      } catch (err) {
+        console.error("Error checking user role:", err);
+      }
     });
-
     return () => unsub();
   }, []);
 
-  // Fetch available forms
+  // fetch forms for select
   useEffect(() => {
     const fetchForms = async () => {
-      const snapshot = await getDocs(collection(db, "forms"));
-      setForms(snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
+      try {
+        const snapshot = await getDocs(collection(db, "forms"));
+        setForms(snapshot.docs.map((d) => ({ id: d.id, ...d.data() })));
+      } catch (err) {
+        console.error("Error fetching forms:", err);
+      }
     };
     fetchForms();
   }, []);
 
-  // Fetch responses (with pagination & search)
-  // Fetch responses (with pagination & search)
-  const fetchResponses = async (direction = "next") => {
+  // fetch total responses for pagination
+  useEffect(() => {
+    if (!selectedFormId) return;
+    const fetchTotal = async () => {
+      try {
+        const constraints = [
+          where("formId", "==", selectedFormId),
+          where("status", "==", "Pending"),
+        ];
+        if (!isAdmin && currentUser) {
+          constraints.push(where("userId", "==", currentUser.uid));
+        }
+        if (startDate && endDate) {
+          const start = Timestamp.fromDate(new Date(startDate + "T00:00:00"));
+          const end = Timestamp.fromDate(new Date(endDate + "T23:59:59"));
+          constraints.push(where("submittedAt", ">=", start));
+          constraints.push(where("submittedAt", "<=", end));
+        }
+        const q = query(collection(db, "form_responses"), ...constraints);
+        const snapshot = await getDocs(q);
+        setTotalResponses(snapshot.size);
+      } catch (err) {
+        console.error("Error fetching total responses:", err);
+      }
+    };
+    fetchTotal();
+  }, [selectedFormId, startDate, endDate, currentUser, isAdmin]);
+
+  const fetchResponses = async (direction = "next", goToLast = false) => {
     if (!selectedFormId || !currentUser) return;
     setLoading(true);
 
     try {
-      // Always fetch only Pending responses for FormResponses
-      let constraints = [
+      const constraints = [
         where("formId", "==", selectedFormId),
-        where("status", "==", "Pending"), // ✅ Only Pending here
+        where("status", "==", "Pending"),
       ];
-
       if (!isAdmin) constraints.push(where("userId", "==", currentUser.uid));
 
       if (startDate && endDate) {
@@ -78,40 +119,67 @@ export default function FormResponses() {
       }
 
       const isSearching = searchTerm.trim() !== "";
+      let startAfterDoc = null;
 
-      let q = query(
+      if (!isSearching && totalResponses) {
+        const lastPage = Math.ceil(totalResponses / PAGE_SIZE);
+
+        if (goToLast) {
+          if (lastPage === currentPage || totalResponses <= PAGE_SIZE) {
+            setLoading(false);
+            return;
+          }
+          startAfterDoc = pageCursors[lastPage - 2] || null;
+        } else {
+          if (direction === "next")
+            startAfterDoc = pageCursors[currentPage - 1] || null;
+          if (direction === "prev" && currentPage > 1)
+            startAfterDoc = pageCursors[currentPage - 2] || null;
+        }
+      }
+
+      const q = query(
         collection(db, "form_responses"),
         ...constraints,
         orderBy("submittedAt", "desc"),
-        limit(isSearching ? 1000 : PAGE_SIZE)
+        limit(isSearching ? 1000 : PAGE_SIZE),
+        ...(startAfterDoc ? [startAfter(startAfterDoc)] : [])
       );
 
-      if (!isSearching && direction === "next" && lastVisible) {
-        q = query(q, startAfter(lastVisible));
-      }
-
       const snapshot = await getDocs(q);
-      let data = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+      const data = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
 
       if (isSearching) {
         const term = searchTerm.toLowerCase();
-        data = data.filter((res) =>
-          res.searchIndex?.some((field) => field.includes(term))
+        const filtered = data.filter((res) =>
+          res.searchIndex?.some((f) => f?.toLowerCase().includes(term))
         );
-        setPrevStack([]);
-        setLastVisible(null);
-        setResponses(data);
+        setResponses(filtered);
+        setCurrentPage(1);
+        setPageCursors([null]);
       } else {
-        if (direction === "prev") {
-          const prevPage = prevStack[prevStack.length - 1];
-          setPrevStack((prev) => prev.slice(0, -1));
-          setLastVisible(prevPage || null);
-          setResponses(data);
-        } else {
-          setResponses(direction === "next" ? [...responses, ...data] : data);
-          if (snapshot.docs.length > 0) {
-            setPrevStack((prev) => [...prev, lastVisible]);
-            setLastVisible(snapshot.docs[snapshot.docs.length - 1]);
+        setResponses(data);
+
+        if (snapshot.docs.length > 0) {
+          const lastDoc = snapshot.docs[snapshot.docs.length - 1];
+          const lastPage = Math.ceil(totalResponses / PAGE_SIZE);
+
+          if (goToLast) {
+            setPageCursors((prev) => {
+              const newCursors = [...prev];
+              newCursors[lastPage - 1] = lastDoc;
+              return newCursors;
+            });
+            setCurrentPage(lastPage);
+          } else if (direction === "next") {
+            setPageCursors((prev) => {
+              const newCursors = [...prev];
+              newCursors[currentPage - 1] = lastDoc;
+              return newCursors;
+            });
+            if (data.length === PAGE_SIZE) setCurrentPage((p) => p + 1);
+          } else if (direction === "prev" && currentPage > 1) {
+            setCurrentPage((p) => p - 1);
           }
         }
       }
@@ -122,11 +190,13 @@ export default function FormResponses() {
     }
   };
 
+  // reset and fetch when filters or selection change
   useEffect(() => {
     setLastVisible(null);
     setPrevStack([]);
     setResponses([]);
     fetchResponses("next");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedFormId, startDate, endDate, searchTerm, currentUser, isAdmin]);
 
   const handleKeyDown = (e) => {
@@ -139,7 +209,7 @@ export default function FormResponses() {
     const parts = text.split(new RegExp(`(${escaped})`, "gi"));
     return parts.map((part, i) =>
       part.toLowerCase() === searchTerm.toLowerCase() ? (
-        <mark key={i} className="bg-yellow-200">
+        <mark key={i} className="bg-yellow-200 text-[#211B17] px-0.5 rounded">
           {part}
         </mark>
       ) : (
@@ -148,40 +218,34 @@ export default function FormResponses() {
     );
   };
 
-  // Admin: Accept submission
+  // Admin actions
   const handleAccept = async (res) => {
     try {
       const resRef = doc(db, "form_responses", res.id);
-
-      // Update status at the root level
       await updateDoc(resRef, { status: "Assigning Peer Reviewer" });
 
-      // Add history entry in subcollection
       await addDoc(collection(db, "form_responses", res.id, "history"), {
         timestamp: serverTimestamp(),
         updatedBy: currentUser.uid,
         status: "Assigning Peer Reviewer",
       });
 
-      // Check if manuscript already exists for this response
       const manuscriptsRef = collection(db, "manuscripts");
-      const q = query(manuscriptsRef, where("responseId", "==", res.id));
-      const snapshot = await getDocs(q);
+      const mQ = query(manuscriptsRef, where("responseId", "==", res.id));
+      const mSnap = await getDocs(mQ);
 
-      if (!snapshot.empty) {
-        // Update existing manuscript status
-        snapshot.forEach(async (docSnap) => {
-          await updateDoc(doc(db, "manuscripts", docSnap.id), {
+      if (!mSnap.empty) {
+        mSnap.forEach(async (ms) => {
+          await updateDoc(doc(db, "manuscripts", ms.id), {
             status: "Assigning Peer Reviewer",
           });
         });
       } else {
-        // Add to manuscripts collection if it doesn't exist
         await addDoc(manuscriptsRef, {
           responseId: res.id,
           formId: res.formId,
           formTitle: res.formTitle,
-          answeredQuestions: res.answeredQuestions,
+          answeredQuestions: res.answeredQuestions || [],
           userId: res.userId,
           coAuthors: res.coAuthors || [],
           submittedAt: serverTimestamp(),
@@ -189,7 +253,6 @@ export default function FormResponses() {
         });
       }
 
-      // Notify main user + tagged co-authors
       const notifyUsers = [
         res.userId,
         ...(res.coAuthors?.map((c) => c.id) || []),
@@ -204,51 +267,46 @@ export default function FormResponses() {
         )
       );
 
-      // Update local state
       setResponses((prev) =>
         prev.map((r) =>
           r.id === res.id ? { ...r, status: "Assigning Peer Reviewer" } : r
         )
+      );
+      setSelectedResponse((r) =>
+        r && r.id === res.id ? { ...r, status: "Assigning Peer Reviewer" } : r
       );
     } catch (err) {
       console.error("Error accepting response:", err);
     }
   };
 
-  // Admin: Reject submission
   const handleReject = async (res) => {
     try {
       const resRef = doc(db, "form_responses", res.id);
-
-      // Update status at the root level
       await updateDoc(resRef, { status: "Rejected" });
 
-      // Add history entry in subcollection
       await addDoc(collection(db, "form_responses", res.id, "history"), {
         timestamp: serverTimestamp(),
         updatedBy: currentUser.uid,
         status: "Rejected",
       });
 
-      // Check if manuscript already exists for this response
       const manuscriptsRef = collection(db, "manuscripts");
-      const q = query(manuscriptsRef, where("responseId", "==", res.id));
-      const snapshot = await getDocs(q);
+      const mQ = query(manuscriptsRef, where("responseId", "==", res.id));
+      const mSnap = await getDocs(mQ);
 
-      if (!snapshot.empty) {
-        // Update existing manuscript status
-        snapshot.forEach(async (docSnap) => {
-          await updateDoc(doc(db, "manuscripts", docSnap.id), {
+      if (!mSnap.empty) {
+        mSnap.forEach(async (ms) => {
+          await updateDoc(doc(db, "manuscripts", ms.id), {
             status: "Rejected",
           });
         });
       } else {
-        // Add to manuscripts collection if it doesn't exist
         await addDoc(manuscriptsRef, {
           responseId: res.id,
           formId: res.formId,
           formTitle: res.formTitle,
-          answeredQuestions: res.answeredQuestions,
+          answeredQuestions: res.answeredQuestions || [],
           userId: res.userId,
           coAuthors: res.coAuthors || [],
           submittedAt: serverTimestamp(),
@@ -256,7 +314,6 @@ export default function FormResponses() {
         });
       }
 
-      // Notify main user + tagged co-authors
       const notifyUsers = [
         res.userId,
         ...(res.coAuthors?.map((c) => c.id) || []),
@@ -271,9 +328,11 @@ export default function FormResponses() {
         )
       );
 
-      // Update local state
       setResponses((prev) =>
         prev.map((r) => (r.id === res.id ? { ...r, status: "Rejected" } : r))
+      );
+      setSelectedResponse((r) =>
+        r && r.id === res.id ? { ...r, status: "Rejected" } : r
       );
     } catch (err) {
       console.error("Error rejecting response:", err);
@@ -287,129 +346,238 @@ export default function FormResponses() {
   }
 
   return (
-    <div className="p-28 max-w-5xl mx-auto">
-      <h1 className="text-2xl font-bold mb-4">Form Responses</h1>
+    <div className="min-h-screen bg-white font-sans">
+      <div className="h-24" />
+      <div className="max-w-4xl mx-auto px-4 pb-8">
+        <h1 className="text-2xl font-semibold mb-1 text-[#211B17]">
+          Form Responses
+        </h1>
+        <div className="text-sm italic text-[#4b4540] mb-4">Form</div>
 
-      <select
-        value={selectedFormId}
-        onChange={(e) => setSelectedFormId(e.target.value)}
-        className="border p-2 mb-4 w-full"
-      >
-        <option value="">Select a form</option>
-        {forms.map((f) => (
-          <option key={f.id} value={f.id}>
-            {f.title}
-          </option>
-        ))}
-      </select>
+        <div className="flex flex-col gap-4 mb-4">
+          <div className="relative">
+            <select
+              value={selectedFormId}
+              onChange={(e) => setSelectedFormId(e.target.value)}
+              className="w-full appearance-none bg-yellow-200 text-[#211B17] font-semibold text-lg rounded-lg px-4 py-2 pr-10 focus:outline-none"
+            >
+              <option value="">Select a form</option>
+              {forms.map((f) => (
+                <option key={f.id} value={f.id}>
+                  {f.title}
+                </option>
+              ))}
+            </select>
+            <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[#7B2E19] pointer-events-none">
+              ▼
+            </span>
+          </div>
 
-      <div className="mb-4 flex gap-2">
-        <label>
-          Start Date:{" "}
-          <input
-            type="date"
-            value={startDate}
-            onChange={(e) => setStartDate(e.target.value)}
-            onKeyDown={handleKeyDown}
-          />
-        </label>
-        <label>
-          End Date:{" "}
-          <input
-            type="date"
-            value={endDate}
-            onChange={(e) => setEndDate(e.target.value)}
-            onKeyDown={handleKeyDown}
-          />
-        </label>
+          <div className="flex gap-3 items-center">
+            <div className="flex-1 relative border-2 border-[#7B2E19] rounded-xl p-2 flex items-center">
+              <MagnifyingGlassIcon className="w-6 h-6 shrink-0 mr-2 text-[#F9D563]" />
+              <input
+                type="text"
+                placeholder="Search by name or email"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                onKeyDown={handleKeyDown}
+                className="w-full bg-transparent placeholder:text-[#9296a1] italic text-base font-medium outline-none"
+              />
+            </div>
+
+            <div className="flex gap-2">
+              <label className="text-sm flex items-center gap-2">
+                <span className="text-gray-600">Start</span>
+                <input
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  className="border rounded-md px-2 py-1"
+                />
+              </label>
+              <label className="text-sm flex items-center gap-2">
+                <span className="text-gray-600">End</span>
+                <input
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  className="border rounded-md px-2 py-1"
+                />
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-[#f3f2ee] rounded-md overflow-hidden">
+          {responses.length === 0 && !loading && selectedFormId && (
+            <div className="p-6 text-center text-gray-600">
+              No responses found.
+            </div>
+          )}
+
+          {responses.map((res, idx) => {
+            const fullName = `${res.firstName || ""} ${
+              res.lastName || ""
+            }`.trim();
+            const submittedAtText =
+              res.submittedAt?.toDate?.()?.toLocaleString() ||
+              (res.submittedAt?.seconds
+                ? new Date(res.submittedAt.seconds * 1000).toLocaleString()
+                : "");
+
+            return (
+              <div
+                key={res.id}
+                className={`flex items-center gap-4 px-4 py-3 text-[#211B17] ${
+                  idx === responses.length - 1 ? "" : "border-b"
+                } border-[#7B2E19]/30`}
+              >
+                <div className="flex-1 truncate text-sm">
+                  {highlightText(res.email || "")}
+                </div>
+                <div className="flex-1 truncate text-sm">
+                  {highlightText(fullName)}
+                </div>
+                <div className="flex-none text-xs text-gray-600">
+                  {submittedAtText}
+                </div>
+                <div className="flex-none ml-2">
+                  <button
+                    onClick={() => setSelectedResponse(res)}
+                    className="text-[#7B2E19] underline font-medium text-sm"
+                  >
+                    View Response
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="flex items-center gap-2 mt-4">
+          <button
+            disabled={currentPage === 1 || loading}
+            onClick={() => {
+              setCurrentPage(1);
+              setPageCursors([null]);
+              fetchResponses("next");
+            }}
+            className="px-3 py-1 bg-white text-[#7B2E19] border border-[#7B2E19] rounded-md font-semibold disabled:opacity-50"
+          >
+            First
+          </button>
+
+          <button
+            disabled={currentPage === 1 || loading}
+            onClick={() => fetchResponses("prev")}
+            className="px-3 py-1 bg-white text-[#7B2E19] border border-[#7B2E19] rounded-md font-semibold disabled:opacity-50"
+          >
+            Prev
+          </button>
+
+          <span className="px-2 py-1 font-semibold">{currentPage}</span>
+
+          <button
+            disabled={loading || responses.length < PAGE_SIZE}
+            onClick={() => fetchResponses("next")}
+            className="px-3 py-1 bg-white text-[#7B2E19] border border-[#7B2E19] rounded-md font-semibold disabled:opacity-50"
+          >
+            Next
+          </button>
+
+          <button
+            disabled={
+              loading ||
+              currentPage === Math.ceil(totalResponses / PAGE_SIZE) ||
+              totalResponses <= PAGE_SIZE
+            }
+            onClick={() => fetchResponses("next", true)}
+            className="px-3 py-1 bg-white text-[#7B2E19] border border-[#7B2E19] rounded-md font-semibold disabled:opacity-50"
+          >
+            Last
+          </button>
+        </div>
+
+        {loading && (
+          <div className="mt-3 text-sm text-gray-500">Loading...</div>
+        )}
       </div>
 
-      <div className="mb-4">
-        <input
-          type="text"
-          placeholder="Search by name or email..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          onKeyDown={handleKeyDown}
-          className="border p-2 w-full"
-        />
-      </div>
+      {selectedResponse && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/20"
+          onClick={() => setSelectedResponse(null)}
+        >
+          <div
+            className="bg-[#fafbfc] rounded-md p-5 max-w-md w-full shadow-lg border"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="text-sm text-gray-600 mb-3">
+              User: {selectedResponse.firstName} {selectedResponse.lastName} |
+              Email: {selectedResponse.email} | Role:{" "}
+              {selectedResponse.role || "N/A"} | Submitted at:{" "}
+              {selectedResponse.submittedAt?.toDate?.()?.toLocaleString() ||
+                (selectedResponse.submittedAt?.seconds
+                  ? new Date(
+                      selectedResponse.submittedAt.seconds * 1000
+                    ).toLocaleString()
+                  : "")}
+            </div>
 
-      {responses.length === 0 && !loading && selectedFormId && (
-        <p>No responses found.</p>
-      )}
-
-      {responses.map((res) => {
-        const fullName = `${res.firstName || ""} ${res.lastName || ""}`;
-        return (
-          <div key={res.id} className="mb-4 border p-3 rounded bg-gray-50">
-            <p className="text-sm text-gray-500 mb-2">
-              User: {highlightText(fullName)} | Email:{" "}
-              {highlightText(res.email || "")} | Role: {res.role || "N/A"} |
-              Submitted at:{" "}
-              {res.submittedAt?.toDate?.()?.toLocaleString() ||
-                new Date(res.submittedAt.seconds * 1000).toLocaleString()}
-            </p>
-
-            <div className="mb-2">
-              {res.answeredQuestions?.map((q, idx) => (
-                <p key={idx}>
-                  <strong>{q.question}:</strong> {q.answer}
-                </p>
+            <div className="space-y-2 mb-3">
+              {(selectedResponse.answeredQuestions || []).map((q, idx) => (
+                <div key={idx} className="text-sm">
+                  <span className="font-bold">{q.question}:</span>{" "}
+                  <span>{q.answer}</span>
+                </div>
               ))}
             </div>
 
-            <div>
-              <strong>Status:</strong> {res.status || "Pending"}
+            <div className="mb-2 text-sm font-semibold">
+              Status:{" "}
+              <span className="font-normal">
+                {selectedResponse.status || "Pending"}
+              </span>
             </div>
 
-            <div>
-              <strong>History:</strong>
-              {res.history?.map((h, i) => (
-                <p key={i}>
-                  [{new Date(h.timestamp.seconds * 1000).toLocaleString()}]{" "}
-                  {h.updatedBy} → {h.status}
-                </p>
+            <div className="mb-2 text-sm font-semibold">History:</div>
+            <div className="mb-3 text-sm">
+              {(selectedResponse.history || []).length === 0 && (
+                <div className="text-sm text-gray-500 mb-2">
+                  No history yet.
+                </div>
+              )}
+              {(selectedResponse.history || []).map((h, i) => (
+                <div key={i} className="text-sm text-gray-700">
+                  [
+                  {h.timestamp?.seconds
+                    ? new Date(h.timestamp.seconds * 1000).toLocaleString()
+                    : ""}
+                  ] {h.updatedBy} → {h.status}
+                </div>
               ))}
             </div>
 
-            {/* Admin Accept/Reject Buttons */}
-            {isAdmin && res.status === "Pending" && (
-              <div className="mt-2 flex gap-2">
+            {isAdmin && selectedResponse.status === "Pending" && (
+              <div className="flex gap-3">
                 <button
-                  onClick={() => handleAccept(res)}
-                  className="bg-green-500 text-white px-3 py-1 rounded"
+                  onClick={() => handleAccept(selectedResponse)}
+                  className="px-4 py-2 bg-green-500 text-white rounded-md font-semibold"
                 >
                   Accept
                 </button>
                 <button
-                  onClick={() => handleReject(res)}
-                  className="bg-red-500 text-white px-3 py-1 rounded"
+                  onClick={() => handleReject(selectedResponse)}
+                  className="px-4 py-2 bg-red-500 text-white rounded-md font-semibold"
                 >
                   Reject
                 </button>
               </div>
             )}
           </div>
-        );
-      })}
-
-      {!searchTerm && responses.length > 0 && (
-        <div className="flex justify-center mt-4 gap-2">
-          <button
-            disabled={prevStack.length === 0 || loading}
-            onClick={() => fetchResponses("prev")}
-            className="bg-gray-500 text-white px-3 py-1 rounded disabled:bg-gray-300"
-          >
-            Previous Page
-          </button>
-          <button
-            disabled={responses.length < PAGE_SIZE || loading}
-            onClick={() => fetchResponses("next")}
-            className="bg-blue-500 text-white px-3 py-1 rounded disabled:bg-gray-400"
-          >
-            Next Page
-          </button>
         </div>
       )}
     </div>

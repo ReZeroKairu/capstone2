@@ -103,7 +103,6 @@ export default function SubmitManuscript() {
       return;
     }
 
-    // ✅ Check required fields
     const missingRequired = form.questions.some(
       (q, index) => q.required && !answers[index]
     );
@@ -112,7 +111,6 @@ export default function SubmitManuscript() {
       return;
     }
 
-    // ✅ Find Manuscript Title field using special flag
     const manuscriptTitleIndex = form.questions.findIndex(
       (q) => q.isManuscriptTitle
     );
@@ -153,16 +151,15 @@ export default function SubmitManuscript() {
           userInfo.lastName || ""
         ).toLowerCase()}`,
         (userInfo.email || "").toLowerCase(),
-        manuscriptTitleAnswer.toLowerCase(), // ✅ Add manuscript title to search
+        manuscriptTitleAnswer.toLowerCase(),
       ];
 
-      // ✅ Save in form_responses first
       let responseRef;
       try {
         responseRef = await addDoc(collection(db, "form_responses"), {
           formId,
           formTitle: form.title,
-          manuscriptTitle: manuscriptTitleAnswer, // ✅ Store explicitly
+          manuscriptTitle: manuscriptTitleAnswer,
           userId: currentUser.uid,
           firstName: userInfo.firstName || "",
           lastName: userInfo.lastName || "",
@@ -185,15 +182,14 @@ export default function SubmitManuscript() {
       } catch (err) {
         console.error("Failed to save in form_responses:", err);
         setMessage("Failed to save submission. Check console for details.");
-        return; // ❌ Stop if we can't save here
+        return;
       }
 
-      // ✅ Then save in manuscripts
       await addDoc(collection(db, "manuscripts"), {
         responseId: responseRef.id,
         formId,
         formTitle: form.title,
-        manuscriptTitle: manuscriptTitleAnswer, // ✅ Store explicitly
+        manuscriptTitle: manuscriptTitleAnswer,
         answeredQuestions,
         userId: currentUser.uid,
         firstName: userInfo.firstName || "",
@@ -221,117 +217,128 @@ export default function SubmitManuscript() {
   if (!form) return <p className="text-center py-10">No form available.</p>;
 
   return (
-    <div className="pt-36 pb-10 px-4 sm:py-36 sm:px-6 md:px-8 max-w-3xl mx-auto">
-      <h1 className="text-2xl sm:text-3xl font-bold mb-4 text-center sm:text-left">
+    <div className="min-h-screen px-4 md:py-12 lg:py-16 mx-auto max-w-3xl mt-12 bg-white text-[#222]">
+      <h1 className="text-2xl font-semibold mb-6 text-[#111] text-center">
         {form.title}
       </h1>
 
-      {form.questions.map((q, index) => (
-        <div key={index} className="mb-4">
-          <label className="block font-semibold mb-1">
-            {q.text} {q.required && <span className="text-red-500">*</span>}
-          </label>
+      <div className="flex flex-col gap-6">
+        {form.questions.map((q, index) => (
+          <div
+            key={index}
+            className="bg-[#e0e0e0] rounded-xl p-4 flex flex-col gap-2"
+          >
+            <label className="italic text-base font-medium">
+              {q.text} {q.required && <span className="text-red-500">*</span>}
+            </label>
 
-          {q.type === "text" && (
-            <input
-              type="text"
-              value={answers[index] || ""}
-              onChange={(e) => handleChange(index, e.target.value)}
-              className="border p-2 w-full rounded focus:outline-none focus:ring-2 focus:ring-green-400"
-            />
-          )}
+            {q.type === "text" && (
+              <input
+                type="text"
+                value={answers[index] || ""}
+                onChange={(e) => handleChange(index, e.target.value)}
+                className="italic rounded-lg px-3 py-2 w-full bg-white text-base border-none focus:outline-none"
+              />
+            )}
 
-          {q.type === "textarea" && (
-            <textarea
-              value={answers[index] || ""}
-              onChange={(e) => handleChange(index, e.target.value)}
-              className="border p-2 w-full rounded focus:outline-none focus:ring-2 focus:ring-green-400"
-              rows={4}
-            />
-          )}
+            {q.type === "textarea" && (
+              <textarea
+                value={answers[index] || ""}
+                onChange={(e) => handleChange(index, e.target.value)}
+                rows={4}
+                className="italic rounded-lg px-3 py-2 w-full bg-white text-base border-none focus:outline-none"
+              />
+            )}
 
-          {q.type === "radio" && (
-            <div className="space-y-2">
-              {q.options?.map((option, optIndex) => {
-                const value =
-                  typeof option === "object" ? option.value : option;
-                return (
-                  <label key={optIndex} className="flex items-center space-x-2">
-                    <input
-                      type="radio"
-                      name={`question-${index}`}
-                      value={value}
-                      checked={answers[index] === value}
-                      onChange={() => handleChange(index, value)}
-                      className="form-radio text-green-500"
-                    />
-                    <span>{value}</span>
-                  </label>
-                );
-              })}
-            </div>
-          )}
+            {q.type === "radio" && (
+              <div className="flex flex-col gap-2 mt-2">
+                {q.options?.map((option, optIndex) => {
+                  const value =
+                    typeof option === "object" ? option.value : option;
+                  return (
+                    <label
+                      key={optIndex}
+                      className="flex items-center gap-2 bg-white rounded-lg px-3 py-1"
+                    >
+                      <input
+                        type="radio"
+                        name={`question-${index}`}
+                        value={value}
+                        checked={answers[index] === value}
+                        onChange={() => handleChange(index, value)}
+                        className="accent-[#4CC97B] scale-110"
+                      />
+                      <span className="italic">{value}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
 
-          {q.type === "checkbox" && (
-            <div className="space-y-2">
-              {q.options?.map((option, optIndex) => {
-                const value =
-                  typeof option === "object" ? option.value : option;
-                return (
-                  <label key={optIndex} className="flex items-center space-x-2">
-                    <input
-                      type="checkbox"
-                      value={value}
-                      checked={(answers[index] || []).includes(value)}
-                      onChange={() => handleChange(index, value, "checkbox")}
-                      className="form-checkbox text-green-500"
-                    />
-                    <span>{value}</span>
-                  </label>
-                );
-              })}
-            </div>
-          )}
+            {q.type === "checkbox" && (
+              <div className="flex flex-col gap-2 mt-2">
+                {q.options?.map((option, optIndex) => {
+                  const value =
+                    typeof option === "object" ? option.value : option;
+                  return (
+                    <label
+                      key={optIndex}
+                      className="flex items-center gap-2 bg-white rounded-lg px-3 py-1"
+                    >
+                      <input
+                        type="checkbox"
+                        value={value}
+                        checked={(answers[index] || []).includes(value)}
+                        onChange={() => handleChange(index, value, "checkbox")}
+                        className="accent-[#4CC97B] scale-110"
+                      />
+                      <span className="italic">{value}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
 
-          {q.type === "select" && (
-            <select
-              value={answers[index] || ""}
-              onChange={(e) => handleChange(index, e.target.value)}
-              className="border p-2 w-full rounded focus:outline-none focus:ring-2 focus:ring-green-400"
-            >
-              <option value="">Select an option</option>
-              {q.options?.map((option, optIndex) => {
-                const value =
-                  typeof option === "object" ? option.value : option;
-                return (
-                  <option key={optIndex} value={value}>
-                    {value}
-                  </option>
-                );
-              })}
-            </select>
-          )}
-        </div>
-      ))}
+            {q.type === "select" && (
+              <select
+                value={answers[index] || ""}
+                onChange={(e) => handleChange(index, e.target.value)}
+                className="italic rounded-lg px-3 py-2 w-full bg-white text-base border-none focus:outline-none"
+              >
+                <option value="">Select an option</option>
+                {q.options?.map((option, optIndex) => {
+                  const value =
+                    typeof option === "object" ? option.value : option;
+                  return (
+                    <option key={optIndex} value={value}>
+                      {value}
+                    </option>
+                  );
+                })}
+              </select>
+            )}
+          </div>
+        ))}
+      </div>
 
-      <button
-        onClick={submitAnswers}
-        className={`${
-          cooldown > 0 ? "bg-gray-400 cursor-not-allowed" : "bg-green-500"
-        } text-white px-4 py-2 rounded w-full sm:w-auto block sm:inline-block`}
-        disabled={!currentUser || cooldown > 0}
-      >
-        {cooldown > 0 ? `Please wait ${cooldown}s` : "Submit"}
-      </button>
+      <div className="flex justify-end mt-8">
+        <button
+          onClick={submitAnswers}
+          className={`${
+            cooldown > 0 ? "bg-gray-400 cursor-not-allowed" : "bg-[#4CC97B]"
+          } text-white text-base rounded-lg px-[22px] h-[38px] font-medium`}
+          disabled={!currentUser || cooldown > 0}
+        >
+          {cooldown > 0 ? `Please wait ${cooldown}s` : "Submit"}
+        </button>
+      </div>
 
       {message && (
-        <p className="mt-2 text-center sm:text-left text-sm text-red-500">
-          {message}
-        </p>
+        <p className="mt-2 text-center text-sm text-red-500">{message}</p>
       )}
 
       {!currentUser && (
-        <p className="text-red-500 mt-2 text-sm text-center sm:text-left">
+        <p className="text-red-500 mt-2 text-sm text-center">
           You must be signed in to submit the form.
         </p>
       )}
