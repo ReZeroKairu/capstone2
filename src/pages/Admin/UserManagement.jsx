@@ -221,57 +221,69 @@ function UserManagement() {
           className="w-full pl-10 pr-2 py-1 sm:py-2  border-[3px] border-red-900 rounded text-sm sm:text-base 
                focus:outline-none focus:border-red-900 focus:ring-2 focus:ring-red-900"
         />
-        <FaSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-yellow-400" />
+        <FaSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-yellow-500" />
       </div>
 
       {/* Users table */}
       {loading ? (
         <p className="text-center text-gray-500">Loading users...</p>
       ) : (
-        <div className="overflow-x-auto shadow-lg rounded-lg max-h-[400px]">
-          <table className="table-auto w-full border-collapse bg-white text-sm sm:text-base">
-            <thead>
-              <tr className="bg-yellow-400 text-red-800 ">
-                <th className="p-2 sm:p-3 font-semibold">Email</th>
-                <th className="p-2 sm:p-3 font-semibold">First</th>
-                <th className="p-2 sm:p-3 font-semibold">Last</th>
-                <th className="p-2 sm:p-3 font-semibold">Role</th>
-                <th className="p-2 sm:p-3 font-semibold">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {currentUsers.map((user) => (
-                <tr key={user.id} className="hover:bg-gray-100 border ">
-                  <td className="p-1 sm:p-3 border-b text-center text-red-800  ">
-                    {user.email}
-                  </td>
-                  <td className="p-1 sm:p-3 border-b text-center text-red-800 ">
-                    {user.firstName}
-                  </td>
-                  <td className="p-1 sm:p-3 border-b text-center text-red-800 ">
-                    {user.lastName}
-                  </td>
-                  <td className="p-1 sm:p-3 border-b text-center text-red-800  ">
-                    {user.role}
-                  </td>
-                  <td className="p-1 sm:p-3 border-b text-center flex flex-col sm:flex-row justify-center items-center gap-1 sm:gap-2">
-                    <button
-                      className="bg-blue-500 text-white px-2 py-1 rounded hover:bg-blue-600 text-xs sm:text-sm"
-                      onClick={() => handleEdit(user)}
-                    >
-                      Edit
-                    </button>
-                    <button
-                      className="bg-red-700 text-white px-2 py-1 rounded hover:bg-red-800 text-xs sm:text-sm"
-                      onClick={() => handleDeleteConfirmation(user.id)}
-                    >
-                      Delete
-                    </button>
-                  </td>
+        <div className="overflow-x-auto rounded-lg max-h-[400px]">
+          {/* Header block */}
+          <div className="bg-yellow-400 text-red-800 rounded-md p-2 sm:p-3">
+            <table className="table-auto w-full text-sm sm:text-base">
+              <thead>
+                <tr>
+                  <th className="font-semibold">Email</th>
+                  <th className="font-semibold">First</th>
+                  <th className="font-semibold">Last</th>
+                  <th className="font-semibold">Role</th>
+                  <th className="font-semibold">Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+            </table>
+          </div>
+
+          {/* ✅ Rows in their own bordered card */}
+          <div className="mt-4 border-2 border-red-800 rounded-lg overflow-hidden bg-white">
+            <table className="table-auto w-full text-sm sm:text-base">
+              <tbody>
+                {currentUsers.map((user) => (
+                  <tr
+                    key={user.id}
+                    className="hover:bg-gray-100 border-b last:border-b-0"
+                  >
+                    <td className="p-2 sm:p-3 text-center text-red-800">
+                      {user.email}
+                    </td>
+                    <td className="p-2 sm:p-3 text-center text-red-800">
+                      {user.firstName}
+                    </td>
+                    <td className="p-2 sm:p-3 text-center text-red-800">
+                      {user.lastName}
+                    </td>
+                    <td className="p-2 sm:p-3 text-center text-red-800">
+                      {user.role}
+                    </td>
+                    <td className="p-2 sm:p-3 text-center flex flex-col sm:flex-row justify-center items-center gap-1 sm:gap-2">
+                      <button
+                        className="bg-blue-500 text-white px-5 py-1 rounded hover:bg-blue-600 text-xs sm:text-sm"
+                        onClick={() => handleEdit(user)}
+                      >
+                        Edit
+                      </button>
+                      <button
+                        className="bg-red-700 text-white px-3 py-1 rounded hover:bg-red-800 text-xs sm:text-sm"
+                        onClick={() => handleDeleteConfirmation(user.id)}
+                      >
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
@@ -353,14 +365,14 @@ function UserManagement() {
       {/* Pagination */}
       <div className="mt-4 p-2 bg-yellow-400 shadow-lg flex flex-col sm:flex-row justify-between items-center gap-2 rounded-sm">
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-sm">Page Size:</span>
+          <span className="text-sm font-bold text-red-900">Page Size:</span>
           <select
             value={usersPerPage}
             onChange={(e) => {
               setUsersPerPage(Number(e.target.value));
               setCurrentPage(1);
             }}
-            className="border rounded-md text-red-900 font-bold text-sm"
+            className="border-2 border-red-800 bg-yellow-400 rounded-md text-red-900 font-bold text-sm"
           >
             <option value={5}>5</option>
             <option value={10}>10</option>
@@ -371,14 +383,14 @@ function UserManagement() {
           <button
             onClick={() => setCurrentPage(1)}
             disabled={currentPage === 1}
-            className="px-2 py-1 bg-yellow-400 text-red-900 rounded-sm border border-red-900 disabled:bg-gray-100"
+            className="px-3 py-1 mr-1 bg-yellow-400 text-red-900 rounded-md border border-red-900 disabled:bg-gray-100"
           >
             First
           </button>
           <button
             onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
             disabled={currentPage === 1}
-            className="px-2 py-1 bg-yellow-400 text-red-900 rounded-sm border border-red-900 disabled:bg-gray-100"
+            className="px-3 py-1 mr-3 bg-yellow-400 text-red-900 rounded-md border border-red-900 disabled:bg-gray-100"
           >
             Prev
           </button>
@@ -386,7 +398,7 @@ function UserManagement() {
             <button
               key={num}
               onClick={() => setCurrentPage(num)}
-              className={`px-3 py-1 rounded-lg ${
+              className={`px-3 py-1 mr-1 rounded-lg ${
                 num === currentPage
                   ? "bg-red-900 text-white border border-red-900"
                   : "bg-yellow-400 text-red-900 rounded-sm border border-red-900"
@@ -400,14 +412,14 @@ function UserManagement() {
               setCurrentPage((prev) => Math.min(prev + 1, totalPages))
             }
             disabled={currentPage === totalPages}
-            className="px-2 py-1 bg-yellow-400 text-red-900 rounded-sm border border-red-900 disabled:bg-gray-100"
+            className="px-3 py-1 ml-3 mr-1 bg-yellow-400 text-red-900 rounded-md border border-red-900 disabled:bg-gray-100"
           >
             Next
           </button>
           <button
             onClick={() => setCurrentPage(totalPages)}
             disabled={currentPage === totalPages}
-            className="px-2 py-1 bg-yellow-400 text-red-900 rounded-sm border border-red-900 disabled:bg-gray-100"
+            className="px-3 py-1 mr-1 bg-yellow-400 text-red-900 rounded-md border border-red-900 disabled:bg-gray-100"
           >
             Last
           </button>
