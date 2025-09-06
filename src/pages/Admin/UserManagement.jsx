@@ -390,7 +390,7 @@ function UserManagement() {
           <button
             onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
             disabled={currentPage === 1}
-            className="px-3 py-1 mr-3 bg-yellow-400 text-red-900 rounded-md border border-red-900 disabled:bg-gray-100"
+            className="px-3 py-1 mr-4 bg-yellow-400 text-red-900 rounded-md border border-red-900 disabled:bg-gray-100"
           >
             Prev
           </button>
