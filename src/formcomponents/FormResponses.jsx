@@ -16,27 +16,49 @@ import {
 } from "firebase/firestore";
 import { MagnifyingGlassIcon } from "@heroicons/react/24/outline";
 
-const PAGE_SIZE = 5;
-
 export default function FormResponses() {
   const [responses, setResponses] = useState([]);
   const [forms, setForms] = useState([]);
   const [selectedFormId, setSelectedFormId] = useState("");
   const [isAdmin, setIsAdmin] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
-  const [lastVisible, setLastVisible] = useState(null);
-  const [prevStack, setPrevStack] = useState([]);
+
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [loading, setLoading] = useState(false);
+
   const [totalResponses, setTotalResponses] = useState(0);
-  const [pageCursors, setPageCursors] = useState([null]);
+  const [pageSize, setPageSize] = useState(5);
+
+  // Pagination: pageCursors[i] = lastDoc of page (i+1)
+  const [pageCursors, setPageCursors] = useState([]);
   const [currentPage, setCurrentPage] = useState(1);
 
   // modal
   const [selectedResponse, setSelectedResponse] = useState(null);
-
+  const formatAnswer = (answer) => {
+    if (answer === null || answer === undefined) return "";
+    if (Array.isArray(answer)) {
+      return answer
+        .map((a) => {
+          if (a === null || a === undefined) return "";
+          if (typeof a === "object") {
+            if (a.name) return a.email ? `${a.name} (${a.email})` : a.name;
+            return JSON.stringify(a);
+          }
+          return String(a);
+        })
+        .filter(Boolean)
+        .join(", ");
+    }
+    if (typeof answer === "object") {
+      if (answer.name)
+        return answer.email ? `${answer.name} (${answer.email})` : answer.name;
+      return JSON.stringify(answer);
+    }
+    return String(answer);
+  };
   // fetch current user & role
   useEffect(() => {
     const unsub = auth.onAuthStateChanged(async (user) => {
@@ -74,7 +96,10 @@ export default function FormResponses() {
 
   // fetch total responses for pagination
   useEffect(() => {
-    if (!selectedFormId) return;
+    if (!selectedFormId) {
+      setTotalResponses(0);
+      return;
+    }
     const fetchTotal = async () => {
       try {
         const constraints = [
@@ -100,91 +125,132 @@ export default function FormResponses() {
     fetchTotal();
   }, [selectedFormId, startDate, endDate, currentUser, isAdmin]);
 
-  const fetchResponses = async (direction = "next", goToLast = false) => {
-    if (!selectedFormId || !currentUser) return;
-    setLoading(true);
+  // helper: build query constraints array for current filters/search
+  const buildConstraints = () => {
+    const constraints = [
+      where("formId", "==", selectedFormId),
+      where("status", "==", "Pending"),
+    ];
+    if (!isAdmin && currentUser)
+      constraints.push(where("userId", "==", currentUser.uid));
+    if (startDate && endDate) {
+      const start = Timestamp.fromDate(new Date(startDate + "T00:00:00"));
+      const end = Timestamp.fromDate(new Date(endDate + "T23:59:59"));
+      constraints.push(where("submittedAt", ">=", start));
+      constraints.push(where("submittedAt", "<=", end));
+    }
+    return constraints;
+  };
 
+  // NEW: fetch fresh total count (used when jumping to last page)
+  const fetchTotalCount = async () => {
+    if (!selectedFormId) return 0;
     try {
-      const constraints = [
-        where("formId", "==", selectedFormId),
-        where("status", "==", "Pending"),
-      ];
-      if (!isAdmin) constraints.push(where("userId", "==", currentUser.uid));
+      const constraints = buildConstraints();
+      const q = query(collection(db, "form_responses"), ...constraints);
+      const snap = await getDocs(q);
+      setTotalResponses(snap.size);
+      return snap.size;
+    } catch (err) {
+      console.error("Error fetching total count:", err);
+      return totalResponses || 0;
+    }
+  };
 
-      if (startDate && endDate) {
-        const start = Timestamp.fromDate(new Date(startDate + "T00:00:00"));
-        const end = Timestamp.fromDate(new Date(endDate + "T23:59:59"));
-        constraints.push(where("submittedAt", ">=", start));
-        constraints.push(where("submittedAt", "<=", end));
+  // ensure we have stored cursors up to page - 1 (so we can startAfter when fetching target page)
+  const ensureCursorsUpTo = async (page) => {
+    if (page <= 1) return;
+    const needed = page - 1; // need lastDoc for pages 1..needed
+    // if pageCursors already has needed entries (each entry corresponds to lastDoc of page i)
+    if (pageCursors.length >= needed) return;
+
+    let cursors = [...pageCursors];
+    try {
+      // start fetching from the last known cursor
+      while (cursors.length < needed) {
+        const startAfterDoc =
+          cursors.length === 0 ? null : cursors[cursors.length - 1];
+        const constraints = buildConstraints();
+        const q = query(
+          collection(db, "form_responses"),
+          ...constraints,
+          orderBy("submittedAt", "desc"),
+          limit(pageSize),
+          ...(startAfterDoc ? [startAfter(startAfterDoc)] : [])
+        );
+        const snap = await getDocs(q);
+        if (snap.empty) break;
+        const lastDoc = snap.docs[snap.docs.length - 1];
+        cursors.push(lastDoc);
+        // if returned docs < pageSize then no more pages after this
+        if (snap.docs.length < pageSize) break;
       }
+      setPageCursors(cursors);
+    } catch (err) {
+      console.error("Error prefetching cursors:", err);
+    }
+  };
 
-      const isSearching = searchTerm.trim() !== "";
-      let startAfterDoc = null;
-
-      if (!isSearching && totalResponses) {
-        const lastPage = Math.ceil(totalResponses / PAGE_SIZE);
-
-        if (goToLast) {
-          if (lastPage === currentPage || totalResponses <= PAGE_SIZE) {
-            setLoading(false);
-            return;
-          }
-          startAfterDoc = pageCursors[lastPage - 2] || null;
-        } else {
-          if (direction === "next")
-            startAfterDoc = pageCursors[currentPage - 1] || null;
-          if (direction === "prev" && currentPage > 1)
-            startAfterDoc = pageCursors[currentPage - 2] || null;
-        }
-      }
-
-      const q = query(
-        collection(db, "form_responses"),
-        ...constraints,
-        orderBy("submittedAt", "desc"),
-        limit(isSearching ? 1000 : PAGE_SIZE),
-        ...(startAfterDoc ? [startAfter(startAfterDoc)] : [])
-      );
-
-      const snapshot = await getDocs(q);
-      const data = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
-
+  // main page loader
+  const loadPage = async (page = 1) => {
+    if (!selectedFormId || !currentUser) return;
+    const isSearching = searchTerm.trim() !== "";
+    setLoading(true);
+    try {
       if (isSearching) {
+        // search: fetch larger set and filter client-side
+        const constraints = buildConstraints();
+        const q = query(
+          collection(db, "form_responses"),
+          ...constraints,
+          orderBy("submittedAt", "desc"),
+          limit(1000)
+        );
+        const snap = await getDocs(q);
+        const data = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
         const term = searchTerm.toLowerCase();
         const filtered = data.filter((res) =>
           res.searchIndex?.some((f) => f?.toLowerCase().includes(term))
         );
         setResponses(filtered);
         setCurrentPage(1);
-        setPageCursors([null]);
-      } else {
-        setResponses(data);
-
-        if (snapshot.docs.length > 0) {
-          const lastDoc = snapshot.docs[snapshot.docs.length - 1];
-          const lastPage = Math.ceil(totalResponses / PAGE_SIZE);
-
-          if (goToLast) {
-            setPageCursors((prev) => {
-              const newCursors = [...prev];
-              newCursors[lastPage - 1] = lastDoc;
-              return newCursors;
-            });
-            setCurrentPage(lastPage);
-          } else if (direction === "next") {
-            setPageCursors((prev) => {
-              const newCursors = [...prev];
-              newCursors[currentPage - 1] = lastDoc;
-              return newCursors;
-            });
-            if (data.length === PAGE_SIZE) setCurrentPage((p) => p + 1);
-          } else if (direction === "prev" && currentPage > 1) {
-            setCurrentPage((p) => p - 1);
-          }
-        }
+        setPageCursors([]);
+        return;
       }
+
+      // normal pagination: ensure cursors up to target page - 1
+      const totalPages = Math.max(1, Math.ceil(totalResponses / pageSize));
+      const targetPage = Math.min(Math.max(1, page), totalPages);
+
+      await ensureCursorsUpTo(targetPage);
+
+      const startAfterDoc =
+        targetPage > 1 ? pageCursors[targetPage - 2] || null : null;
+      const constraints = buildConstraints();
+      const q = query(
+        collection(db, "form_responses"),
+        ...constraints,
+        orderBy("submittedAt", "desc"),
+        limit(pageSize),
+        ...(startAfterDoc ? [startAfter(startAfterDoc)] : [])
+      );
+      const snap = await getDocs(q);
+      const data = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      setResponses(data);
+
+      // store lastDoc for this page
+      if (snap.docs.length > 0) {
+        const lastDoc = snap.docs[snap.docs.length - 1];
+        setPageCursors((prev) => {
+          const copy = [...prev];
+          copy[targetPage - 1] = lastDoc;
+          return copy;
+        });
+      }
+
+      setCurrentPage(targetPage);
     } catch (err) {
-      console.error("Error fetching responses:", err.message);
+      console.error("Error loading page:", err);
     } finally {
       setLoading(false);
     }
@@ -192,15 +258,24 @@ export default function FormResponses() {
 
   // reset and fetch when filters or selection change
   useEffect(() => {
-    setLastVisible(null);
-    setPrevStack([]);
     setResponses([]);
-    fetchResponses("next");
+    setPageCursors([]);
+    setCurrentPage(1);
+    // small delay to ensure state updates before load (not strictly necessary)
+    loadPage(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedFormId, startDate, endDate, searchTerm, currentUser, isAdmin]);
+  }, [
+    selectedFormId,
+    startDate,
+    endDate,
+    searchTerm,
+    currentUser,
+    isAdmin,
+    pageSize,
+  ]);
 
   const handleKeyDown = (e) => {
-    if (e.key === "Enter") fetchResponses("next");
+    if (e.key === "Enter") loadPage(1);
   };
 
   const highlightText = (text) => {
@@ -218,7 +293,7 @@ export default function FormResponses() {
     );
   };
 
-  // Admin actions
+  // Admin actions (unchanged)
   const handleAccept = async (res) => {
     try {
       const resRef = doc(db, "form_responses", res.id);
@@ -234,10 +309,17 @@ export default function FormResponses() {
       const mQ = query(manuscriptsRef, where("responseId", "==", res.id));
       const mSnap = await getDocs(mQ);
 
+      // preserve original submission time if available
+      const responseSubmittedAt = res.submittedAt
+        ? res.submittedAt
+        : serverTimestamp();
+
       if (!mSnap.empty) {
         mSnap.forEach(async (ms) => {
+          // set status and record acceptedAt timestamp
           await updateDoc(doc(db, "manuscripts", ms.id), {
             status: "Assigning Peer Reviewer",
+            acceptedAt: serverTimestamp(),
           });
         });
       } else {
@@ -248,7 +330,10 @@ export default function FormResponses() {
           answeredQuestions: res.answeredQuestions || [],
           userId: res.userId,
           coAuthors: res.coAuthors || [],
-          submittedAt: serverTimestamp(),
+          // preserve original submission time when possible
+          submittedAt: responseSubmittedAt,
+          // mark acceptance timestamp
+          acceptedAt: serverTimestamp(),
           status: "Assigning Peer Reviewer",
         });
       }
@@ -345,6 +430,24 @@ export default function FormResponses() {
     );
   }
 
+  // Pagination numbers
+  const totalPages = Math.max(1, Math.ceil(totalResponses / pageSize));
+  const pageNumbers = [];
+  for (let i = 1; i <= totalPages; i++) {
+    if (
+      i === 1 ||
+      i === totalPages ||
+      (i >= currentPage - 2 && i <= currentPage + 2)
+    ) {
+      pageNumbers.push(i);
+    } else if (
+      (i === currentPage - 3 && currentPage - 3 > 1) ||
+      (i === currentPage + 3 && currentPage + 3 < totalPages)
+    ) {
+      pageNumbers.push("...");
+    }
+  }
+
   return (
     <div className="min-h-screen bg-white font-sans">
       <div className="h-24" />
@@ -382,7 +485,7 @@ export default function FormResponses() {
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 onKeyDown={handleKeyDown}
-                className="w-full bg-transparent placeholder:text-[#9296a1] italic text-base font-medium outline-none"
+                className="w-full bg-transparent placeholder:text-[#92996a1] italic text-base font-medium outline-none"
               />
             </div>
 
@@ -409,6 +512,28 @@ export default function FormResponses() {
               </label>
             </div>
           </div>
+        </div>
+
+        {/* Page size selector */}
+        <div className="flex items-center gap-2 mb-4">
+          <label className="text-sm text-gray-700 font-medium">
+            Page Size:
+          </label>
+          <select
+            value={pageSize}
+            onChange={(e) => {
+              const sz = Number(e.target.value);
+              setPageSize(sz);
+              setPageCursors([]);
+              setCurrentPage(1);
+            }}
+            className="border rounded px-2 py-1"
+          >
+            <option value={5}>5</option>
+            <option value={10}>10</option>
+            <option value={15}>15</option>
+            <option value={20}>20</option>
+          </select>
         </div>
 
         <div className="bg-[#f3f2ee] rounded-md overflow-hidden">
@@ -457,45 +582,66 @@ export default function FormResponses() {
           })}
         </div>
 
-        <div className="flex items-center gap-2 mt-4">
+        {/* Advanced Pagination */}
+        <div className="flex items-center justify-center gap-2 mt-4">
           <button
             disabled={currentPage === 1 || loading}
-            onClick={() => {
-              setCurrentPage(1);
-              setPageCursors([null]);
-              fetchResponses("next");
-            }}
-            className="px-3 py-1 bg-white text-[#7B2E19] border border-[#7B2E19] rounded-md font-semibold disabled:opacity-50"
+            onClick={() => loadPage(1)}
+            className="px-3 py-1 bg-white text-[#7B2E19] border border-[#7B2E19] rounded-md font-semibold transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             First
           </button>
 
           <button
             disabled={currentPage === 1 || loading}
-            onClick={() => fetchResponses("prev")}
-            className="px-3 py-1 bg-white text-[#7B2E19] border border-[#7B2E19] rounded-md font-semibold disabled:opacity-50"
+            onClick={() => loadPage(currentPage - 1)}
+            className="px-3 py-1 bg-white text-[#7B2E19] border border-[#7B2E19] rounded-md font-semibold transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Prev
           </button>
 
-          <span className="px-2 py-1 font-semibold">{currentPage}</span>
+          {/* Page Numbers with ellipsis */}
+          {pageNumbers.map((pageNum, idx) =>
+            pageNum === "..." ? (
+              <span key={`ellipsis-${idx}`} className="px-2">
+                ...
+              </span>
+            ) : (
+              <button
+                key={pageNum}
+                onClick={() => loadPage(pageNum)}
+                className={`px-3 py-1 rounded-md font-semibold ${
+                  currentPage === pageNum
+                    ? "bg-yellow-200 text-[#7B2E19] border border-[#7B2E19]"
+                    : "bg-white text-[#7B2E19] border border-[#7B2E19]"
+                }`}
+                disabled={loading}
+              >
+                {pageNum}
+              </button>
+            )
+          )}
 
           <button
-            disabled={loading || responses.length < PAGE_SIZE}
-            onClick={() => fetchResponses("next")}
-            className="px-3 py-1 bg-white text-[#7B2E19] border border-[#7B2E19] rounded-md font-semibold disabled:opacity-50"
+            disabled={loading || currentPage === totalPages}
+            onClick={() => loadPage(currentPage + 1)}
+            className="px-3 py-1 bg-white text-[#7B2E19] border border-[#7B2E19] rounded-md font-semibold transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Next
           </button>
 
           <button
-            disabled={
-              loading ||
-              currentPage === Math.ceil(totalResponses / PAGE_SIZE) ||
-              totalResponses <= PAGE_SIZE
-            }
-            onClick={() => fetchResponses("next", true)}
-            className="px-3 py-1 bg-white text-[#7B2E19] border border-[#7B2E19] rounded-md font-semibold disabled:opacity-50"
+            disabled={loading || currentPage === totalPages || totalPages === 1}
+            onClick={async () => {
+              // refresh total, prefetch cursors up to last page, then load it
+              const total = await fetchTotalCount();
+              const lastPage = Math.max(1, Math.ceil(total / pageSize));
+              if (lastPage === currentPage) return;
+              // ensure cursors exist up to lastPage - 1
+              await ensureCursorsUpTo(lastPage);
+              await loadPage(lastPage);
+            }}
+            className="px-3 py-1 bg-white text-[#7B2E19] border border-[#7B2E19] rounded-md font-semibold transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Last
           </button>
@@ -531,7 +677,7 @@ export default function FormResponses() {
               {(selectedResponse.answeredQuestions || []).map((q, idx) => (
                 <div key={idx} className="text-sm">
                   <span className="font-bold">{q.question}:</span>{" "}
-                  <span>{q.answer}</span>
+                  <span>{formatAnswer(q.answer)}</span>
                 </div>
               ))}
             </div>

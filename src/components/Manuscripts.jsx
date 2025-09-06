@@ -8,6 +8,7 @@ import {
   getDoc,
   getDocs,
   updateDoc,
+  addDoc,
 } from "firebase/firestore";
 import { db } from "../firebase/firebase";
 
@@ -20,6 +21,17 @@ const Manuscripts = () => {
   const [users, setUsers] = useState([]);
   const [showAssignList, setShowAssignList] = useState({});
   const navigate = useNavigate();
+
+  // Filter state and definitions
+  const [filter, setFilter] = useState("in-progress"); // "in-progress" | "for-publication" | "rejected" | "all"
+  const IN_PROGRESS_STATUSES = [
+    "Pending",
+    "Assigning Peer Reviewer",
+    "Peer Reviewer Assigned",
+    "Peer Reviewer Reviewing",
+    "Back to Admin",
+    "For Revision",
+  ];
 
   const toggleExpand = (id) =>
     setExpanded((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -85,15 +97,86 @@ const Manuscripts = () => {
             return { id: doc.id, ...data, assignedReviewersNames };
           });
 
-          allMss.sort(
-            (a, b) =>
-              (b.submittedAt?.seconds || 0) - (a.submittedAt?.seconds || 0)
-          );
+          // place accepted manuscripts first (by acceptedAt desc), then fallback to submittedAt desc
+          const tsToMillis = (ts) =>
+            ts?.toDate?.()?.getTime?.() ??
+            (ts?.seconds ? ts.seconds * 1000 : 0);
+
+          allMss.sort((a, b) => {
+            const aAcc = tsToMillis(a.acceptedAt);
+            const bAcc = tsToMillis(b.acceptedAt);
+            if (aAcc && !bAcc) return -1; // a accepted, b not -> a first
+            if (!aAcc && bAcc) return 1; // b accepted, a not -> b first
+            if (aAcc && bAcc) return bAcc - aAcc; // both accepted -> newest accepted first
+            // neither accepted -> sort by submittedAt desc
+            const aSub = tsToMillis(a.submittedAt);
+            const bSub = tsToMillis(b.submittedAt);
+            return bSub - aSub;
+          });
+
+          // after building allMss:
+          const VISIBLE_STATUSES = [
+            "Assigning Peer Reviewer",
+            "Peer Reviewer Assigned",
+            "Peer Reviewer Reviewing",
+            "Back to Admin",
+            "For Revision",
+            "For Publication",
+            "Rejected",
+          ];
+
+          const isUserCoauthorInAnsweredQuestions = (m, uid, email) => {
+            if (!m.answeredQuestions) return false;
+            return m.answeredQuestions.some((q) => {
+              if (q.type !== "coauthors") return false;
+              if (!Array.isArray(q.answer)) return false;
+              return q.answer.some((a) => {
+                if (!a) return false;
+                // a can be object {id, name, email} or string "Name (email)"
+                if (typeof a === "object") {
+                  if (a.id && a.id === uid) return true;
+                  if (
+                    a.email &&
+                    email &&
+                    a.email.toLowerCase() === email.toLowerCase()
+                  )
+                    return true;
+
+                  return false;
+                }
+                if (typeof a === "string" && email) {
+                  return a.toLowerCase().includes(email.toLowerCase());
+                }
+                return false;
+              });
+            });
+          };
 
           setManuscripts(
             userRole === "Admin"
-              ? allMss
-              : allMss.filter((m) => m.userId === currentUser.uid)
+              ? allMss.filter((m) => VISIBLE_STATUSES.includes(m.status))
+              : allMss.filter((m) => {
+                  const isOwner = m.userId === currentUser.uid;
+                  const hasCoAuthorsIds =
+                    Array.isArray(m.coAuthorsIds) &&
+                    m.coAuthorsIds.includes(currentUser.uid);
+                  const hasCoAuthorsObjects =
+                    Array.isArray(m.coAuthors) &&
+                    m.coAuthors.some((c) => c?.id === currentUser.uid);
+                  const inAnsweredQ = isUserCoauthorInAnsweredQuestions(
+                    m,
+                    currentUser.uid,
+                    currentUser.email || ""
+                  );
+
+                  return (
+                    (isOwner ||
+                      hasCoAuthorsIds ||
+                      hasCoAuthorsObjects ||
+                      inAnsweredQ) &&
+                    VISIBLE_STATUSES.includes(m.status)
+                  );
+                })
           );
         });
       } catch (err) {
@@ -128,14 +211,73 @@ const Manuscripts = () => {
       </div>
     );
 
+  // derive visible list according to chosen filter (compute before JSX)
+  const filteredManuscripts = manuscripts.filter((m) => {
+    if (filter === "in-progress")
+      return IN_PROGRESS_STATUSES.includes(m.status);
+    if (filter === "for-publication") return m.status === "For Publication";
+    if (filter === "rejected") return m.status === "Rejected";
+    return true;
+  });
+
   return (
     <div className="pt-24 px-4 sm:px-6 lg:px-24 pb-24">
       <h1 className="text-3xl font-bold mb-6 text-center sm:text-left">
         Manuscripts
       </h1>
 
+      {/* Filter controls */}
+      <div className="flex gap-2 mb-6 justify-center sm:justify-start">
+        <button
+          onClick={() => setFilter("in-progress")}
+          className={`px-3 py-1 rounded ${
+            filter === "in-progress"
+              ? "bg-yellow-200 text-[#211B17] border border-[#7B2E19]"
+              : "bg-white border border-gray-300"
+          }`}
+        >
+          In-progress (
+          {
+            manuscripts.filter((m) => IN_PROGRESS_STATUSES.includes(m.status))
+              .length
+          }
+          )
+        </button>
+        <button
+          onClick={() => setFilter("for-publication")}
+          className={`px-3 py-1 rounded ${
+            filter === "for-publication"
+              ? "bg-yellow-200 text-[#211B17] border border-[#7B2E19]"
+              : "bg-white border border-gray-300"
+          }`}
+        >
+          For publication (
+          {manuscripts.filter((m) => m.status === "For Publication").length})
+        </button>
+        <button
+          onClick={() => setFilter("rejected")}
+          className={`px-3 py-1 rounded ${
+            filter === "rejected"
+              ? "bg-yellow-200 text-[#211B17] border border-[#7B2E19]"
+              : "bg-white border border-gray-300"
+          }`}
+        >
+          Rejected ({manuscripts.filter((m) => m.status === "Rejected").length})
+        </button>
+        <button
+          onClick={() => setFilter("all")}
+          className={`px-3 py-1 rounded ${
+            filter === "all"
+              ? "bg-yellow-200 text-[#211B17] border border-[#7B2E19]"
+              : "bg-white border border-gray-300"
+          }`}
+        >
+          All ({manuscripts.length})
+        </button>
+      </div>
+
       <ul className="space-y-4">
-        {manuscripts.map((m) => {
+        {filteredManuscripts.map((m) => {
           const showAssignButton =
             role === "Admin" &&
             (m.status === "Assigning Peer Reviewer" ||
@@ -169,7 +311,20 @@ const Manuscripts = () => {
               {m.submittedAt && (
                 <p className="text-sm text-gray-500">
                   Submitted:{" "}
-                  {new Date(m.submittedAt.seconds * 1000).toLocaleString()}
+                  {m.submittedAt?.toDate?.()?.toLocaleString?.() ||
+                    (m.submittedAt?.seconds
+                      ? new Date(m.submittedAt.seconds * 1000).toLocaleString()
+                      : "")}
+                </p>
+              )}
+
+              {m.acceptedAt && (
+                <p className="text-sm text-gray-500">
+                  Accepted:{" "}
+                  {m.acceptedAt?.toDate?.()?.toLocaleString?.() ||
+                    (m.acceptedAt?.seconds
+                      ? new Date(m.acceptedAt.seconds * 1000).toLocaleString()
+                      : "")}
                 </p>
               )}
 
@@ -251,11 +406,31 @@ const Manuscripts = () => {
                           .trim()
                           .startsWith("manuscript title")
                     )
-                    .map((q, idx) => (
-                      <p key={idx} className="text-sm sm:text-base break-words">
-                        <strong>{q.question}:</strong> {q.answer}
-                      </p>
-                    ))}
+                    .map((q, idx) => {
+                      let displayAnswer;
+
+                      if (Array.isArray(q.answer)) {
+                        // Handle array of objects (like co-authors) or strings
+                        displayAnswer = q.answer
+                          .map((a) =>
+                            typeof a === "object" && a !== null
+                              ? `${a.name} (${a.email})`
+                              : a
+                          )
+                          .join(", ");
+                      } else {
+                        displayAnswer = q.answer;
+                      }
+
+                      return (
+                        <p
+                          key={idx}
+                          className="text-sm sm:text-base break-words"
+                        >
+                          <strong>{q.question}:</strong> {displayAnswer}
+                        </p>
+                      );
+                    })}
                 </div>
               )}
             </li>

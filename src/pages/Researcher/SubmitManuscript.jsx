@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { db, auth } from "../../firebase/firebase";
 import {
   collection,
@@ -22,193 +22,259 @@ export default function SubmitManuscript() {
   const [cooldown, setCooldown] = useState(0);
   const [message, setMessage] = useState("");
 
+  // Co-author state
+  const [allResearchers, setAllResearchers] = useState([]);
+  const [selectedUsers, setSelectedUsers] = useState([]);
+  const [userSearch, setUserSearch] = useState("");
+  const [filteredUsers, setFilteredUsers] = useState([]);
+
+  const cooldownRef = useRef(0);
   useEffect(() => {
-    const fetchLatestForm = async () => {
+    cooldownRef.current = cooldown;
+  }, [cooldown]);
+
+  // Fetch latest form and researchers
+  useEffect(() => {
+    const fetchData = async () => {
       try {
-        const q = query(
+        const formQuery = query(
           collection(db, "forms"),
           orderBy("createdAt", "desc"),
           limit(1)
         );
-        const snapshot = await getDocs(q);
-        if (!snapshot.empty) {
-          const docSnap = snapshot.docs[0];
-          setForm(docSnap.data());
+        const formSnap = await getDocs(formQuery);
+        if (!formSnap.empty) {
+          const docSnap = formSnap.docs[0];
+          const questions = (docSnap.data().questions || []).map((q, i) => ({
+            ...q,
+            options: (q.options || []).map((o, idx) =>
+              typeof o === "string"
+                ? { id: `${i}-${idx}-${Date.now()}`, value: o }
+                : o
+            ),
+          }));
+          setForm({ id: docSnap.id, ...docSnap.data(), questions });
+
+          // Preload co-authors (if form stored defaults)
+          const coAuthors =
+            docSnap.data().coAuthors?.map((c) => ({
+              id: c.id,
+              name: c.name,
+              email: c.email,
+            })) || [];
+          setSelectedUsers(coAuthors);
           setFormId(docSnap.id);
         }
-      } catch (error) {
-        console.error("Failed to fetch latest form:", error);
+
+        const usersSnap = await getDocs(collection(db, "Users"));
+        setAllResearchers(
+          usersSnap.docs
+            .map((d) => ({ id: d.id, ...d.data() }))
+            .filter((u) => u.role === "Researcher")
+        );
+
+        auth.onAuthStateChanged((user) => {
+          setCurrentUser(user || null);
+          setLoading(false);
+        });
+      } catch (err) {
+        console.error("Error fetching data:", err);
+        setMessage("Failed to load form or users.");
+        setLoading(false);
       }
     };
-
-    fetchLatestForm();
-
-    const unsub = auth.onAuthStateChanged(async (user) => {
-      if (user) {
-        setCurrentUser(user);
-
-        const userRef = doc(db, "Users", user.uid);
-        const userSnap = await getDoc(userRef);
-        if (userSnap.exists()) {
-          const lastSubmittedAt = userSnap.data().lastSubmittedAt?.toMillis?.();
-          if (lastSubmittedAt) {
-            const diff = Date.now() - lastSubmittedAt;
-            if (diff < 5000) {
-              setCooldown(Math.ceil((5000 - diff) / 1000));
-            }
-          }
-        }
-      } else {
-        setCurrentUser(null);
-      }
-      setLoading(false);
-    });
-
-    return () => unsub();
+    fetchData();
   }, []);
 
+  // Filter researchers
+  useEffect(() => {
+    if (!userSearch.trim()) return setFilteredUsers([]);
+    const term = userSearch.toLowerCase();
+    setFilteredUsers(
+      allResearchers.filter(
+        (u) =>
+          (u.firstName?.toLowerCase().includes(term) ||
+            u.lastName?.toLowerCase().includes(term) ||
+            (u.email || "").toLowerCase().includes(term)) &&
+          !selectedUsers.some((su) => su.id === u.id)
+      )
+    );
+  }, [userSearch, selectedUsers, allResearchers]);
+
+  // Cooldown timer
   useEffect(() => {
     if (cooldown > 0) {
       const timer = setInterval(() => {
-        setCooldown((prev) => (prev > 0 ? prev - 1 : 0));
+        setCooldown((prev) => {
+          const next = prev > 0 ? prev - 1 : 0;
+          cooldownRef.current = next;
+          return next;
+        });
       }, 1000);
       return () => clearInterval(timer);
     }
   }, [cooldown]);
 
+  // Handle answers
   const handleChange = (index, value, type) => {
     if (type === "checkbox") {
       const prev = answers[index] || [];
-      if (prev.includes(value)) {
-        setAnswers({ ...answers, [index]: prev.filter((v) => v !== value) });
-      } else {
-        setAnswers({ ...answers, [index]: [...prev, value] });
-      }
+      setAnswers({
+        ...answers,
+        [index]: prev.includes(value)
+          ? prev.filter((v) => v !== value)
+          : [...prev, value],
+      });
     } else {
       setAnswers({ ...answers, [index]: value });
     }
   };
 
+  // Co-author handlers
+  const addUser = (user) => {
+    if (!selectedUsers.some((u) => u.id === user.id)) {
+      setSelectedUsers([...selectedUsers, user]);
+    }
+    setUserSearch("");
+    setFilteredUsers([]);
+  };
+  const removeUser = (id) =>
+    setSelectedUsers(selectedUsers.filter((u) => u.id !== id));
+
+  // Submit answers
   const submitAnswers = async () => {
-    if (cooldown > 0) {
-      setMessage(`You already submitted. Please wait ${cooldown} seconds.`);
+    if (cooldownRef.current > 0) {
+      setMessage(`You already submitted. Please wait ${cooldownRef.current}s.`);
       return;
     }
-    if (!form) {
-      setMessage("Form is not loaded yet.");
-      return;
-    }
-    if (!currentUser) {
-      setMessage("You must be signed in to submit the form.");
+    if (!form || !currentUser) {
+      setMessage("Form not loaded or user not signed in.");
       return;
     }
 
-    const missingRequired = form.questions.some(
-      (q, index) => q.required && !answers[index]
+    const missingRequired = form.questions.some((q, index) =>
+      q.required
+        ? q.type === "checkbox"
+          ? !(answers[index]?.length > 0)
+          : !answers[index]
+        : false
     );
     if (missingRequired) {
-      setMessage("Please fill in all required fields before submitting.");
+      setMessage("Please fill in all required fields.");
       return;
     }
 
     const manuscriptTitleIndex = form.questions.findIndex(
       (q) => q.isManuscriptTitle
     );
-
     if (manuscriptTitleIndex === -1) {
       setMessage("The form must include a 'Manuscript Title' field.");
       return;
     }
-
     const manuscriptTitleAnswer = answers[manuscriptTitleIndex] || "";
-
     if (!manuscriptTitleAnswer.trim()) {
       setMessage("Please enter a Manuscript Title before submitting.");
       return;
     }
 
     try {
-      const answeredQuestions = form.questions.map((q, index) => ({
-        question: q.text,
-        type: q.type,
-        required: q.required || false,
-        answer: answers[index] || "",
-      }));
-
-      const userRef = doc(db, "Users", currentUser.uid);
-      const userSnap = await getDoc(userRef);
-      if (!userSnap.exists()) {
-        setMessage("User record not found in database.");
-        return;
-      }
+      const userSnap = await getDoc(doc(db, "Users", currentUser.uid));
+      if (!userSnap.exists()) return setMessage("User record not found.");
       const userInfo = userSnap.data();
       const initialStatus = "Pending";
 
+      // Build answeredQuestions and coAuthor metadata
+      const answeredQuestions = form.questions.map((q, index) =>
+        q.type === "coauthors"
+          ? {
+              question: "Co-Authors",
+              type: "coauthors",
+              required: q.required || false,
+              answer: selectedUsers.map((u) => `${u.name} (${u.email})`),
+            }
+          : {
+              question: q.text,
+              type: q.type,
+              required: q.required || false,
+              answer:
+                q.type === "checkbox"
+                  ? answers[index] || []
+                  : answers[index] || "",
+            }
+      );
+
+      // Build coAuthors objects and ids
+      const coAuthors = selectedUsers.map((u) => ({
+        id: u.id,
+        name: u.name,
+        email: u.email,
+      }));
+      const coAuthorsIds = selectedUsers.map((u) => u.id);
+
+      // Build a simple searchIndex for client-side searching
       const searchIndex = [
-        (userInfo.firstName || "").toLowerCase(),
-        (userInfo.lastName || "").toLowerCase(),
-        `${(userInfo.firstName || "").toLowerCase()} ${(
-          userInfo.lastName || ""
-        ).toLowerCase()}`,
         (userInfo.email || "").toLowerCase(),
+        ((userInfo.firstName || "") + " " + (userInfo.lastName || ""))
+          .trim()
+          .toLowerCase(),
         manuscriptTitleAnswer.toLowerCase(),
-      ];
+        ...selectedUsers.map((u) => (u.email || "").toLowerCase()),
+        ...selectedUsers.map((u) => (u.name || "").toLowerCase()),
+      ].filter(Boolean);
 
-      let responseRef;
-      try {
-        responseRef = await addDoc(collection(db, "form_responses"), {
-          formId,
-          formTitle: form.title,
-          manuscriptTitle: manuscriptTitleAnswer,
-          userId: currentUser.uid,
-          firstName: userInfo.firstName || "",
-          lastName: userInfo.lastName || "",
-          email: userInfo.email || "",
-          role: userInfo.role || "Researcher",
-          answeredQuestions,
-          status: initialStatus,
-          submittedAt: serverTimestamp(),
-          searchIndex,
-        });
+      setCooldown(5);
+      cooldownRef.current = 5;
 
-        await addDoc(
-          collection(db, "form_responses", responseRef.id, "history"),
-          {
-            status: initialStatus,
-            updatedBy: `${userInfo.firstName || ""} ${userInfo.lastName || ""}`,
-            timestamp: serverTimestamp(),
-          }
-        );
-      } catch (err) {
-        console.error("Failed to save in form_responses:", err);
-        setMessage("Failed to save submission. Check console for details.");
-        return;
-      }
+      // add response doc
+      const responseRef = await addDoc(collection(db, "form_responses"), {
+        formId: form.id,
+        formTitle: form.title || "",
+        manuscriptTitle: manuscriptTitleAnswer,
+        userId: currentUser.uid,
+        firstName: userInfo.firstName || "",
+        lastName: userInfo.lastName || "",
+        email: userInfo.email || "",
+        role: userInfo.role || "Researcher",
+        answeredQuestions,
+        coAuthors,
+        coAuthorsIds,
+        searchIndex,
+        status: initialStatus,
+        versionNumber: 1,
+        parentResponseId: null,
+        submittedAt: serverTimestamp(),
+      });
 
+      // add manuscript doc
       await addDoc(collection(db, "manuscripts"), {
         responseId: responseRef.id,
-        formId,
-        formTitle: form.title,
+        formId: form.id,
+        formTitle: form.title || "",
         manuscriptTitle: manuscriptTitleAnswer,
         answeredQuestions,
         userId: currentUser.uid,
         firstName: userInfo.firstName || "",
         lastName: userInfo.lastName || "",
         role: userInfo.role || "Researcher",
-        submittedAt: serverTimestamp(),
-        status: initialStatus,
-        reasonForRejection: null,
+        coAuthors,
+        coAuthorsIds,
         assignedReviewers: [],
+        status: initialStatus,
+        versionNumber: 1,
+        parentResponseId: null,
         searchIndex,
+        submittedAt: serverTimestamp(),
       });
 
-      await updateDoc(userRef, { lastSubmittedAt: serverTimestamp() });
+      await updateDoc(doc(db, "Users", currentUser.uid), {
+        lastSubmittedAt: serverTimestamp(),
+      });
 
-      setCooldown(5);
       setAnswers({});
+      setSelectedUsers([]);
       setMessage("Form submitted successfully!");
-    } catch (error) {
-      console.error("Submit error:", error);
+    } catch (err) {
+      console.error("Error submitting form:", err);
       setMessage("Failed to submit form. Check console for details.");
     }
   };
@@ -225,97 +291,94 @@ export default function SubmitManuscript() {
       <div className="flex flex-col gap-6">
         {form.questions.map((q, index) => (
           <div
-            key={index}
+            key={q.id || index}
             className="bg-[#e0e0e0] rounded-xl p-4 flex flex-col gap-2"
           >
-            <label className="italic text-base font-medium">
-              {q.text} {q.required && <span className="text-red-500">*</span>}
-            </label>
-
-            {q.type === "text" && (
-              <input
-                type="text"
-                value={answers[index] || ""}
-                onChange={(e) => handleChange(index, e.target.value)}
-                className="italic rounded-lg px-3 py-2 w-full bg-white text-base border-none focus:outline-none"
-              />
-            )}
-
-            {q.type === "textarea" && (
-              <textarea
-                value={answers[index] || ""}
-                onChange={(e) => handleChange(index, e.target.value)}
-                rows={4}
-                className="italic rounded-lg px-3 py-2 w-full bg-white text-base border-none focus:outline-none"
-              />
-            )}
-
-            {q.type === "radio" && (
-              <div className="flex flex-col gap-2 mt-2">
-                {q.options?.map((option, optIndex) => {
-                  const value =
-                    typeof option === "object" ? option.value : option;
-                  return (
+            {q.type === "coauthors" ? (
+              <>
+                <label className="block font-semibold mb-2">Co-Authors</label>
+                <input
+                  type="text"
+                  placeholder="Type name or email to add co-author..."
+                  value={userSearch}
+                  onChange={(e) => setUserSearch(e.target.value)}
+                  className="border p-2 w-full rounded mb-2 focus:outline-none focus:ring-2 focus:ring-green-400"
+                />
+                {userSearch && filteredUsers.length > 0 && (
+                  <div className="border rounded bg-white max-h-40 overflow-y-auto mb-2">
+                    {filteredUsers.map((u) => (
+                      <div
+                        key={u.id}
+                        className="p-2 cursor-pointer hover:bg-gray-200 break-words"
+                        onClick={() =>
+                          addUser({
+                            id: u.id,
+                            name: `${u.firstName} ${u.lastName}`,
+                            email: u.email,
+                          })
+                        }
+                      >
+                        {u.firstName} {u.lastName} ({u.email})
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {selectedUsers.map((u) => (
+                    <span
+                      key={u.id}
+                      className="px-2 py-1 rounded bg-blue-200 text-blue-800 flex items-center gap-1"
+                    >
+                      {u.name} ({u.email})
+                      <button onClick={() => removeUser(u.id)}>x</button>
+                    </span>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <>
+                <label className="block font-semibold mb-1">
+                  {q.text}{" "}
+                  {q.required && <span className="text-red-500">*</span>}
+                </label>
+                {q.type === "text" && (
+                  <input
+                    type="text"
+                    value={answers[index] || ""}
+                    onChange={(e) => handleChange(index, e.target.value)}
+                    className="border p-2 w-full rounded focus:outline-none focus:ring-2 focus:ring-green-400"
+                  />
+                )}
+                {q.type === "textarea" && (
+                  <textarea
+                    value={answers[index] || ""}
+                    onChange={(e) => handleChange(index, e.target.value)}
+                    className="border p-2 w-full rounded focus:outline-none focus:ring-2 focus:ring-green-400"
+                    rows={4}
+                  />
+                )}
+                {["radio", "checkbox", "select", "multiple"].includes(q.type) &&
+                  q.options.map((opt) => (
                     <label
-                      key={optIndex}
-                      className="flex items-center gap-2 bg-white rounded-lg px-3 py-1"
+                      key={opt.id}
+                      className="flex items-center gap-2 break-words"
                     >
                       <input
-                        type="radio"
-                        name={`question-${index}`}
-                        value={value}
-                        checked={answers[index] === value}
-                        onChange={() => handleChange(index, value)}
-                        className="accent-[#4CC97B] scale-110"
+                        type={q.type === "checkbox" ? "checkbox" : "radio"}
+                        name={`q${index}`}
+                        value={opt.value}
+                        checked={
+                          q.type === "checkbox"
+                            ? answers[index]?.includes(opt.value) || false
+                            : answers[index] === opt.value
+                        }
+                        onChange={() => handleChange(index, opt.value, q.type)}
+                        className="accent-blue-500"
                       />
-                      <span className="italic">{value}</span>
+                      <span>{opt.value}</span>
                     </label>
-                  );
-                })}
-              </div>
-            )}
-
-            {q.type === "checkbox" && (
-              <div className="flex flex-col gap-2 mt-2">
-                {q.options?.map((option, optIndex) => {
-                  const value =
-                    typeof option === "object" ? option.value : option;
-                  return (
-                    <label
-                      key={optIndex}
-                      className="flex items-center gap-2 bg-white rounded-lg px-3 py-1"
-                    >
-                      <input
-                        type="checkbox"
-                        value={value}
-                        checked={(answers[index] || []).includes(value)}
-                        onChange={() => handleChange(index, value, "checkbox")}
-                        className="accent-[#4CC97B] scale-110"
-                      />
-                      <span className="italic">{value}</span>
-                    </label>
-                  );
-                })}
-              </div>
-            )}
-
-            {q.type === "select" && (
-              <select
-                value={answers[index] || ""}
-                onChange={(e) => handleChange(index, e.target.value)}
-                className="italic rounded-lg px-3 py-2 w-full bg-white text-base border-none focus:outline-none"
-              >
-                <option value="">Select an option</option>
-                {q.options?.map((option, optIndex) => {
-                  const value =
-                    typeof option === "object" ? option.value : option;
-                  return (
-                    <option key={optIndex} value={value}>
-                      {value}
-                    </option>
-                  );
-                })}
-              </select>
+                  ))}
+              </>
             )}
           </div>
         ))}
@@ -336,7 +399,6 @@ export default function SubmitManuscript() {
       {message && (
         <p className="mt-2 text-center text-sm text-red-500">{message}</p>
       )}
-
       {!currentUser && (
         <p className="text-red-500 mt-2 text-sm text-center">
           You must be signed in to submit the form.

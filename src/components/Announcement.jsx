@@ -9,8 +9,12 @@ import {
   setDoc,
   collection,
 } from "firebase/firestore";
+import ReactQuill from "react-quill";
+import "react-quill/dist/quill.snow.css";
+import { quillModules, quillFormats } from "../utils/quillConfig";
+import DOMPurify from "dompurify";
 
-function Announcement() {
+export default function Announcement() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -121,6 +125,12 @@ function Announcement() {
     );
   }, []);
 
+  const handleAnnouncementMessageChange = (idx, value) => {
+    setAnnouncements((prev) =>
+      prev.map((a, i) => (i === idx ? { ...a, message: value } : a))
+    );
+  };
+
   const addAnnouncement = useCallback(() => {
     setAnnouncements((prev) => [
       ...prev,
@@ -139,6 +149,29 @@ function Announcement() {
   const hasChanges = () =>
     JSON.stringify(originalAnnouncements) !== JSON.stringify(announcements);
 
+  // remove any <img ...> tags from a HTML string
+  const stripImagesFromHtml = (html) => {
+    if (!html) return html;
+    try {
+      // quick removal of <img ...> tags
+      return html.replace(/<img[^>]*>/gi, "");
+    } catch (e) {
+      console.error("stripImagesFromHtml error", e);
+      return html;
+    }
+  };
+
+  // remove images from a single announcement's message
+  const removeImagesFromMessage = (index) => {
+    setAnnouncements((prev) =>
+      prev.map((a, i) =>
+        i === index ? { ...a, message: stripImagesFromHtml(a.message) } : a
+      )
+    );
+    showNotification("Images removed from announcement.", "success");
+  };
+
+  // update handleSaveChanges to strip images before saving
   const handleSaveChanges = async () => {
     if (!hasChanges()) {
       showNotification("No changes made.", "warning");
@@ -148,11 +181,16 @@ function Announcement() {
     setError("");
     try {
       const docRef = doc(db, "Content", "Announcements");
+
+      // strip images from all messages before saving
+      const cleaned = announcements
+        .map((a) => ({ ...a, message: stripImagesFromHtml(a.message || "") }))
+        .filter((a) => a.title.trim() && a.message.trim());
+
       await updateDoc(docRef, {
-        announcements: announcements.filter(
-          (a) => a.title.trim() && a.message.trim()
-        ),
+        announcements: cleaned,
       });
+
       const logRef = collection(db, "UserLog");
       await setDoc(doc(logRef), {
         action: "Edited Announcements",
@@ -162,7 +200,8 @@ function Announcement() {
         timestamp: new Date(),
       });
       setIsEditing(false);
-      setOriginalAnnouncements(announcements);
+      setOriginalAnnouncements(cleaned);
+      setAnnouncements(cleaned);
       showNotification("Announcements saved successfully!", "success");
     } catch (error) {
       console.error("Failed to save announcements:", error);
@@ -219,49 +258,66 @@ function Announcement() {
         <div className="max-h-[60vh] overflow-y-auto">
           {isEditing ? (
             <div className="flex flex-col space-y-4">
-              {announcements.map((a, index) => (
-                <div
-                  key={index}
-                  className="w-full bg-gray-100 p-4 rounded flex flex-col"
-                >
+              {announcements.map((a, idx) => (
+                <div key={idx} className="mb-4">
                   <input
-                    className="block w-full p-2 mb-2 rounded border focus:border-blue-500 focus:outline-none"
-                    placeholder="Announcement Title"
+                    type="text"
                     value={a.title}
                     onChange={(e) =>
-                      handleAnnouncementChange(index, "title", e.target.value)
+                      setAnnouncements((prev) =>
+                        prev.map((it, i) =>
+                          i === idx ? { ...it, title: e.target.value } : it
+                        )
+                      )
                     }
+                    className="w-full p-2 border rounded mb-2"
+                    placeholder="Announcement Title"
                   />
-                  <textarea
-                    ref={(el) => (messageRefs.current[index] = el)}
-                    className="block w-full p-2 mb-2 rounded border resize-none focus:border-blue-500 focus:outline-none"
-                    placeholder="Announcement Message"
-                    value={a.message}
-                    onChange={(e) => {
-                      handleAnnouncementChange(
-                        index,
-                        "message",
-                        e.target.value
-                      );
-                      autoResize(messageRefs.current[index]);
-                    }}
-                    style={{ minHeight: "60px", maxHeight: "200px" }}
-                  />
-                  <input
-                    type="date"
-                    className="block w-full p-2 mb-2 rounded border focus:border-blue-500 focus:outline-none"
-                    value={a.date}
-                    onChange={(e) =>
-                      handleAnnouncementChange(index, "date", e.target.value)
-                    }
-                  />
-                  {announcements.length > 1 && (
-                    <button
-                      className="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded text-sm"
-                      onClick={() => removeAnnouncement(index)}
-                    >
-                      Remove
-                    </button>
+                  {isEditing ? (
+                    <>
+                      <ReactQuill
+                        value={a.message}
+                        onChange={(val) =>
+                          handleAnnouncementMessageChange(idx, val)
+                        }
+                        modules={quillModules}
+                        formats={quillFormats}
+                        theme="snow"
+                        className="bg-white text-black rounded mb-2"
+                      />
+                      <div className="flex gap-2 mb-2">
+                        <button
+                          type="button"
+                          onClick={() => removeImagesFromMessage(idx)}
+                          className="px-3 py-1 bg-yellow-500 text-white rounded text-xs"
+                        >
+                          Remove images
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setAnnouncements((prev) =>
+                              prev.map((it, i) =>
+                                i === idx ? { ...it, message: "" } : it
+                              )
+                            )
+                          }
+                          className="px-3 py-1 bg-red-500 text-white rounded text-xs"
+                        >
+                          Clear message
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <div
+                      className="mb-2 text-gray-800 prose max-w-none"
+                      dangerouslySetInnerHTML={{
+                        __html: DOMPurify.sanitize(a.message || "", {
+                          // allow Quill's classes and inline styles (size/font)
+                          ADD_ATTR: ["class", "style"],
+                        }),
+                      }}
+                    />
                   )}
                 </div>
               ))}
@@ -289,9 +345,14 @@ function Announcement() {
                         className="bg-gray-50 border rounded p-4 shadow"
                       >
                         <h3 className="text-lg font-bold mb-1">{a.title}</h3>
-                        <p className="mb-2 text-gray-800 whitespace-pre-line">
-                          {a.message}
-                        </p>
+                        <div
+                          className="mb-2 text-gray-800 prose max-w-none"
+                          dangerouslySetInnerHTML={{
+                            __html: DOMPurify.sanitize(a.message || "", {
+                              ADD_ATTR: ["class", "style"],
+                            }),
+                          }}
+                        />
                         <p className="text-xs text-gray-500 text-right">
                           {a.date}
                         </p>
@@ -341,5 +402,3 @@ function Announcement() {
     </div>
   );
 }
-
-export default Announcement;

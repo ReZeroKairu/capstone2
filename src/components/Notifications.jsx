@@ -272,7 +272,10 @@ const Notifications = ({ user }) => {
           </div>
 
           {/* Notifications Content */}
-          <div className="notifications-container">
+          <div
+            className="max-h-72 overflow-y-auto divide-y"
+            style={{ WebkitOverflowScrolling: "touch" }}
+          >
             {loading ? (
               <p className="p-4 text-center text-gray-600">Loading...</p>
             ) : filteredNotifications.length === 0 ? (
