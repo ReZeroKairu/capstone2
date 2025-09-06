@@ -1,12 +1,9 @@
 import React, { useEffect } from "react";
-import { MdTrendingUp } from "react-icons/md";
 import { HiTrendingUp } from "react-icons/hi";
-import { FaChartLine } from "react-icons/fa";
 import {
   FaHome,
   FaBullhorn,
   FaUsers,
-  FaTachometerAlt,
   FaFileUpload,
   FaBook,
   FaBars,
@@ -35,11 +32,11 @@ const Sidebar = ({ role, isOpen, toggleSidebar }) => {
   };
 
   const links = [
-    { name: "Home", path: "/home", icon: <FaHome className="text-2xl" /> },
+    { name: "Home", path: "/home", icon: <FaHome className="text-xl" /> },
     {
       name: "Announcements",
       path: "/announcement",
-      icon: <FaBullhorn className="text-xl" />,
+      icon: <FaBullhorn className="text-lg" />,
     },
     {
       name: "Dashboard",

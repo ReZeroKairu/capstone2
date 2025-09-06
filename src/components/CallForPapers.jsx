@@ -9,6 +9,10 @@ import {
   setDoc,
   collection,
 } from "firebase/firestore";
+import ReactQuill from "react-quill";
+import "react-quill/dist/quill.snow.css";
+import { quillModules, quillFormats } from "../utils/quillConfig";
+import DOMPurify from "dompurify";
 
 function CallForPapers() {
   const [isAdmin, setIsAdmin] = useState(false);
@@ -275,18 +279,31 @@ function CallForPapers() {
                   onChange={(e) => handleContentChange("title", e.target.value)}
                 />
 
-                {/* Description Input */}
-                <textarea
-                  ref={textareaRef}
-                  className="block w-full p-3 text-black rounded text-center resize-none border-2 border-gray-300 focus:border-blue-500 focus:outline-none transition-colors"
-                  placeholder="Enter description"
-                  value={content.description}
-                  onChange={(e) => {
-                    handleContentChange("description", e.target.value);
-                    autoResize(textareaRef.current);
-                  }}
-                  style={{ minHeight: "80px", maxHeight: "300px" }}
-                />
+                {/* Description */}
+                <div className="mb-4">
+                  <label className="block font-semibold mb-2">
+                    Description
+                  </label>
+                  {isEditing ? (
+                    <ReactQuill
+                      value={content.description || ""}
+                      onChange={(val) =>
+                        setContent((prev) => ({ ...prev, description: val }))
+                      }
+                      modules={quillModules}
+                      formats={quillFormats}
+                      theme="snow"
+                      className="bg-white text-black rounded mb-2"
+                    />
+                  ) : (
+                    <div
+                      className="prose max-w-none"
+                      dangerouslySetInnerHTML={{
+                        __html: content.description || "",
+                      }}
+                    />
+                  )}
+                </div>
 
                 {/* Issues */}
                 <div className="w-full">
@@ -358,12 +375,15 @@ function CallForPapers() {
               </div>
             ) : (
               <div>
-                <p
-                  className="text-lg mb-6 leading-relaxed"
-                  style={{ whiteSpace: "pre-line" }}
-                >
-                  {content.description}
-                </p>
+                <div
+                  className="text-lg mb-6 leading-relaxed prose max-w-none"
+                  dangerouslySetInnerHTML={{
+                    __html: DOMPurify.sanitize(content.description || "", {
+                      // allow Quill classes and inline style so font/size/bold/italic persist
+                      ADD_ATTR: ["class", "style"],
+                    }),
+                  }}
+                />
 
                 <div className="text-center space-y-4">
                   {content.issues.map(
