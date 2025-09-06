@@ -267,13 +267,13 @@ function UserManagement() {
                     </td>
                     <td className="p-2 sm:p-3 text-center flex flex-col sm:flex-row justify-center items-center gap-1 sm:gap-2">
                       <button
-                        className="bg-blue-500 text-white px-5 py-1 rounded hover:bg-blue-600 text-xs sm:text-sm"
+                        className="bg-blue-500 text-white px-6 py-2 rounded-sm hover:bg-blue-600 text-xs sm:text-sm"
                         onClick={() => handleEdit(user)}
                       >
                         Edit
                       </button>
                       <button
-                        className="bg-red-700 text-white px-3 py-1 rounded hover:bg-red-800 text-xs sm:text-sm"
+                        className="bg-red-700 text-white px-4 py-2 rounded-sm hover:bg-red-800 text-xs sm:text-sm"
                         onClick={() => handleDeleteConfirmation(user.id)}
                       >
                         Delete
