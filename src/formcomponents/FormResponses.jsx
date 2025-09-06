@@ -294,6 +294,7 @@ export default function FormResponses() {
   };
 
   // Admin actions (unchanged)
+  // Admin actions (fixed to use Manuscript Title)
   const handleAccept = async (res) => {
     try {
       const resRef = doc(db, "form_responses", res.id);
@@ -314,10 +315,22 @@ export default function FormResponses() {
         ? res.submittedAt
         : serverTimestamp();
 
+      // 🔹 derive manuscript title robustly
+      const manuscriptTitle =
+        res.manuscriptTitle ||
+        res.answeredQuestions?.find(
+          (q) =>
+            q?.isManuscriptTitle ||
+            q?.question?.toLowerCase?.().trim?.().startsWith("manuscript title")
+        )?.answer ||
+        res.formTitle ||
+        "Untitled";
+
       if (!mSnap.empty) {
         mSnap.forEach(async (ms) => {
-          // set status and record acceptedAt timestamp
+          // set status, title, and record acceptedAt timestamp
           await updateDoc(doc(db, "manuscripts", ms.id), {
+            title: manuscriptTitle,
             status: "Assigning Peer Reviewer",
             acceptedAt: serverTimestamp(),
           });
@@ -327,13 +340,12 @@ export default function FormResponses() {
           responseId: res.id,
           formId: res.formId,
           formTitle: res.formTitle,
+          title: manuscriptTitle, // 🔹 save it on the manuscript
           answeredQuestions: res.answeredQuestions || [],
           userId: res.userId,
           coAuthors: res.coAuthors || [],
-          // preserve original submission time when possible
-          submittedAt: responseSubmittedAt,
-          // mark acceptance timestamp
-          acceptedAt: serverTimestamp(),
+          submittedAt: responseSubmittedAt, // preserve original submission time when possible
+          acceptedAt: serverTimestamp(), // mark acceptance timestamp
           status: "Assigning Peer Reviewer",
         });
       }
@@ -345,7 +357,7 @@ export default function FormResponses() {
       await Promise.all(
         notifyUsers.map((uid) =>
           addDoc(collection(db, "Users", uid, "Notifications"), {
-            message: `Your manuscript "${res.formTitle}" has been accepted by the admin.`,
+            message: `Your manuscript "${manuscriptTitle}" has been accepted by the admin.`,
             seen: false,
             timestamp: serverTimestamp(),
           })
@@ -380,9 +392,21 @@ export default function FormResponses() {
       const mQ = query(manuscriptsRef, where("responseId", "==", res.id));
       const mSnap = await getDocs(mQ);
 
+      // 🔹 derive manuscript title robustly
+      const manuscriptTitle =
+        res.manuscriptTitle ||
+        res.answeredQuestions?.find(
+          (q) =>
+            q?.isManuscriptTitle ||
+            q?.question?.toLowerCase?.().trim?.().startsWith("manuscript title")
+        )?.answer ||
+        res.formTitle ||
+        "Untitled";
+
       if (!mSnap.empty) {
         mSnap.forEach(async (ms) => {
           await updateDoc(doc(db, "manuscripts", ms.id), {
+            title: manuscriptTitle,
             status: "Rejected",
           });
         });
@@ -391,6 +415,7 @@ export default function FormResponses() {
           responseId: res.id,
           formId: res.formId,
           formTitle: res.formTitle,
+          title: manuscriptTitle, // 🔹 save it on the manuscript
           answeredQuestions: res.answeredQuestions || [],
           userId: res.userId,
           coAuthors: res.coAuthors || [],
@@ -406,7 +431,7 @@ export default function FormResponses() {
       await Promise.all(
         notifyUsers.map((uid) =>
           addDoc(collection(db, "Users", uid, "Notifications"), {
-            message: `Your manuscript "${res.formTitle}" has been rejected by the admin.`,
+            message: `Your manuscript "${manuscriptTitle}" has been rejected by the admin.`,
             seen: false,
             timestamp: serverTimestamp(),
           })
