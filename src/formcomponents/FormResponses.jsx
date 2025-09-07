@@ -487,7 +487,7 @@ export default function FormResponses() {
             <select
               value={selectedFormId}
               onChange={(e) => setSelectedFormId(e.target.value)}
-              className="w-full appearance-none bg-yellow-200 text-[#211B17] font-semibold text-lg rounded-lg px-4 py-2 pr-10 focus:outline-none"
+              className="w-full appearance-none bg-yellow-400 text-[#211B17] font-semibold text-lg rounded-lg px-4 py-2 pr-10 focus:outline-none"
             >
               <option value="">Select a form</option>
               {forms.map((f) => (
@@ -539,28 +539,6 @@ export default function FormResponses() {
           </div>
         </div>
 
-        {/* Page size selector */}
-        <div className="flex items-center gap-2 mb-4">
-          <label className="text-sm text-gray-700 font-medium">
-            Page Size:
-          </label>
-          <select
-            value={pageSize}
-            onChange={(e) => {
-              const sz = Number(e.target.value);
-              setPageSize(sz);
-              setPageCursors([]);
-              setCurrentPage(1);
-            }}
-            className="border rounded px-2 py-1"
-          >
-            <option value={5}>5</option>
-            <option value={10}>10</option>
-            <option value={15}>15</option>
-            <option value={20}>20</option>
-          </select>
-        </div>
-
         <div className="bg-[#f3f2ee] rounded-md overflow-hidden">
           {responses.length === 0 && !loading && selectedFormId && (
             <div className="p-6 text-center text-gray-600">
@@ -606,75 +584,97 @@ export default function FormResponses() {
             );
           })}
         </div>
-
-        {/* Advanced Pagination */}
-        <div className="flex items-center justify-center gap-2 mt-4">
-          <button
-            disabled={currentPage === 1 || loading}
-            onClick={() => loadPage(1)}
-            className="px-3 py-1 bg-white text-[#7B2E19] border border-[#7B2E19] rounded-md font-semibold transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            First
-          </button>
-
-          <button
-            disabled={currentPage === 1 || loading}
-            onClick={() => loadPage(currentPage - 1)}
-            className="px-3 py-1 bg-white text-[#7B2E19] border border-[#7B2E19] rounded-md font-semibold transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            Prev
-          </button>
-
-          {/* Page Numbers with ellipsis */}
-          {pageNumbers.map((pageNum, idx) =>
-            pageNum === "..." ? (
-              <span key={`ellipsis-${idx}`} className="px-2">
-                ...
-              </span>
-            ) : (
-              <button
-                key={pageNum}
-                onClick={() => loadPage(pageNum)}
-                className={`px-3 py-1 rounded-md font-semibold ${
-                  currentPage === pageNum
-                    ? "bg-yellow-200 text-[#7B2E19] border border-[#7B2E19]"
-                    : "bg-white text-[#7B2E19] border border-[#7B2E19]"
-                }`}
-                disabled={loading}
-              >
-                {pageNum}
-              </button>
-            )
-          )}
-
-          <button
-            disabled={loading || currentPage === totalPages}
-            onClick={() => loadPage(currentPage + 1)}
-            className="px-3 py-1 bg-white text-[#7B2E19] border border-[#7B2E19] rounded-md font-semibold transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            Next
-          </button>
-
-          <button
-            disabled={loading || currentPage === totalPages || totalPages === 1}
-            onClick={async () => {
-              // refresh total, prefetch cursors up to last page, then load it
-              const total = await fetchTotalCount();
-              const lastPage = Math.max(1, Math.ceil(total / pageSize));
-              if (lastPage === currentPage) return;
-              // ensure cursors exist up to lastPage - 1
-              await ensureCursorsUpTo(lastPage);
-              await loadPage(lastPage);
-            }}
-            className="px-3 py-1 bg-white text-[#7B2E19] border border-[#7B2E19] rounded-md font-semibold transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            Last
-          </button>
-        </div>
-
         {loading && (
           <div className="mt-3 text-sm text-gray-500">Loading...</div>
         )}
+        {/* Advanced Pagination */}
+        <div className="mt-4 p-2 bg-yellow-400 shadow-lg flex flex-col sm:flex-row justify-between items-center rounded-sm">
+          <div className="flex items-center gap-2 flex-wrap">
+            <label className="text-sm font-bold text-red-900 ">
+              Page Size:
+            </label>
+            <select
+              value={pageSize}
+              onChange={(e) => {
+                const sz = Number(e.target.value);
+                setPageSize(sz);
+                setPageCursors([]);
+                setCurrentPage(1);
+              }}
+              className="border-2 bg-yellow-400 rounded-lg border-red-900 px-2 py-1 focus:outline-none focus:border-red-900 focus:ring-1 focus:ring-red-900"
+            >
+              <option value={5}>5</option>
+              <option value={10}>10</option>
+              <option value={15}>15</option>
+              <option value={20}>20</option>
+            </select>
+          </div>
+          <div className="flex items-center">
+            <button
+              disabled={currentPage === 1 || loading}
+              onClick={() => loadPage(1)}
+              className="px-3 py-1 mr-3 bg-white text-[#7B2E19] border border-[#7B2E19] rounded-md font-semibold transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              First
+            </button>
+
+            <button
+              disabled={currentPage === 1 || loading}
+              onClick={() => loadPage(currentPage - 1)}
+              className="px-3 py-1 mr-3 bg-white text-[#7B2E19] border border-[#7B2E19] rounded-md font-semibold transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Prev
+            </button>
+
+            {/* Page Numbers with ellipsis */}
+            {pageNumbers.map((pageNum, idx) =>
+              pageNum === "..." ? (
+                <span key={`ellipsis-${idx}`} className="px-2">
+                  ...
+                </span>
+              ) : (
+                <button
+                  key={pageNum}
+                  onClick={() => loadPage(pageNum)}
+                  className={`px-3 py-1 mr-3 rounded-sm font-semibold ${
+                    currentPage === pageNum
+                      ? "bg-yellow-200 text-[#7B2E19] border border-[#7B2E19]"
+                      : "bg-white text-[#7B2E19] border border-[#7B2E19]"
+                  }`}
+                  disabled={loading}
+                >
+                  {pageNum}
+                </button>
+              )
+            )}
+
+            <button
+              disabled={loading || currentPage === totalPages}
+              onClick={() => loadPage(currentPage + 1)}
+              className="px-3 py-1 mr-3 bg-white text-[#7B2E19] border border-[#7B2E19] rounded-md font-semibold transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Next
+            </button>
+
+            <button
+              disabled={
+                loading || currentPage === totalPages || totalPages === 1
+              }
+              onClick={async () => {
+                // refresh total, prefetch cursors up to last page, then load it
+                const total = await fetchTotalCount();
+                const lastPage = Math.max(1, Math.ceil(total / pageSize));
+                if (lastPage === currentPage) return;
+                // ensure cursors exist up to lastPage - 1
+                await ensureCursorsUpTo(lastPage);
+                await loadPage(lastPage);
+              }}
+              className="px-3 py-1 mr-3 bg-white text-[#7B2E19] border border-[#7B2E19] rounded-md font-semibold transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Last
+            </button>
+          </div>
+        </div>
       </div>
 
       {selectedResponse && (
