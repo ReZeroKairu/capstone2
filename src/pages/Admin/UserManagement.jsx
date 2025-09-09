@@ -30,6 +30,38 @@ function UserManagement() {
   const [searchQuery, setSearchQuery] = useState("");
   const auth = getAuth(app);
 
+  // Utility: generate page numbers with ellipsis
+  const getPageNumbers = (current, total) => {
+    const delta = 2; // how many numbers to show around current
+    const range = [];
+    const rangeWithDots = [];
+
+    for (let i = 1; i <= total; i++) {
+      if (
+        i === 1 ||
+        i === total ||
+        (i >= current - delta && i <= current + delta)
+      ) {
+        range.push(i);
+      }
+    }
+
+    let prev = null;
+    for (let num of range) {
+      if (prev) {
+        if (num - prev === 2) {
+          rangeWithDots.push(prev + 1);
+        } else if (num - prev > 2) {
+          rangeWithDots.push("...");
+        }
+      }
+      rangeWithDots.push(num);
+      prev = num;
+    }
+
+    return rangeWithDots;
+  };
+
   // Check if current user is admin
   const checkAdminStatus = async (userId) => {
     try {
@@ -379,6 +411,7 @@ function UserManagement() {
             <option value={20}>20</option>
           </select>
         </div>
+
         <div className="flex items-center flex-wrap gap-1 text-sm">
           <button
             onClick={() => setCurrentPage(1)}
@@ -394,19 +427,27 @@ function UserManagement() {
           >
             Prev
           </button>
-          {Array.from({ length: totalPages }, (_, i) => i + 1).map((num) => (
-            <button
-              key={num}
-              onClick={() => setCurrentPage(num)}
-              className={`px-3 py-1 mr-1 rounded-lg ${
-                num === currentPage
-                  ? "bg-red-900 text-white border border-red-900"
-                  : "bg-yellow-400 text-red-900 rounded-sm border border-red-900"
-              }`}
-            >
-              {num}
-            </button>
-          ))}
+
+          {getPageNumbers(currentPage, totalPages).map((num, idx) =>
+            num === "..." ? (
+              <span key={idx} className="px-3 py-1">
+                ...
+              </span>
+            ) : (
+              <button
+                key={idx}
+                onClick={() => setCurrentPage(num)}
+                className={`px-3 py-1 mr-1 rounded-lg ${
+                  num === currentPage
+                    ? "bg-red-900 text-white border border-red-900"
+                    : "bg-yellow-400 text-red-900 border border-red-900"
+                }`}
+              >
+                {num}
+              </button>
+            )
+          )}
+
           <button
             onClick={() =>
               setCurrentPage((prev) => Math.min(prev + 1, totalPages))
