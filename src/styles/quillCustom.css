@@ -1,0 +1,39 @@
+/* quillCustom.css */
+
+/* Ensure all font sizes from the toolbar work */
+.ql-snow .ql-picker.ql-size .ql-picker-label[data-value="small"]::before,
+.ql-snow .ql-picker.ql-size .ql-picker-item[data-value="small"]::before {
+  content: "Small";
+}
+
+.ql-snow .ql-picker.ql-size .ql-picker-label[data-value="large"]::before,
+.ql-snow .ql-picker.ql-size .ql-picker-item[data-value="large"]::before {
+  content: "Large";
+}
+
+.ql-snow .ql-picker.ql-size .ql-picker-label[data-value="huge"]::before,
+.ql-snow .ql-picker.ql-size .ql-picker-item[data-value="huge"]::before {
+  content: "Huge";
+}
+
+/* Actual font size definitions */
+.ql-size-small {
+  font-size: 0.75em;
+}
+
+.ql-size-large {
+  font-size: 1.5em;
+}
+
+.ql-size-huge {
+  font-size: 2.5em;
+}
+
+/* Optional: custom fonts */
+.ql-font-serif {
+  font-family: "Georgia, Times New Roman, serif";
+}
+
+.ql-font-monospace {
+  font-family: "Courier New, monospace";
+}
