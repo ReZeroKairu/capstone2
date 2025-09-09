@@ -8,13 +8,13 @@ import {
   addDoc,
   deleteDoc,
   updateDoc,
-  setDoc,
   serverTimestamp,
 } from "firebase/firestore";
 import { useAuth } from "../../authcontext/AuthContext";
 import { useNavigate } from "react-router-dom";
 import { FaSearch } from "react-icons/fa";
 import { getAuth } from "firebase/auth";
+
 function UserManagement() {
   const { currentUser, loading: authLoading } = useAuth();
   const navigate = useNavigate();
@@ -32,7 +32,7 @@ function UserManagement() {
 
   // Utility: generate page numbers with ellipsis
   const getPageNumbers = (current, total) => {
-    const delta = 2; // how many numbers to show around current
+    const delta = 2;
     const range = [];
     const rangeWithDots = [];
 
@@ -80,7 +80,7 @@ function UserManagement() {
     }
   };
 
-  // Fetch all users
+  // Fetch all users (or search users)
   const fetchUsers = async () => {
     setLoading(true);
     try {
@@ -89,6 +89,9 @@ function UserManagement() {
         id: doc.id,
         ...doc.data(),
       }));
+
+      // Sort users by firstName ascending automatically
+      usersList.sort((a, b) => a.firstName.localeCompare(b.firstName));
       setUsers(usersList);
     } catch (error) {
       console.error("Fetch users error:", error);
@@ -113,7 +116,6 @@ function UserManagement() {
 
   const handleDelete = async () => {
     try {
-      // First, delete subcollections (like Notifications) if they exist
       const notifColRef = collection(
         db,
         "Users",
@@ -126,10 +128,7 @@ function UserManagement() {
           doc(db, "Users", deleteUserId, "Notifications", notif.id)
         );
       }
-
-      // Now delete the main user document
       await deleteDoc(doc(db, "Users", deleteUserId));
-
       setUsers((prev) => prev.filter((u) => u.id !== deleteUserId));
       setMessage("User deleted successfully.");
       setDeleteUserId(null);
@@ -141,11 +140,8 @@ function UserManagement() {
 
   const handleUpdateUser = async () => {
     if (!editingUser) return;
-
     try {
       const userRef = doc(db, "Users", editingUser.id);
-
-      // Fetch previous user data
       const userSnap = await getDoc(userRef);
       if (!userSnap.exists()) {
         setMessage("User does not exist.");
@@ -153,15 +149,12 @@ function UserManagement() {
       }
 
       const prevRole = userSnap.data().role;
-
-      // Update the user document
       await updateDoc(userRef, {
         firstName: editingUser.firstName,
         lastName: editingUser.lastName,
         role: editingUser.role,
       });
 
-      // If role changed, create a notification
       if (prevRole !== editingUser.role) {
         try {
           const notifColRef = collection(
@@ -170,29 +163,23 @@ function UserManagement() {
             editingUser.id,
             "Notifications"
           );
-
           const newNotif = {
             message: `Your role has been changed from ${prevRole} to ${editingUser.role}`,
             timestamp: serverTimestamp(),
             seen: false,
           };
-
-          console.log("Attempting to create notification...");
-          const notifDocRef = await addDoc(notifColRef, newNotif);
-          console.log("Notification created with ID:", notifDocRef.id);
+          await addDoc(notifColRef, newNotif);
         } catch (notifError) {
           console.error("Failed to create notification:", notifError);
           setMessage("User updated but failed to create notification.");
         }
       }
 
-      // Update local state
       setUsers((prev) =>
         prev.map((u) =>
           u.id === editingUser.id ? { ...u, ...editingUser } : u
         )
       );
-
       setMessage("User updated successfully.");
       setIsEditing(false);
       setEditingUser(null);
@@ -202,9 +189,9 @@ function UserManagement() {
     }
   };
 
-  // Improved search for firstName, lastName, email, or role
+  // Filter users locally (multi-word search on firstName, lastName, email, role)
   const filteredUsers = users.filter((user) => {
-    if (!searchQuery) return true; // show all if empty
+    if (!searchQuery) return true;
     const queryWords = searchQuery.toLowerCase().split(" ");
     return queryWords.every((word) =>
       [user.firstName, user.lastName, user.email, user.role].some((field) =>
@@ -250,71 +237,57 @@ function UserManagement() {
             setSearchQuery(e.target.value);
             setCurrentPage(1);
           }}
-          className="w-full pl-10 pr-2 py-1 sm:py-2  border-[3px] border-red-900 rounded text-sm sm:text-base 
-               focus:outline-none focus:border-red-900 focus:ring-2 focus:ring-red-900"
+          className="w-full pl-10 pr-2 py-1 sm:py-2 border-[3px] border-red-900 rounded text-sm sm:text-base focus:outline-none focus:border-red-900 focus:ring-2 focus:ring-red-900"
         />
         <FaSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-yellow-500" />
       </div>
 
-      {/* Users table */}
       {loading ? (
         <p className="text-center text-gray-500">Loading users...</p>
       ) : (
-        <div className="overflow-x-auto rounded-lg max-h-[400px]">
-          {/* Header block */}
-          <div className="bg-yellow-400 text-red-800 rounded-md p-2 sm:p-3">
-            <table className="table-auto w-full text-sm sm:text-base">
-              <thead>
-                <tr>
-                  <th className="font-semibold">Email</th>
-                  <th className="font-semibold">First</th>
-                  <th className="font-semibold">Last</th>
-                  <th className="font-semibold">Role</th>
-                  <th className="font-semibold">Actions</th>
-                </tr>
-              </thead>
-            </table>
+        <div className="overflow-x-auto max-h-[400px]">
+          <div className="bg-yellow-400 text-red-800 rounded-t-md p-2 sm:p-3 grid grid-cols-5 text-center font-semibold">
+            <span>Email</span>
+            <span>First</span>
+            <span>Last</span>
+            <span>Role</span>
+            <span>Actions</span>
           </div>
 
-          {/* ✅ Rows in their own bordered card */}
-          <div className="mt-4 border-2 border-red-800 rounded-lg overflow-hidden bg-white">
-            <table className="table-auto w-full text-sm sm:text-base">
-              <tbody>
-                {currentUsers.map((user) => (
-                  <tr
-                    key={user.id}
-                    className="hover:bg-gray-100 border-b last:border-b-0"
+          <div className="border-2 border-red-800 rounded-b-md overflow-hidden mt-0">
+            {currentUsers.map((user, idx) => (
+              <div
+                key={user.id}
+                className={`grid grid-cols-5 items-center p-2 sm:p-3 text-center ${
+                  idx < currentUsers.length - 1 ? "border-b border-red-800" : ""
+                } hover:bg-gray-100`}
+              >
+                <span className="text-red-800">{user.email}</span>
+                <span className="text-red-800">{user.firstName}</span>
+                <span className="text-red-800">{user.lastName}</span>
+                <span className="text-red-800">{user.role}</span>
+                <div className="flex flex-col sm:flex-row justify-center items-center gap-1 sm:gap-2">
+                  <button
+                    className="bg-blue-500 text-white px-6 py-2 rounded-sm hover:bg-blue-600 text-xs sm:text-sm"
+                    onClick={() => handleEdit(user)}
                   >
-                    <td className="p-2 sm:p-3 text-center text-red-800">
-                      {user.email}
-                    </td>
-                    <td className="p-2 sm:p-3 text-center text-red-800">
-                      {user.firstName}
-                    </td>
-                    <td className="p-2 sm:p-3 text-center text-red-800">
-                      {user.lastName}
-                    </td>
-                    <td className="p-2 sm:p-3 text-center text-red-800">
-                      {user.role}
-                    </td>
-                    <td className="p-2 sm:p-3 text-center flex flex-col sm:flex-row justify-center items-center gap-1 sm:gap-2">
-                      <button
-                        className="bg-blue-500 text-white px-6 py-2 rounded-sm hover:bg-blue-600 text-xs sm:text-sm"
-                        onClick={() => handleEdit(user)}
-                      >
-                        Edit
-                      </button>
-                      <button
-                        className="bg-red-700 text-white px-4 py-2 rounded-sm hover:bg-red-800 text-xs sm:text-sm"
-                        onClick={() => handleDeleteConfirmation(user.id)}
-                      >
-                        Delete
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                    Edit
+                  </button>
+                  <button
+                    className="bg-red-700 text-white px-4 py-2 rounded-sm hover:bg-red-800 text-xs sm:text-sm"
+                    onClick={() => handleDeleteConfirmation(user.id)}
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
+            ))}
+
+            {currentUsers.length === 0 && (
+              <div className="p-4 text-center text-gray-600">
+                No users found.
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -354,7 +327,7 @@ function UserManagement() {
               onChange={(e) =>
                 setEditingUser({ ...editingUser, firstName: e.target.value })
               }
-              className="border p-2 w-full mb-2 text-sm "
+              className="border p-2 w-full mb-2 text-sm"
             />
             <input
               type="text"
