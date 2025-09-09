@@ -8,9 +8,9 @@ import {
   getDoc,
   getDocs,
   updateDoc,
-  addDoc,
 } from "firebase/firestore";
 import { db } from "../firebase/firebase";
+import { FaSearch } from "react-icons/fa";
 
 const Manuscripts = () => {
   const [user, setUser] = useState(null);
@@ -22,8 +22,45 @@ const Manuscripts = () => {
   const [showAssignList, setShowAssignList] = useState({});
   const navigate = useNavigate();
 
+  // ✅ Pagination states
+  const [currentPage, setCurrentPage] = useState(1);
+  const [manuscriptsPerPage, setManuscriptsPerPage] = useState(5);
+  const [searchQuery, setSearchQuery] = useState("");
+
+  // ✅ Utility: generates page numbers with ellipsis
+  const getPageNumbers = (current, total) => {
+    const delta = 2; // how many numbers to show around current
+    const range = [];
+    const rangeWithDots = [];
+
+    for (let i = 1; i <= total; i++) {
+      if (
+        i === 1 ||
+        i === total ||
+        (i >= current - delta && i <= current + delta)
+      ) {
+        range.push(i);
+      }
+    }
+
+    let prev = null;
+    for (let num of range) {
+      if (prev) {
+        if (num - prev === 2) {
+          rangeWithDots.push(prev + 1);
+        } else if (num - prev > 2) {
+          rangeWithDots.push("...");
+        }
+      }
+      rangeWithDots.push(num);
+      prev = num;
+    }
+
+    return rangeWithDots;
+  };
+
   // Filter state and definitions
-  const [filter, setFilter] = useState("in-progress"); // "in-progress" | "for-publication" | "rejected" | "all"
+  const [filter, setFilter] = useState("in-progress");
   const IN_PROGRESS_STATUSES = [
     "Pending",
     "Assigning Peer Reviewer",
@@ -84,7 +121,7 @@ const Manuscripts = () => {
         const docSnap = await getDoc(userRef);
         const userRole = docSnap.exists() ? docSnap.data().role : "User";
         setRole(userRole);
-        setUser(currentUser); // Set user immediately
+        setUser(currentUser);
 
         const manuscriptsRef = collection(db, "manuscripts");
         unsubscribeManuscripts = onSnapshot(manuscriptsRef, (snapshot) => {
@@ -97,7 +134,6 @@ const Manuscripts = () => {
             return { id: doc.id, ...data, assignedReviewersNames };
           });
 
-          // place accepted manuscripts first (by acceptedAt desc), then fallback to submittedAt desc
           const tsToMillis = (ts) =>
             ts?.toDate?.()?.getTime?.() ??
             (ts?.seconds ? ts.seconds * 1000 : 0);
@@ -105,16 +141,14 @@ const Manuscripts = () => {
           allMss.sort((a, b) => {
             const aAcc = tsToMillis(a.acceptedAt);
             const bAcc = tsToMillis(b.acceptedAt);
-            if (aAcc && !bAcc) return -1; // a accepted, b not -> a first
-            if (!aAcc && bAcc) return 1; // b accepted, a not -> b first
-            if (aAcc && bAcc) return bAcc - aAcc; // both accepted -> newest accepted first
-            // neither accepted -> sort by submittedAt desc
+            if (aAcc && !bAcc) return -1;
+            if (!aAcc && bAcc) return 1;
+            if (aAcc && bAcc) return bAcc - aAcc;
             const aSub = tsToMillis(a.submittedAt);
             const bSub = tsToMillis(b.submittedAt);
             return bSub - aSub;
           });
 
-          // after building allMss:
           const VISIBLE_STATUSES = [
             "Assigning Peer Reviewer",
             "Peer Reviewer Assigned",
@@ -132,7 +166,6 @@ const Manuscripts = () => {
               if (!Array.isArray(q.answer)) return false;
               return q.answer.some((a) => {
                 if (!a) return false;
-                // a can be object {id, name, email} or string "Name (email)"
                 if (typeof a === "object") {
                   if (a.id && a.id === uid) return true;
                   if (
@@ -141,7 +174,6 @@ const Manuscripts = () => {
                     a.email.toLowerCase() === email.toLowerCase()
                   )
                     return true;
-
                   return false;
                 }
                 if (typeof a === "string" && email) {
@@ -168,7 +200,6 @@ const Manuscripts = () => {
                     currentUser.uid,
                     currentUser.email || ""
                   );
-
                   return (
                     (isOwner ||
                       hasCoAuthorsIds ||
@@ -200,7 +231,7 @@ const Manuscripts = () => {
       unsubscribeAuth();
       if (unsubscribeManuscripts) unsubscribeManuscripts();
     };
-  }, []); // empty dependency array, runs once
+  }, []);
 
   if (loading)
     return <div className="p-28 text-gray-700">Loading manuscripts...</div>;
@@ -211,21 +242,73 @@ const Manuscripts = () => {
       </div>
     );
 
-  // derive visible list according to chosen filter (compute before JSX)
-  const filteredManuscripts = manuscripts.filter((m) => {
-    if (filter === "in-progress")
-      return IN_PROGRESS_STATUSES.includes(m.status);
-    if (filter === "for-publication") return m.status === "For Publication";
-    if (filter === "rejected") return m.status === "Rejected";
-    return true;
-  });
+  // ✅ Filtering + Search
+  const filteredManuscripts = manuscripts
+    .filter((m) => {
+      if (filter === "in-progress")
+        return IN_PROGRESS_STATUSES.includes(m.status);
+      if (filter === "for-publication") return m.status === "For Publication";
+      if (filter === "rejected") return m.status === "Rejected";
+      return true;
+    })
+    .filter((m) => {
+      if (!searchQuery) return true;
+
+      const queryWords = searchQuery.toLowerCase().split(" ");
+
+      // ✅ Handle manuscript title (direct field or answeredQuestions)
+      const manuscriptTitle =
+        m.title ||
+        m.answeredQuestions?.find((q) =>
+          q.question?.toLowerCase().trim().startsWith("manuscript title")
+        )?.answer ||
+        "Untitled";
+
+      // ✅ All searchable fields
+      const fieldsToSearch = [
+        manuscriptTitle,
+        m.firstName,
+        m.lastName,
+        m.role,
+        m.email, // 👈 now included
+        m.submitter, // 👈 keep this too if submitter is separate
+      ];
+
+      // ✅ Match all query words across any field
+      return queryWords.every((word) =>
+        fieldsToSearch.some((field) => field?.toLowerCase().includes(word))
+      );
+    });
+
+  // ✅ Apply pagination
+  const indexOfLast = currentPage * manuscriptsPerPage;
+  const indexOfFirst = indexOfLast - manuscriptsPerPage;
+  const currentManuscripts = filteredManuscripts.slice(
+    indexOfFirst,
+    indexOfLast
+  );
+  const totalPages = Math.ceil(filteredManuscripts.length / manuscriptsPerPage);
 
   return (
     <div className="pt-24 px-4 sm:px-6 lg:px-24 pb-24">
       <h1 className="text-3xl font-bold mb-6 text-center sm:text-left">
         Manuscripts
       </h1>
-
+      {/* Search */}
+      <div className="relative mb-4 w-full sm:w-72 mx-auto">
+        <input
+          type="text"
+          placeholder="Search manuscripts"
+          value={searchQuery}
+          onChange={(e) => {
+            setSearchQuery(e.target.value);
+            setCurrentPage(1);
+          }}
+          className="w-full pl-10 pr-2 py-1 sm:py-2 border-[3px] border-red-900 rounded text-sm sm:text-base 
+                     focus:outline-none focus:border-red-900 focus:ring-2 focus:ring-red-900"
+        />
+        <FaSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-yellow-500" />
+      </div>
       {/* Filter controls */}
       <div className="flex gap-2 mb-6 justify-center sm:justify-start">
         <button
@@ -275,17 +358,14 @@ const Manuscripts = () => {
           All ({manuscripts.length})
         </button>
       </div>
-
+      {/* Manuscript List */}
       <ul className="space-y-4">
-        {filteredManuscripts.map((m) => {
+        {currentManuscripts.map((m) => {
           const showAssignButton =
             role === "Admin" &&
             (m.status === "Assigning Peer Reviewer" ||
               m.status === "Peer Reviewer Assigned");
-
           const hasReviewer = m.assignedReviewers?.length > 0;
-
-          // 🔹 Extract Manuscript Title flexibly
           const manuscriptTitle =
             m.title ||
             m.answeredQuestions?.find((q) =>
@@ -308,6 +388,14 @@ const Manuscripts = () => {
                 By {m.firstName || "Unknown"} {m.lastName || ""} (
                 {m.role || "N/A"})
               </p>
+
+              {/* 🔹 Show email here */}
+              {m.email && (
+                <p className="text-sm text-gray-600 break-words">
+                  Email: {m.email}
+                </p>
+              )}
+
               {m.submittedAt && (
                 <p className="text-sm text-gray-500">
                   Submitted:{" "}
@@ -408,9 +496,7 @@ const Manuscripts = () => {
                     )
                     .map((q, idx) => {
                       let displayAnswer;
-
                       if (Array.isArray(q.answer)) {
-                        // Handle array of objects (like co-authors) or strings
                         displayAnswer = q.answer
                           .map((a) =>
                             typeof a === "object" && a !== null
@@ -421,7 +507,6 @@ const Manuscripts = () => {
                       } else {
                         displayAnswer = q.answer;
                       }
-
                       return (
                         <p
                           key={idx}
@@ -437,6 +522,81 @@ const Manuscripts = () => {
           );
         })}
       </ul>
+
+      {/* Pagination */}
+      <div className="mt-4 p-2 bg-yellow-400 shadow-lg flex flex-col sm:flex-row justify-between items-center gap-2 rounded-sm">
+        {/* Page Size Selector */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-sm font-bold text-red-900">Page Size:</span>
+          <select
+            value={manuscriptsPerPage}
+            onChange={(e) => {
+              setManuscriptsPerPage(Number(e.target.value));
+              setCurrentPage(1);
+            }}
+            className="border-2 border-red-800 bg-yellow-400 rounded-md text-red-900 font-bold text-sm"
+          >
+            <option value={5}>5</option>
+            <option value={10}>10</option>
+            <option value={20}>20</option>
+          </select>
+        </div>
+
+        {/* Page Buttons */}
+        <div className="flex items-center flex-wrap gap-1 text-sm">
+          <button
+            onClick={() => setCurrentPage(1)}
+            disabled={currentPage === 1}
+            className="px-3 py-1 mr-1 bg-yellow-400 text-red-900 rounded-md border border-red-900 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            First
+          </button>
+          <button
+            onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
+            disabled={currentPage === 1}
+            className="px-3 py-1 mr-4 bg-yellow-400 text-red-900 rounded-md border border-red-900 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Prev
+          </button>
+
+          {getPageNumbers(currentPage, totalPages).map((num, idx) =>
+            num === "..." ? (
+              <span key={idx} className="px-3 py-1">
+                ...
+              </span>
+            ) : (
+              <button
+                key={idx}
+                onClick={() => setCurrentPage(num)}
+                className={`px-3 py-1 mr-1 rounded-lg ${
+                  num === currentPage
+                    ? "bg-red-900 text-white border border-red-900"
+                    : "bg-yellow-400 text-red-900 border border-red-900"
+                }`}
+              >
+                {num}
+              </button>
+            )
+          )}
+
+          <button
+            onClick={() =>
+              setCurrentPage((prev) => Math.min(prev + 1, totalPages))
+            }
+            disabled={currentPage === totalPages}
+            className="px-3 py-1 ml-3 mr-1 bg-yellow-400 text-red-900 rounded-md border border-red-900 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Next
+          </button>
+          <button
+            onClick={() => setCurrentPage(totalPages)}
+            disabled={currentPage === totalPages}
+            className="px-3 py-1 mr-1 bg-yellow-400 text-red-900 rounded-md border border-red-900 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Last
+          </button>
+        </div>
+      </div>
     </div>
   );
 };

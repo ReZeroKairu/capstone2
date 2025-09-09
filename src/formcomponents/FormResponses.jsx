@@ -209,9 +209,30 @@ export default function FormResponses() {
         const snap = await getDocs(q);
         const data = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
         const term = searchTerm.toLowerCase();
-        const filtered = data.filter((res) =>
-          res.searchIndex?.some((f) => f?.toLowerCase().includes(term))
-        );
+
+        const filtered = data.filter((res) => {
+          const fullName = `${res.firstName || ""} ${
+            res.lastName || ""
+          }`.trim();
+          const manuscriptTitle =
+            res.manuscriptTitle ||
+            res.answeredQuestions?.find((q) =>
+              q.question?.toLowerCase().trim().startsWith("manuscript title")
+            )?.answer ||
+            res.formTitle ||
+            "Untitled";
+
+          const fieldsToSearch = [
+            res.email,
+            fullName,
+            manuscriptTitle,
+            res.formTitle,
+            ...(res.searchIndex || []), // still use searchIndex if present
+          ];
+
+          return fieldsToSearch.some((f) => f?.toLowerCase().includes(term));
+        });
+
         setResponses(filtered);
         setCurrentPage(1);
         setPageCursors([]);
@@ -333,6 +354,7 @@ export default function FormResponses() {
             title: manuscriptTitle,
             status: "Assigning Peer Reviewer",
             acceptedAt: serverTimestamp(),
+            email: res.email || "", // 🔹 save email
           });
         });
       } else {
@@ -347,6 +369,7 @@ export default function FormResponses() {
           submittedAt: responseSubmittedAt, // preserve original submission time when possible
           acceptedAt: serverTimestamp(), // mark acceptance timestamp
           status: "Assigning Peer Reviewer",
+          email: res.email || "", // 🔹 save email
         });
       }
 
@@ -408,6 +431,7 @@ export default function FormResponses() {
           await updateDoc(doc(db, "manuscripts", ms.id), {
             title: manuscriptTitle,
             status: "Rejected",
+            email: res.email || "", // 🔹 save email
           });
         });
       } else {
@@ -421,6 +445,7 @@ export default function FormResponses() {
           coAuthors: res.coAuthors || [],
           submittedAt: serverTimestamp(),
           status: "Rejected",
+          email: res.email || "", // 🔹 save email
         });
       }
 
