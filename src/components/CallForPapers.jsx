@@ -6,15 +6,15 @@ import {
   getDoc,
   updateDoc,
   onSnapshot,
-  setDoc,
   collection,
+  addDoc,
 } from "firebase/firestore";
 import ReactQuill from "react-quill";
 import "react-quill/dist/quill.snow.css";
 import { quillModules, quillFormats } from "../utils/quillConfig";
 import DOMPurify from "dompurify";
 
-function CallForPapers() {
+export default function CallForPapers() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -28,75 +28,50 @@ function CallForPapers() {
   const [notification, setNotification] = useState({ message: "", type: "" });
   const [error, setError] = useState("");
 
-  const textareaRef = useRef(null);
-  const issueRefs = useRef([]);
+  const quillRefs = useRef({ description: null, issues: [] });
   const notificationTimeoutRef = useRef(null);
 
-  // Auto-resize textarea utility
-  const autoResize = useCallback((element) => {
-    if (element) {
-      element.style.height = "auto";
-      element.style.height = `${element.scrollHeight}px`;
-    }
-  }, []);
-
-  // Show notification with auto-dismiss
   const showNotification = useCallback((message, type) => {
     setNotification({ message, type });
-
-    // Clear existing timeout
-    if (notificationTimeoutRef.current) {
+    if (notificationTimeoutRef.current)
       clearTimeout(notificationTimeoutRef.current);
-    }
-
-    // Set new timeout
     notificationTimeoutRef.current = setTimeout(() => {
       setNotification({ message: "", type: "" });
     }, 4000);
   }, []);
 
-  // Check if user is admin
   const checkAdminRole = useCallback(async (user) => {
-    if (!user) {
-      setIsAdmin(false);
-      return;
-    }
-
+    if (!user) return setIsAdmin(false);
     try {
       const docRef = doc(db, "Users", user.uid);
       const docSnap = await getDoc(docRef);
       setIsAdmin(docSnap.exists() && docSnap.data().role === "Admin");
-    } catch (error) {
-      console.error("Error checking admin role:", error);
+    } catch (err) {
+      console.error(err);
       setError("Failed to verify admin permissions");
       setIsAdmin(false);
     }
   }, []);
 
-  // Auth state listener
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       setLoading(true);
       await checkAdminRole(user);
       setLoading(false);
     });
-
     return () => unsubscribe();
   }, [checkAdminRole]);
 
-  // Content listener
   useEffect(() => {
     const docRef = doc(db, "Content", "CallForPapers");
-
     const unsubscribe = onSnapshot(
       docRef,
-      (doc) => {
-        if (doc.exists()) {
-          const data = doc.data();
+      (docSnap) => {
+        if (docSnap.exists()) {
+          const data = docSnap.data();
           setContent(data);
           setOriginalContent(data);
         } else {
-          // Initialize with default content if document doesn't exist
           const defaultContent = {
             title: "Call for Papers",
             description: "Submit your research papers here.",
@@ -107,37 +82,13 @@ function CallForPapers() {
         }
         setLoading(false);
       },
-      (error) => {
-        console.error("Error fetching content:", error);
+      (err) => {
+        console.error(err);
         setError("Failed to load content");
         setLoading(false);
       }
     );
-
     return () => unsubscribe();
-  }, []);
-
-  // Auto-resize textareas when content changes
-  useEffect(() => {
-    if (isEditing) {
-      autoResize(textareaRef.current);
-    }
-  }, [content.description, isEditing, autoResize]);
-
-  // Scroll to top when notification appears
-  useEffect(() => {
-    if (notification.message) {
-      window.scrollTo({ top: 0, behavior: "smooth" });
-    }
-  }, [notification.message]);
-
-  // Cleanup timeout on unmount
-  useEffect(() => {
-    return () => {
-      if (notificationTimeoutRef.current) {
-        clearTimeout(notificationTimeoutRef.current);
-      }
-    };
   }, []);
 
   const handleContentChange = useCallback((field, value) => {
@@ -151,12 +102,10 @@ function CallForPapers() {
     }));
   }, []);
 
-  const addIssue = useCallback(() => {
-    setContent((prev) => ({
-      ...prev,
-      issues: [...prev.issues, ""],
-    }));
-  }, []);
+  const addIssue = useCallback(
+    () => setContent((prev) => ({ ...prev, issues: [...prev.issues, ""] })),
+    []
+  );
 
   const removeIssue = useCallback(
     (index) => {
@@ -165,13 +114,42 @@ function CallForPapers() {
           ...prev,
           issues: prev.issues.filter((_, i) => i !== index),
         }));
+        quillRefs.current.issues.splice(index, 1);
       }
     },
     [content.issues.length]
   );
 
-  const hasChanges = () => {
-    return JSON.stringify(originalContent) !== JSON.stringify(content);
+  const hasChanges = () =>
+    JSON.stringify(originalContent) !== JSON.stringify(content);
+
+  const removeImageAtIndex = (field, index, issueIndex = null) => {
+    let quill;
+    if (field === "description") {
+      quill = quillRefs.current.description.getEditor();
+    } else if (field === "issues") {
+      quill = quillRefs.current.issues[issueIndex].getEditor();
+    }
+    if (!quill) return;
+
+    const delta = quill.getContents();
+    let imageCount = -1;
+    const newOps = delta.ops.filter((op) => {
+      if (op.insert?.image) {
+        imageCount++;
+        if (imageCount === index) return false;
+      }
+      return true;
+    });
+    quill.setContents({ ops: newOps });
+    if (field === "description") {
+      handleContentChange("description", quill.root.innerHTML);
+    } else {
+      const updatedIssues = [...content.issues];
+      updatedIssues[issueIndex] = quill.root.innerHTML;
+      handleContentChange("issues", updatedIssues);
+    }
+    showNotification("Image removed.", "success");
   };
 
   const handleSaveChanges = async () => {
@@ -179,36 +157,31 @@ function CallForPapers() {
       showNotification("No changes made.", "warning");
       return;
     }
-
     setSaving(true);
     setError("");
 
     try {
       const docRef = doc(db, "Content", "CallForPapers");
-
       await updateDoc(docRef, {
         title: content.title,
         description: content.description,
-        issues: content.issues.filter((issue) => issue.trim() !== ""), // Remove empty issues
+        issues: content.issues.filter((i) => i.trim() !== ""),
       });
 
-      // Log the change
       const logRef = collection(db, "UserLog");
-      const logEntry = {
+      await addDoc(logRef, {
         action: "Edited Call for Papers",
         adminId: auth.currentUser?.uid,
         userId: auth.currentUser?.uid,
         email: auth.currentUser?.email,
         timestamp: new Date(),
-      };
-
-      await setDoc(doc(logRef), logEntry);
+      });
 
       setIsEditing(false);
       setOriginalContent(content);
       showNotification("Changes saved successfully!", "success");
-    } catch (error) {
-      console.error("Failed to save content:", error);
+    } catch (err) {
+      console.error(err);
       setError("Failed to save changes. Please try again.");
     } finally {
       setSaving(false);
@@ -221,13 +194,12 @@ function CallForPapers() {
     setError("");
   }, [originalContent]);
 
-  if (loading) {
+  if (loading)
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-white text-xl">Loading...</div>
+      <div className="flex items-center justify-center min-h-screen text-white text-xl">
+        Loading...
       </div>
     );
-  }
 
   return (
     <div className="relative min-h-screen overflow-hidden">
@@ -235,10 +207,8 @@ function CallForPapers() {
         className="absolute inset-0 bg-cover bg-center bg-fixed"
         style={{ backgroundImage: "url('/bg.jpg')" }}
       />
-
       <div className="relative z-10 flex flex-col items-center justify-center min-h-screen mt-11 py-24 w-full">
         <div className="rounded-sm p-6 w-full max-w-2xl mx-auto">
-          {/* Notification Bar */}
           {notification.message && (
             <div
               className={`fixed top-5 left-1/2 transform -translate-x-1/2 w-full max-w-md py-3 text-center font-semibold rounded-lg text-white z-50 transition-all duration-300 ${
@@ -253,14 +223,12 @@ function CallForPapers() {
             </div>
           )}
 
-          {/* Error Message */}
           {error && (
             <div className="bg-red-500 text-white p-3 rounded-lg mb-4 text-center">
               {error}
             </div>
           )}
 
-          {/* Content */}
           <div className="bg-yellow-300 py-2 rounded-t-lg w-full flex items-center justify-center">
             <span className="text-2xl font-bold text-black text-center">
               {isEditing ? "Editing: " : ""}
@@ -268,10 +236,10 @@ function CallForPapers() {
             </span>
           </div>
 
-          <div className="bg-red-800 text-white p-6 rounded-b-lg">
+          <div className="bg-red-800 text-white p-6 rounded-b-lg w-full">
             {isEditing ? (
-              <div className="flex flex-col items-center space-y-4">
-                {/* Title Input */}
+              <div className="flex flex-col items-center space-y-4 w-full">
+                {/* Title */}
                 <input
                   className="block w-full p-3 text-black rounded text-center border-2 border-gray-300 focus:border-blue-500 focus:outline-none transition-colors"
                   placeholder="Enter title"
@@ -280,29 +248,41 @@ function CallForPapers() {
                 />
 
                 {/* Description */}
-                <div className="mb-4">
+                <div className="mb-4 w-full">
                   <label className="block font-semibold mb-2">
                     Description
                   </label>
-                  {isEditing ? (
-                    <ReactQuill
-                      value={content.description || ""}
-                      onChange={(val) =>
-                        setContent((prev) => ({ ...prev, description: val }))
-                      }
-                      modules={quillModules}
-                      formats={quillFormats}
-                      theme="snow"
-                      className="bg-white text-black rounded mb-2"
-                    />
-                  ) : (
-                    <div
-                      className="prose max-w-none"
-                      dangerouslySetInnerHTML={{
-                        __html: content.description || "",
-                      }}
-                    />
-                  )}
+                  <ReactQuill
+                    ref={(el) => (quillRefs.current.description = el)}
+                    value={content.description || ""}
+                    onChange={(val) => handleContentChange("description", val)}
+                    modules={quillModules}
+                    formats={quillFormats}
+                    theme="snow"
+                    className="bg-white text-black rounded mb-2"
+                  />
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    {Array.from(
+                      new DOMParser()
+                        .parseFromString(content.description, "text/html")
+                        .querySelectorAll("img")
+                    ).map((img, idx) => (
+                      <div key={idx} className="relative">
+                        <img
+                          src={img.src}
+                          alt={img.alt || ""}
+                          className="w-24 h-24 object-cover rounded"
+                        />
+                        <button
+                          type="button"
+                          className="absolute top-0 right-0 bg-red-600 text-white rounded-full w-5 h-5 text-xs"
+                          onClick={() => removeImageAtIndex("description", idx)}
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))}
+                  </div>
                 </div>
 
                 {/* Issues */}
@@ -316,36 +296,54 @@ function CallForPapers() {
                       Add Issue
                     </button>
                   </div>
-
-                  {content.issues.map((issue, index) => (
-                    <div
-                      key={index}
-                      className="flex items-center space-x-2 mb-3"
-                    >
-                      <textarea
-                        ref={(el) => (issueRefs.current[index] = el)}
-                        className="flex-1 p-3 text-black rounded text-center resize-none border-2 border-gray-300 focus:border-blue-500 focus:outline-none transition-colors"
-                        placeholder={`Issue ${index + 1}`}
-                        value={issue}
-                        onChange={(e) => {
-                          handleIssueChange(index, e.target.value);
-                          autoResize(issueRefs.current[index]);
-                        }}
-                        style={{ minHeight: "60px", maxHeight: "200px" }}
+                  {content.issues.map((issue, idx) => (
+                    <div key={idx} className="mb-3 w-full">
+                      <ReactQuill
+                        ref={(el) => (quillRefs.current.issues[idx] = el)}
+                        value={issue || ""}
+                        onChange={(val) => handleIssueChange(idx, val)}
+                        modules={quillModules}
+                        formats={quillFormats}
+                        theme="snow"
+                        className="bg-white text-black rounded mb-2"
                       />
+                      <div className="flex flex-wrap gap-2 mt-2">
+                        {Array.from(
+                          new DOMParser()
+                            .parseFromString(issue || "", "text/html")
+                            .querySelectorAll("img")
+                        ).map((img, iidx) => (
+                          <div key={iidx} className="relative">
+                            <img
+                              src={img.src}
+                              alt={img.alt || ""}
+                              className="w-24 h-24 object-cover rounded"
+                            />
+                            <button
+                              type="button"
+                              className="absolute top-0 right-0 bg-red-600 text-white rounded-full w-5 h-5 text-xs"
+                              onClick={() =>
+                                removeImageAtIndex("issues", iidx, idx)
+                              }
+                            >
+                              ×
+                            </button>
+                          </div>
+                        ))}
+                      </div>
                       {content.issues.length > 1 && (
                         <button
-                          className="bg-red-600 hover:bg-red-700 text-white px-2 py-1 rounded text-sm transition-colors"
-                          onClick={() => removeIssue(index)}
+                          className="bg-red-600 hover:bg-red-700 text-white px-2 py-1 rounded text-sm mt-1"
+                          onClick={() => removeIssue(idx)}
                         >
-                          Remove
+                          Remove Issue
                         </button>
                       )}
                     </div>
                   ))}
                 </div>
 
-                {/* Action Buttons */}
+                {/* Action buttons */}
                 <div className="flex space-x-3 pt-4">
                   <button
                     className={`px-6 py-2 rounded font-semibold transition-colors ${
@@ -376,30 +374,42 @@ function CallForPapers() {
             ) : (
               <div>
                 <div
-                  className="text-lg mb-6 leading-relaxed prose max-w-none"
+                  className="mb-6 leading-relaxed max-w-none"
                   dangerouslySetInnerHTML={{
                     __html: DOMPurify.sanitize(content.description || "", {
-                      // allow Quill classes and inline style so font/size/bold/italic persist
-                      ADD_ATTR: ["class", "style"],
+                      ADD_ATTR: [
+                        "class",
+                        "style",
+                        "src",
+                        "alt",
+                        "height",
+                        "width",
+                      ],
                     }),
                   }}
                 />
-
-                <div className="text-center space-y-4">
+                <div className="space-y-4">
                   {content.issues.map(
-                    (issue, index) =>
+                    (issue, idx) =>
                       issue.trim() && (
-                        <p
-                          key={index}
-                          className="text-2xl font-bold"
-                          style={{ whiteSpace: "pre-line" }}
-                        >
-                          {issue}
-                        </p>
+                        <div
+                          key={idx}
+                          dangerouslySetInnerHTML={{
+                            __html: DOMPurify.sanitize(issue, {
+                              ADD_ATTR: [
+                                "class",
+                                "style",
+                                "src",
+                                "alt",
+                                "height",
+                                "width",
+                              ],
+                            }),
+                          }}
+                        />
                       )
                   )}
                 </div>
-
                 {isAdmin && (
                   <div className="text-center mt-8">
                     <button
@@ -418,5 +428,3 @@ function CallForPapers() {
     </div>
   );
 }
-
-export default CallForPapers;

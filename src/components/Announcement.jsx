@@ -26,15 +26,21 @@ export default function Announcement() {
   const [notification, setNotification] = useState({ message: "", type: "" });
   const [error, setError] = useState("");
   const notificationBarRef = useRef(null);
-  const messageRefs = useRef([]);
+  const quillRefs = useRef([]); // wrapper refs for ReactQuill
   const notificationTimeoutRef = useRef(null);
 
-  const autoResize = useCallback((element) => {
-    if (element) {
-      element.style.height = "auto";
-      element.style.height = `${element.scrollHeight}px`;
-    }
-  }, []);
+  const autoResize = useCallback(() => {
+    announcements.forEach((_, idx) => {
+      const wrapper = quillRefs.current[idx];
+      if (wrapper) {
+        const editor = wrapper.querySelector(".ql-editor");
+        if (editor) {
+          editor.style.height = "auto";
+          editor.style.height = `${editor.scrollHeight}px`;
+        }
+      }
+    });
+  }, [announcements]);
 
   const showNotification = useCallback((message, type) => {
     setNotification({ message, type });
@@ -75,8 +81,8 @@ export default function Announcement() {
     const docRef = doc(db, "Content", "Announcements");
     const unsubscribe = onSnapshot(
       docRef,
-      (doc) => {
-        const data = doc.exists() ? doc.data() : {};
+      (docSnap) => {
+        const data = docSnap.exists() ? docSnap.data() : {};
         const defaultAnnouncements = [
           {
             title: "Welcome!",
@@ -99,8 +105,7 @@ export default function Announcement() {
   }, []);
 
   useEffect(() => {
-    if (isEditing)
-      announcements.forEach((_, idx) => autoResize(messageRefs.current[idx]));
+    if (isEditing) autoResize();
   }, [announcements, isEditing, autoResize]);
 
   useEffect(() => {
@@ -112,17 +117,11 @@ export default function Announcement() {
     }
   }, [notification.message]);
 
-  useEffect(
-    () => () =>
-      notificationTimeoutRef.current &&
-      clearTimeout(notificationTimeoutRef.current),
-    []
-  );
-
-  const handleAnnouncementChange = useCallback((index, field, value) => {
-    setAnnouncements((prev) =>
-      prev.map((a, i) => (i === index ? { ...a, [field]: value } : a))
-    );
+  useEffect(() => {
+    return () => {
+      if (notificationTimeoutRef.current)
+        clearTimeout(notificationTimeoutRef.current);
+    };
   }, []);
 
   const handleAnnouncementMessageChange = (idx, value) => {
@@ -149,29 +148,22 @@ export default function Announcement() {
   const hasChanges = () =>
     JSON.stringify(originalAnnouncements) !== JSON.stringify(announcements);
 
-  // remove any <img ...> tags from a HTML string
-  const stripImagesFromHtml = (html) => {
-    if (!html) return html;
-    try {
-      // quick removal of <img ...> tags
-      return html.replace(/<img[^>]*>/gi, "");
-    } catch (e) {
-      console.error("stripImagesFromHtml error", e);
-      return html;
-    }
-  };
-
-  // remove images from a single announcement's message
-  const removeImagesFromMessage = (index) => {
+  // --- New function: remove a single image from announcement ---
+  const removeSingleImage = (announcementIdx, imgIdx) => {
     setAnnouncements((prev) =>
-      prev.map((a, i) =>
-        i === index ? { ...a, message: stripImagesFromHtml(a.message) } : a
-      )
+      prev.map((a, i) => {
+        if (i !== announcementIdx) return a;
+        // Parse the message as DOM
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(a.message, "text/html");
+        const images = doc.querySelectorAll("img");
+        if (images[imgIdx]) images[imgIdx].remove();
+        return { ...a, message: doc.body.innerHTML };
+      })
     );
-    showNotification("Images removed from announcement.", "success");
+    showNotification("Image removed from announcement.", "success");
   };
 
-  // update handleSaveChanges to strip images before saving
   const handleSaveChanges = async () => {
     if (!hasChanges()) {
       showNotification("No changes made.", "warning");
@@ -182,14 +174,12 @@ export default function Announcement() {
     try {
       const docRef = doc(db, "Content", "Announcements");
 
-      // strip images from all messages before saving
-      const cleaned = announcements
-        .map((a) => ({ ...a, message: stripImagesFromHtml(a.message || "") }))
-        .filter((a) => a.title.trim() && a.message.trim());
+      // Save all announcements as-is (images + text preserved)
+      const cleaned = announcements.filter(
+        (a) => a.title.trim() && a.message.trim()
+      );
 
-      await updateDoc(docRef, {
-        announcements: cleaned,
-      });
+      await updateDoc(docRef, { announcements: cleaned });
 
       const logRef = collection(db, "UserLog");
       await setDoc(doc(logRef), {
@@ -199,6 +189,7 @@ export default function Announcement() {
         email: auth.currentUser?.email,
         timestamp: new Date(),
       });
+
       setIsEditing(false);
       setOriginalAnnouncements(cleaned);
       setAnnouncements(cleaned);
@@ -226,14 +217,11 @@ export default function Announcement() {
 
   return (
     <div className="relative flex flex-col items-center mt-10 p-6 pt-28 pb-40 sm:p-16 sm:pt-28 sm:pb-16">
-      {/* White Box */}
       <div className="relative w-full max-w-3xl bg-white border border-gray-300 rounded-lg shadow p-6 pt-11">
-        {/* Floating Header */}
         <div className="absolute -top-5 left-1/2 transform -translate-x-1/2 bg-red-800 text-white px-6 py-2 rounded-lg font-bold text-lg">
           {isEditing ? "Editing Announcements" : "Announcements"}
         </div>
 
-        {/* Notifications */}
         {notification.message && (
           <div
             ref={notificationBarRef}
@@ -254,27 +242,30 @@ export default function Announcement() {
           </div>
         )}
 
-        {/* Announcements Content */}
         <div className="max-h-[60vh] overflow-y-auto">
           {isEditing ? (
             <div className="flex flex-col space-y-4">
-              {announcements.map((a, idx) => (
-                <div key={idx} className="mb-4">
-                  <input
-                    type="text"
-                    value={a.title}
-                    onChange={(e) =>
-                      setAnnouncements((prev) =>
-                        prev.map((it, i) =>
-                          i === idx ? { ...it, title: e.target.value } : it
+              {announcements.map((a, idx) => {
+                // Parse images in message
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(a.message, "text/html");
+                const images = Array.from(doc.querySelectorAll("img"));
+                return (
+                  <div key={idx} className="mb-4">
+                    <input
+                      type="text"
+                      value={a.title}
+                      onChange={(e) =>
+                        setAnnouncements((prev) =>
+                          prev.map((it, i) =>
+                            i === idx ? { ...it, title: e.target.value } : it
+                          )
                         )
-                      )
-                    }
-                    className="w-full p-2 border rounded mb-2"
-                    placeholder="Announcement Title"
-                  />
-                  {isEditing ? (
-                    <>
+                      }
+                      className="w-full p-2 border rounded mb-2"
+                      placeholder="Announcement Title"
+                    />
+                    <div ref={(el) => (quillRefs.current[idx] = el)}>
                       <ReactQuill
                         value={a.message}
                         onChange={(val) =>
@@ -285,43 +276,41 @@ export default function Announcement() {
                         theme="snow"
                         className="bg-white text-black rounded mb-2"
                       />
-                      <div className="flex gap-2 mb-2">
-                        <button
-                          type="button"
-                          onClick={() => removeImagesFromMessage(idx)}
-                          className="px-3 py-1 bg-yellow-500 text-white rounded text-xs"
-                        >
-                          Remove images
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setAnnouncements((prev) =>
-                              prev.map((it, i) =>
-                                i === idx ? { ...it, message: "" } : it
-                              )
-                            )
-                          }
-                          className="px-3 py-1 bg-red-500 text-white rounded text-xs"
-                        >
-                          Clear message
-                        </button>
-                      </div>
-                    </>
-                  ) : (
-                    <div
-                      className="mb-2 text-gray-800 prose max-w-none"
-                      dangerouslySetInnerHTML={{
-                        __html: DOMPurify.sanitize(a.message || "", {
-                          // allow Quill's classes and inline styles (size/font)
-                          ADD_ATTR: ["class", "style"],
-                        }),
-                      }}
-                    />
-                  )}
-                </div>
-              ))}
+                    </div>
 
+                    {/* Display buttons for each image */}
+                    {images.length > 0 && (
+                      <div className="flex flex-wrap gap-2 mb-2">
+                        {images.map((img, imgIdx) => (
+                          <button
+                            key={imgIdx}
+                            className="px-2 py-1 bg-yellow-500 text-white rounded text-xs"
+                            onClick={() => removeSingleImage(idx, imgIdx)}
+                          >
+                            Remove image {imgIdx + 1}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    <div className="flex gap-2 mb-2">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setAnnouncements((prev) =>
+                            prev.map((it, i) =>
+                              i === idx ? { ...it, message: "" } : it
+                            )
+                          )
+                        }
+                        className="px-3 py-1 bg-red-500 text-white rounded text-xs"
+                      >
+                        Clear message
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
               <button
                 className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm"
                 onClick={addAnnouncement}
@@ -364,7 +353,6 @@ export default function Announcement() {
           )}
         </div>
 
-        {/* Action Buttons (moved OUTSIDE the scrollable box) */}
         {isAdmin && (
           <div className="flex flex-wrap justify-center gap-3 mt-6">
             {isEditing ? (
