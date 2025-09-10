@@ -30,7 +30,6 @@ const Sidebar = ({ role, isOpen, toggleSidebar }) => {
   const handleLinkClick = () => {
     if (window.innerWidth < 768) return; // mobile links just navigate
   };
-
   const links = [
     { name: "Home", path: "/home", icon: <FaHome className="text-xl" /> },
     {
@@ -88,22 +87,24 @@ const Sidebar = ({ role, isOpen, toggleSidebar }) => {
       icon: <FaFileUpload className="text-xl" />,
     },
   ];
-
   const renderLinks = (linkArray, mobile = false) =>
     linkArray.map((link) => (
       <li key={link.name} className={mobile ? "flex-1 text-center" : ""}>
-        <Link
-          to={link.path}
-          onClick={handleLinkClick}
-          className={`flex items-center justify-center md:justify-start px-4 py-3 mb-1 rounded-lg ${
-            location.pathname === link.path
-              ? "bg-white text-black font-bold "
-              : "text-white hover:bg-white hover:text-black hover:font-bold"
-          }`}
-        >
-          {link.icon}
-          {!mobile && isOpen && <span className="ml-3">{link.name}</span>}
-        </Link>
+        <div className={mobile ? "mx-1" : "mx-4"}>
+          <Link
+            to={link.path}
+            onClick={handleLinkClick}
+            className={`flex items-center rounded justify-start px-4 py-2 mb-1 transition-colors duration-150
+            ${
+              location.pathname === link.path
+                ? "bg-white text-black font-bold shadow"
+                : "text-white hover:bg-white hover:text-black hover:font-bold"
+            } w-auto max-w-[230px]`}
+          >
+            {link.icon}
+            {!mobile && isOpen && <span className="ml-2">{link.name}</span>}
+          </Link>
+        </div>
       </li>
     ));
 

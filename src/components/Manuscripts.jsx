@@ -295,7 +295,7 @@ const Manuscripts = () => {
         Manuscripts
       </h1>
       {/* Search */}
-      <div className="relative mb-4 w-full sm:w-72 mx-auto">
+      <div className="relative mb-4 w-full max-w-xl mx-auto">
         <input
           type="text"
           placeholder="Search manuscripts"
@@ -304,11 +304,12 @@ const Manuscripts = () => {
             setSearchQuery(e.target.value);
             setCurrentPage(1);
           }}
-          className="w-full pl-10 pr-2 py-1 sm:py-2 border-[3px] border-red-900 rounded text-sm sm:text-base 
-                     focus:outline-none focus:border-red-900 focus:ring-2 focus:ring-red-900"
+          className="w-full pl-10 pr-2 py-2 border-[3px] border-red-900 rounded text-base
+               focus:outline-none focus:border-red-900 focus:ring-2 focus:ring-red-900"
         />
         <FaSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-yellow-500" />
       </div>
+
       {/* Filter controls */}
       <div className="flex gap-2 mb-6 justify-center sm:justify-start">
         <button
