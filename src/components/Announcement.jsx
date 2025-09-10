@@ -1,14 +1,7 @@
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import { auth, db } from "../firebase/firebase";
 import { onAuthStateChanged } from "firebase/auth";
-import {
-  doc,
-  getDoc,
-  updateDoc,
-  onSnapshot,
-  setDoc,
-  collection,
-} from "firebase/firestore";
+import { doc, getDoc, updateDoc, onSnapshot } from "firebase/firestore";
 import ReactQuill from "react-quill";
 import "react-quill/dist/quill.snow.css";
 import { quillModules, quillFormats } from "../utils/quillConfig";
@@ -25,22 +18,10 @@ export default function Announcement() {
   const [originalAnnouncements, setOriginalAnnouncements] = useState([]);
   const [notification, setNotification] = useState({ message: "", type: "" });
   const [error, setError] = useState("");
-  const notificationBarRef = useRef(null);
-  const quillRefs = useRef([]); // wrapper refs for ReactQuill
-  const notificationTimeoutRef = useRef(null);
 
-  const autoResize = useCallback(() => {
-    announcements.forEach((_, idx) => {
-      const wrapper = quillRefs.current[idx];
-      if (wrapper) {
-        const editor = wrapper.querySelector(".ql-editor");
-        if (editor) {
-          editor.style.height = "auto";
-          editor.style.height = `${editor.scrollHeight}px`;
-        }
-      }
-    });
-  }, [announcements]);
+  const notificationBarRef = useRef(null);
+  const quillRefs = useRef([]);
+  const notificationTimeoutRef = useRef(null);
 
   const showNotification = useCallback((message, type) => {
     setNotification({ message, type });
@@ -53,16 +34,13 @@ export default function Announcement() {
   }, []);
 
   const checkAdminRole = useCallback(async (user) => {
-    if (!user) {
-      setIsAdmin(false);
-      return;
-    }
+    if (!user) return setIsAdmin(false);
     try {
       const docRef = doc(db, "Users", user.uid);
       const docSnap = await getDoc(docRef);
       setIsAdmin(docSnap.exists() && docSnap.data().role === "Admin");
-    } catch (error) {
-      console.error("Error checking admin role:", error);
+    } catch (err) {
+      console.error(err);
       setError("Failed to verify admin permissions");
       setIsAdmin(false);
     }
@@ -79,49 +57,21 @@ export default function Announcement() {
 
   useEffect(() => {
     const docRef = doc(db, "Content", "Announcements");
-    const unsubscribe = onSnapshot(
-      docRef,
-      (docSnap) => {
-        const data = docSnap.exists() ? docSnap.data() : {};
-        const defaultAnnouncements = [
-          {
-            title: "Welcome!",
-            message: "Stay tuned for updates.",
-            date: new Date().toLocaleDateString(),
-          },
-        ];
-        const loaded = data.announcements || defaultAnnouncements;
-        setAnnouncements(loaded);
-        setOriginalAnnouncements(loaded);
-        setLoading(false);
-      },
-      (error) => {
-        console.error("Error fetching announcements:", error);
-        setError("Failed to load announcements");
-        setLoading(false);
-      }
-    );
+    const unsubscribe = onSnapshot(docRef, (docSnap) => {
+      const data = docSnap.exists() ? docSnap.data() : {};
+      const defaultAnnouncements = [
+        {
+          title: "Welcome!",
+          message: "Stay tuned for updates.",
+          date: new Date().toLocaleDateString(),
+        },
+      ];
+      const loaded = data.announcements || defaultAnnouncements;
+      setAnnouncements(loaded);
+      setOriginalAnnouncements(loaded);
+      setLoading(false);
+    });
     return () => unsubscribe();
-  }, []);
-
-  useEffect(() => {
-    if (isEditing) autoResize();
-  }, [announcements, isEditing, autoResize]);
-
-  useEffect(() => {
-    if (notification.message && notificationBarRef.current) {
-      notificationBarRef.current.scrollIntoView({
-        behavior: "smooth",
-        block: "center",
-      });
-    }
-  }, [notification.message]);
-
-  useEffect(() => {
-    return () => {
-      if (notificationTimeoutRef.current)
-        clearTimeout(notificationTimeoutRef.current);
-    };
   }, []);
 
   const handleAnnouncementMessageChange = (idx, value) => {
@@ -148,20 +98,28 @@ export default function Announcement() {
   const hasChanges = () =>
     JSON.stringify(originalAnnouncements) !== JSON.stringify(announcements);
 
-  // --- New function: remove a single image from announcement ---
-  const removeSingleImage = (announcementIdx, imgIdx) => {
-    setAnnouncements((prev) =>
-      prev.map((a, i) => {
-        if (i !== announcementIdx) return a;
-        // Parse the message as DOM
-        const parser = new DOMParser();
-        const doc = parser.parseFromString(a.message, "text/html");
-        const images = doc.querySelectorAll("img");
-        if (images[imgIdx]) images[imgIdx].remove();
-        return { ...a, message: doc.body.innerHTML };
-      })
-    );
-    showNotification("Image removed from announcement.", "success");
+  const removeImageAtIndex = (announcementIdx, imageIdx) => {
+    const quillWrapper = quillRefs.current[announcementIdx];
+    if (!quillWrapper || !quillWrapper.querySelector) return;
+
+    const editor = quillWrapper.querySelector(".ql-editor");
+    if (!editor) return;
+
+    const parser = new DOMParser();
+    const docHTML = parser.parseFromString(editor.innerHTML, "text/html");
+    const images = docHTML.querySelectorAll("img");
+
+    if (images[imageIdx]) {
+      images[imageIdx].remove();
+      const newHTML = docHTML.body.innerHTML;
+
+      setAnnouncements((prev) =>
+        prev.map((a, i) =>
+          i === announcementIdx ? { ...a, message: newHTML } : a
+        )
+      );
+      showNotification("Image removed.", "success");
+    }
   };
 
   const handleSaveChanges = async () => {
@@ -169,33 +127,24 @@ export default function Announcement() {
       showNotification("No changes made.", "warning");
       return;
     }
+
     setSaving(true);
     setError("");
+
     try {
+      const cleaned = announcements
+        .filter((a) => a.title.trim() && a.message.trim())
+        .map((a) => ({ ...a, message: DOMPurify.sanitize(a.message) }));
+
       const docRef = doc(db, "Content", "Announcements");
-
-      // Save all announcements as-is (images + text preserved)
-      const cleaned = announcements.filter(
-        (a) => a.title.trim() && a.message.trim()
-      );
-
       await updateDoc(docRef, { announcements: cleaned });
-
-      const logRef = collection(db, "UserLog");
-      await setDoc(doc(logRef), {
-        action: "Edited Announcements",
-        adminId: auth.currentUser?.uid,
-        userId: auth.currentUser?.uid,
-        email: auth.currentUser?.email,
-        timestamp: new Date(),
-      });
 
       setIsEditing(false);
       setOriginalAnnouncements(cleaned);
       setAnnouncements(cleaned);
       showNotification("Announcements saved successfully!", "success");
-    } catch (error) {
-      console.error("Failed to save announcements:", error);
+    } catch (err) {
+      console.error("Failed to save announcements:", err);
       setError("Failed to save changes. Please try again.");
     } finally {
       setSaving(false);
@@ -210,8 +159,8 @@ export default function Announcement() {
 
   if (loading)
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-black text-xl">Loading...</div>
+      <div className="flex items-center justify-center min-h-screen text-black text-xl">
+        Loading...
       </div>
     );
 
@@ -245,72 +194,75 @@ export default function Announcement() {
         <div className="max-h-[60vh] overflow-y-auto">
           {isEditing ? (
             <div className="flex flex-col space-y-4">
-              {announcements.map((a, idx) => {
-                // Parse images in message
-                const parser = new DOMParser();
-                const doc = parser.parseFromString(a.message, "text/html");
-                const images = Array.from(doc.querySelectorAll("img"));
-                return (
-                  <div key={idx} className="mb-4">
-                    <input
-                      type="text"
-                      value={a.title}
-                      onChange={(e) =>
-                        setAnnouncements((prev) =>
-                          prev.map((it, i) =>
-                            i === idx ? { ...it, title: e.target.value } : it
-                          )
+              {announcements.map((a, idx) => (
+                <div key={idx} className="mb-4 relative border rounded p-4">
+                  {/* Title input */}
+                  <input
+                    type="text"
+                    value={a.title}
+                    onChange={(e) =>
+                      setAnnouncements((prev) =>
+                        prev.map((it, i) =>
+                          i === idx ? { ...it, title: e.target.value } : it
                         )
+                      )
+                    }
+                    className="w-full p-2 border rounded mb-2"
+                    placeholder="Announcement Title"
+                  />
+
+                  {/* Remove Announcement Button */}
+                  {announcements.length > 1 && (
+                    <button
+                      type="button"
+                      className="absolute top-2 right-2 bg-red-600 text-white px-2 py-1 rounded text-sm hover:bg-red-700"
+                      onClick={() => removeAnnouncement(idx)}
+                    >
+                      Remove
+                    </button>
+                  )}
+
+                  {/* Quill editor */}
+                  <div ref={(el) => (quillRefs.current[idx] = el)}>
+                    <ReactQuill
+                      value={a.message}
+                      onChange={(val) =>
+                        handleAnnouncementMessageChange(idx, val)
                       }
-                      className="w-full p-2 border rounded mb-2"
-                      placeholder="Announcement Title"
+                      modules={quillModules}
+                      formats={quillFormats}
+                      theme="snow"
+                      className="bg-white text-black rounded mb-2"
                     />
-                    <div ref={(el) => (quillRefs.current[idx] = el)}>
-                      <ReactQuill
-                        value={a.message}
-                        onChange={(val) =>
-                          handleAnnouncementMessageChange(idx, val)
-                        }
-                        modules={quillModules}
-                        formats={quillFormats}
-                        theme="snow"
-                        className="bg-white text-black rounded mb-2"
-                      />
-                    </div>
-
-                    {/* Display buttons for each image */}
-                    {images.length > 0 && (
-                      <div className="flex flex-wrap gap-2 mb-2">
-                        {images.map((img, imgIdx) => (
-                          <button
-                            key={imgIdx}
-                            className="px-2 py-1 bg-yellow-500 text-white rounded text-xs"
-                            onClick={() => removeSingleImage(idx, imgIdx)}
-                          >
-                            Remove image {imgIdx + 1}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-
-                    <div className="flex gap-2 mb-2">
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setAnnouncements((prev) =>
-                            prev.map((it, i) =>
-                              i === idx ? { ...it, message: "" } : it
-                            )
-                          )
-                        }
-                        className="px-3 py-1 bg-red-500 text-white rounded text-xs"
-                      >
-                        Clear message
-                      </button>
-                    </div>
                   </div>
-                );
-              })}
+
+                  {/* Image previews with remove buttons */}
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    {Array.from(
+                      new DOMParser()
+                        .parseFromString(a.message, "text/html")
+                        .querySelectorAll("img")
+                    ).map((img, iidx) => (
+                      <div key={iidx} className="relative">
+                        <img
+                          src={img.src}
+                          alt={img.alt || ""}
+                          className="w-24 h-24 object-cover rounded"
+                        />
+                        <button
+                          type="button"
+                          className="absolute top-0 right-0 bg-red-600 text-white rounded-full w-5 h-5 text-xs"
+                          onClick={() => removeImageAtIndex(idx, iidx)}
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+
+              {/* Add Announcement button */}
               <button
                 className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm"
                 onClick={addAnnouncement}
@@ -319,6 +271,7 @@ export default function Announcement() {
               </button>
             </div>
           ) : (
+            /* non-editing view remains exactly the same */
             <div className="space-y-4">
               {announcements.length === 0 ? (
                 <p className="text-center text-gray-600">
