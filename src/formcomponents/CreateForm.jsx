@@ -4,12 +4,12 @@ import {
   collection,
   addDoc,
   updateDoc,
+  deleteDoc,
   doc,
   getDoc,
   getDocs,
   query,
   orderBy,
-  limit,
 } from "firebase/firestore";
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 
@@ -18,10 +18,11 @@ export default function CreateForm() {
   const [questions, setQuestions] = useState([]);
   const [isAdmin, setIsAdmin] = useState(false);
   const [formId, setFormId] = useState(null);
+  const [forms, setForms] = useState([]);
   const [mtError, setMtError] = useState(false);
   const manuscriptTitleRef = useRef(null);
 
-  // ✅ Check admin, fetch latest form
+  // Load all forms if Admin
   useEffect(() => {
     const checkAdminAndFetch = async () => {
       auth.onAuthStateChanged(async (user) => {
@@ -31,49 +32,56 @@ export default function CreateForm() {
         setIsAdmin(admin);
         if (!admin) return;
 
-        // Fetch latest form
         const formsCollection = collection(db, "forms");
-        const q = query(
-          formsCollection,
-          orderBy("createdAt", "desc"),
-          limit(1)
-        );
+        const q = query(formsCollection, orderBy("createdAt", "desc"));
         const snapshot = await getDocs(q);
+
         if (!snapshot.empty) {
-          const latestForm = snapshot.docs[0];
-          const formData = latestForm.data();
+          const loadedForms = snapshot.docs.map((docSnap) => ({
+            id: docSnap.id,
+            ...docSnap.data(),
+          }));
+          setForms(loadedForms);
 
-          setFormId(latestForm.id);
-          setTitle(formData.title);
-
-          let loadedQuestions = formData.questions || [];
-
-          // Ensure coauthors question exists (placeholder only)
-          if (!loadedQuestions.some((q) => q.type === "coauthors")) {
-            loadedQuestions.push({
-              id: "coauthors",
-              text: "Co-Authors / Tag Researchers",
-              type: "coauthors",
-            });
-          }
-
-          setQuestions(
-            loadedQuestions.map((q) => ({
-              ...q,
-              id: q.id || Date.now().toString() + Math.random(),
-              options: (q.options || []).map((o) => ({
-                id: o.id || Date.now().toString() + Math.random(),
-                value: o.value || o,
-              })),
-            }))
-          );
+          // Load the latest form by default
+          const latestForm = loadedForms[0];
+          loadForm(latestForm.id, latestForm);
         }
       });
     };
     checkAdminAndFetch();
   }, []);
 
-  // ✅ Questions CRUD (MT + options)
+  // Load form by ID
+  const loadForm = (id, data = null) => {
+    const formData = data || forms.find((f) => f.id === id);
+    if (!formData) return;
+
+    setFormId(formData.id);
+    setTitle(formData.title);
+
+    let loadedQuestions = formData.questions || [];
+    if (!loadedQuestions.some((q) => q.type === "coauthors")) {
+      loadedQuestions.push({
+        id: "coauthors",
+        text: "Co-Authors / Tag Researchers",
+        type: "coauthors",
+      });
+    }
+
+    setQuestions(
+      loadedQuestions.map((q) => ({
+        ...q,
+        id: q.id || Date.now().toString() + Math.random(),
+        options: (q.options || []).map((o) => ({
+          id: o.id || Date.now().toString() + Math.random(),
+          value: o.value || o,
+        })),
+      }))
+    );
+  };
+
+  // Questions CRUD
   const addQuestion = () =>
     setQuestions([
       ...questions,
@@ -94,11 +102,9 @@ export default function CreateForm() {
   const updateQuestion = (index, field, value) => {
     const updated = [...questions];
     updated[index][field] = value;
-
     if (updated[index].isManuscriptTitle && field === "text") {
       if (/manuscript title/i.test(value.trim())) setMtError(false);
     }
-
     if (
       !["multiple", "radio", "checkbox", "select", "coauthors"].includes(value)
     )
@@ -136,6 +142,7 @@ export default function CreateForm() {
     setQuestions(reordered);
   };
 
+  // Save / Update form
   const saveForm = async () => {
     if (!title.trim()) return alert("Form title is required!");
     if (questions.some((q) => q.type !== "coauthors" && !q.text.trim()))
@@ -165,7 +172,7 @@ export default function CreateForm() {
       title,
       questions,
       manuscriptTitle: mtQuestion.text.trim(),
-      coAuthors: [], // co-author selection disabled in CreateForm
+      coAuthors: [],
       updatedAt: new Date(),
     };
 
@@ -179,7 +186,41 @@ export default function CreateForm() {
       });
       setFormId(docRef.id);
       alert("Form saved successfully!");
+      setForms([{ id: docRef.id, ...data }, ...forms]);
     }
+  };
+
+  // Delete form without deleting responses
+  const deleteForm = async () => {
+    if (!formId) return;
+    const confirmDelete = window.confirm(
+      "Are you sure you want to delete this form? Responses will NOT be deleted."
+    );
+    if (!confirmDelete) return;
+
+    await deleteDoc(doc(db, "forms", formId));
+    alert("Form deleted successfully!");
+
+    // Remove from local list and reset editor
+    setForms(forms.filter((f) => f.id !== formId));
+    setFormId(null);
+    setTitle("");
+    setQuestions([
+      {
+        id: Date.now().toString(),
+        text: "Manuscript Title",
+        type: "text",
+        isManuscriptTitle: true,
+        required: true,
+        options: [],
+      },
+      {
+        id: "coauthors",
+        text: "Co-Authors / Tag Researchers",
+        type: "coauthors",
+        options: [],
+      },
+    ]);
   };
 
   if (!isAdmin)
@@ -195,6 +236,47 @@ export default function CreateForm() {
         {formId ? "Edit Form" : "Create a Form"}
       </h1>
 
+      {/* Dropdown to switch forms */}
+      {forms.length > 0 && (
+        <div className="mb-6">
+          <label className="block mb-1 font-medium">Select Form</label>
+          <select
+            value={formId || ""}
+            onChange={(e) => {
+              if (!e.target.value) {
+                setFormId(null);
+                setTitle("");
+                setQuestions([
+                  {
+                    id: Date.now().toString(),
+                    text: "Manuscript Title",
+                    type: "text",
+                    isManuscriptTitle: true,
+                    required: true,
+                    options: [],
+                  },
+                  {
+                    id: "coauthors",
+                    text: "Co-Authors / Tag Researchers",
+                    type: "coauthors",
+                    options: [],
+                  },
+                ]);
+              } else loadForm(e.target.value);
+            }}
+            className="w-full border rounded px-3 py-2 bg-[#f3f2ee]"
+          >
+            {forms.map((f) => (
+              <option key={f.id} value={f.id}>
+                {f.title}
+              </option>
+            ))}
+            <option value="">➕ Create New Form</option>
+          </select>
+        </div>
+      )}
+
+      {/* Title */}
       <div className="mb-8">
         <p className="italic mb-2 text-[1.15rem]">Title</p>
         <input
@@ -205,6 +287,7 @@ export default function CreateForm() {
         />
       </div>
 
+      {/* Questions */}
       <DragDropContext onDragEnd={onDragEnd}>
         <Droppable droppableId="questions">
           {(provided) => (
@@ -342,6 +425,7 @@ export default function CreateForm() {
         </Droppable>
       </DragDropContext>
 
+      {/* Buttons */}
       <div className="flex gap-4 mt-8 justify-between">
         <button
           onClick={addQuestion}
@@ -349,12 +433,24 @@ export default function CreateForm() {
         >
           Add Question
         </button>
-        <button
-          onClick={saveForm}
-          className="bg-[#4CC97B] text-white text-base rounded-lg px-[22px] h-[38px] font-medium"
-        >
-          {formId ? "Update Form" : "Save Form"}
-        </button>
+
+        <div className="flex gap-2">
+          <button
+            onClick={saveForm}
+            className="bg-[#4CC97B] text-white text-base rounded-lg px-[22px] h-[38px] font-medium"
+          >
+            {formId ? "Update Form" : "Save Form"}
+          </button>
+
+          {formId && (
+            <button
+              onClick={deleteForm}
+              className="bg-red-600 text-white text-base rounded-lg px-[22px] h-[38px] font-medium"
+            >
+              Delete Form
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );

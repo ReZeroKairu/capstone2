@@ -81,7 +81,7 @@ export default function FormResponses() {
     return () => unsub();
   }, []);
 
-  // fetch forms for select
+  // fetch total responses for pagination
   useEffect(() => {
     const fetchForms = async () => {
       try {
@@ -94,43 +94,39 @@ export default function FormResponses() {
     fetchForms();
   }, []);
 
-  // fetch total responses for pagination
-  useEffect(() => {
-    if (!selectedFormId) {
-      setTotalResponses(0);
-      return;
-    }
-    const fetchTotal = async () => {
-      try {
-        const constraints = [
-          where("formId", "==", selectedFormId),
-          where("status", "==", "Pending"),
-        ];
-        if (!isAdmin && currentUser) {
-          constraints.push(where("userId", "==", currentUser.uid));
-        }
-        if (startDate && endDate) {
-          const start = Timestamp.fromDate(new Date(startDate + "T00:00:00"));
-          const end = Timestamp.fromDate(new Date(endDate + "T23:59:59"));
-          constraints.push(where("submittedAt", ">=", start));
-          constraints.push(where("submittedAt", "<=", end));
-        }
-        const q = query(collection(db, "form_responses"), ...constraints);
-        const snapshot = await getDocs(q);
-        setTotalResponses(snapshot.size);
-      } catch (err) {
-        console.error("Error fetching total responses:", err);
+  // fetch total responses for pagination, now works for all forms if none selected
+  const fetchTotalCount = async () => {
+    try {
+      const constraints = [where("status", "==", "Pending")];
+      if (selectedFormId)
+        constraints.push(where("formId", "==", selectedFormId));
+      if (!isAdmin && currentUser)
+        constraints.push(where("userId", "==", currentUser.uid));
+      if (startDate && endDate) {
+        const start = Timestamp.fromDate(new Date(startDate + "T00:00:00"));
+        const end = Timestamp.fromDate(new Date(endDate + "T23:59:59"));
+        constraints.push(where("submittedAt", ">=", start));
+        constraints.push(where("submittedAt", "<=", end));
       }
-    };
-    fetchTotal();
+      const snapshot = await getDocs(
+        query(collection(db, "form_responses"), ...constraints)
+      );
+      setTotalResponses(snapshot.size);
+      return snapshot.size;
+    } catch (err) {
+      console.error("Error fetching total responses:", err);
+      return 0;
+    }
+  };
+
+  useEffect(() => {
+    fetchTotalCount();
   }, [selectedFormId, startDate, endDate, currentUser, isAdmin]);
 
   // helper: build query constraints array for current filters/search
   const buildConstraints = () => {
-    const constraints = [
-      where("formId", "==", selectedFormId),
-      where("status", "==", "Pending"),
-    ];
+    const constraints = [where("status", "==", "Pending")];
+    if (selectedFormId) constraints.push(where("formId", "==", selectedFormId));
     if (!isAdmin && currentUser)
       constraints.push(where("userId", "==", currentUser.uid));
     if (startDate && endDate) {
@@ -142,31 +138,14 @@ export default function FormResponses() {
     return constraints;
   };
 
-  // NEW: fetch fresh total count (used when jumping to last page)
-  const fetchTotalCount = async () => {
-    if (!selectedFormId) return 0;
-    try {
-      const constraints = buildConstraints();
-      const q = query(collection(db, "form_responses"), ...constraints);
-      const snap = await getDocs(q);
-      setTotalResponses(snap.size);
-      return snap.size;
-    } catch (err) {
-      console.error("Error fetching total count:", err);
-      return totalResponses || 0;
-    }
-  };
-
-  // ensure we have stored cursors up to page - 1 (so we can startAfter when fetching target page)
+  // ensure cursors for pagination
   const ensureCursorsUpTo = async (page) => {
     if (page <= 1) return;
-    const needed = page - 1; // need lastDoc for pages 1..needed
-    // if pageCursors already has needed entries (each entry corresponds to lastDoc of page i)
+    const needed = page - 1;
     if (pageCursors.length >= needed) return;
 
     let cursors = [...pageCursors];
     try {
-      // start fetching from the last known cursor
       while (cursors.length < needed) {
         const startAfterDoc =
           cursors.length === 0 ? null : cursors[cursors.length - 1];
@@ -182,7 +161,6 @@ export default function FormResponses() {
         if (snap.empty) break;
         const lastDoc = snap.docs[snap.docs.length - 1];
         cursors.push(lastDoc);
-        // if returned docs < pageSize then no more pages after this
         if (snap.docs.length < pageSize) break;
       }
       setPageCursors(cursors);
@@ -193,13 +171,15 @@ export default function FormResponses() {
 
   // main page loader
   const loadPage = async (page = 1) => {
-    if (!selectedFormId || !currentUser) return;
+    if (!currentUser) return;
+
     const isSearching = searchTerm.trim() !== "";
     setLoading(true);
+
     try {
+      const constraints = buildConstraints();
+
       if (isSearching) {
-        // search: fetch larger set and filter client-side
-        const constraints = buildConstraints();
         const q = query(
           collection(db, "form_responses"),
           ...constraints,
@@ -227,7 +207,7 @@ export default function FormResponses() {
             fullName,
             manuscriptTitle,
             res.formTitle,
-            ...(res.searchIndex || []), // still use searchIndex if present
+            ...(res.searchIndex || []),
           ];
 
           return fieldsToSearch.some((f) => f?.toLowerCase().includes(term));
@@ -239,7 +219,6 @@ export default function FormResponses() {
         return;
       }
 
-      // normal pagination: ensure cursors up to target page - 1
       const totalPages = Math.max(1, Math.ceil(totalResponses / pageSize));
       const targetPage = Math.min(Math.max(1, page), totalPages);
 
@@ -247,7 +226,7 @@ export default function FormResponses() {
 
       const startAfterDoc =
         targetPage > 1 ? pageCursors[targetPage - 2] || null : null;
-      const constraints = buildConstraints();
+
       const q = query(
         collection(db, "form_responses"),
         ...constraints,
@@ -259,7 +238,6 @@ export default function FormResponses() {
       const data = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
       setResponses(data);
 
-      // store lastDoc for this page
       if (snap.docs.length > 0) {
         const lastDoc = snap.docs[snap.docs.length - 1];
         setPageCursors((prev) => {
@@ -282,7 +260,6 @@ export default function FormResponses() {
     setResponses([]);
     setPageCursors([]);
     setCurrentPage(1);
-    // small delay to ensure state updates before load (not strictly necessary)
     loadPage(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
@@ -294,7 +271,6 @@ export default function FormResponses() {
     isAdmin,
     pageSize,
   ]);
-
   const handleKeyDown = (e) => {
     if (e.key === "Enter") loadPage(1);
   };
@@ -525,6 +501,14 @@ export default function FormResponses() {
               ▼
             </span>
           </div>
+          <div className="mb-2 italic text-gray-600 text-sm">
+            {selectedFormId
+              ? `Showing responses for: ${
+                  forms.find((f) => f.id === selectedFormId)?.title ||
+                  "Selected Form"
+                }`
+              : "Showing all responses from all forms"}
+          </div>
 
           <div className="flex gap-3 items-center">
             <div className="flex-1 relative border-2 border-[#7B2E19] rounded-xl p-2 flex items-center">
@@ -565,7 +549,7 @@ export default function FormResponses() {
         </div>
 
         <div className="bg-[#f3f2ee] rounded-md overflow-hidden">
-          {responses.length === 0 && !loading && selectedFormId && (
+          {responses.length === 0 && !loading && (
             <div className="p-6 text-center text-gray-600">
               No responses found.
             </div>

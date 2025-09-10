@@ -3,20 +3,19 @@ import { db, auth } from "../../firebase/firebase";
 import {
   collection,
   getDocs,
-  query,
-  orderBy,
-  limit,
-  addDoc,
   doc,
   getDoc,
+  addDoc,
   updateDoc,
   serverTimestamp,
+  query,
+  orderBy,
 } from "firebase/firestore";
 
 export default function SubmitManuscript() {
+  const [forms, setForms] = useState([]);
   const [form, setForm] = useState(null);
   const [answers, setAnswers] = useState({});
-  const [formId, setFormId] = useState(null);
   const [currentUser, setCurrentUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [cooldown, setCooldown] = useState(0);
@@ -33,39 +32,24 @@ export default function SubmitManuscript() {
     cooldownRef.current = cooldown;
   }, [cooldown]);
 
-  // Fetch latest form and researchers
+  // Fetch forms and researchers
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const formQuery = query(
-          collection(db, "forms"),
-          orderBy("createdAt", "desc"),
-          limit(1)
+        // Fetch all forms
+        const formsSnap = await getDocs(
+          query(collection(db, "forms"), orderBy("createdAt", "desc"))
         );
-        const formSnap = await getDocs(formQuery);
-        if (!formSnap.empty) {
-          const docSnap = formSnap.docs[0];
-          const questions = (docSnap.data().questions || []).map((q, i) => ({
-            ...q,
-            options: (q.options || []).map((o, idx) =>
-              typeof o === "string"
-                ? { id: `${i}-${idx}-${Date.now()}`, value: o }
-                : o
-            ),
-          }));
-          setForm({ id: docSnap.id, ...docSnap.data(), questions });
+        const formsList = formsSnap.docs.map((d) => ({
+          id: d.id,
+          ...d.data(),
+        }));
+        setForms(formsList);
 
-          // Preload co-authors (if form stored defaults)
-          const coAuthors =
-            docSnap.data().coAuthors?.map((c) => ({
-              id: c.id,
-              name: c.name,
-              email: c.email,
-            })) || [];
-          setSelectedUsers(coAuthors);
-          setFormId(docSnap.id);
-        }
+        // Preload first form by default
+        if (formsList.length > 0) selectForm(formsList[0].id);
 
+        // Fetch researchers
         const usersSnap = await getDocs(collection(db, "Users"));
         setAllResearchers(
           usersSnap.docs
@@ -79,12 +63,43 @@ export default function SubmitManuscript() {
         });
       } catch (err) {
         console.error("Error fetching data:", err);
-        setMessage("Failed to load form or users.");
+        setMessage("Failed to load forms or users.");
         setLoading(false);
       }
     };
     fetchData();
   }, []);
+
+  // Select a form
+  const selectForm = async (formId) => {
+    try {
+      const docSnap = await getDoc(doc(db, "forms", formId));
+      if (docSnap.exists()) {
+        const questions = (docSnap.data().questions || []).map((q, i) => ({
+          ...q,
+          options: (q.options || []).map((o, idx) =>
+            typeof o === "string"
+              ? { id: `${i}-${idx}-${Date.now()}`, value: o }
+              : o
+          ),
+        }));
+        setForm({ id: docSnap.id, ...docSnap.data(), questions });
+
+        // Preload co-authors
+        const coAuthors =
+          docSnap.data().coAuthors?.map((c) => ({
+            id: c.id,
+            name: c.name,
+            email: c.email,
+          })) || [];
+        setSelectedUsers(coAuthors);
+        setAnswers({});
+      }
+    } catch (err) {
+      console.error("Error selecting form:", err);
+      setMessage("Failed to load selected form.");
+    }
+  };
 
   // Filter researchers
   useEffect(() => {
@@ -143,12 +158,13 @@ export default function SubmitManuscript() {
 
   // Submit answers
   const submitAnswers = async () => {
+    if (!form) return setMessage("No form selected.");
     if (cooldownRef.current > 0) {
       setMessage(`You already submitted. Please wait ${cooldownRef.current}s.`);
       return;
     }
-    if (!form || !currentUser) {
-      setMessage("Form not loaded or user not signed in.");
+    if (!currentUser) {
+      setMessage("User not signed in.");
       return;
     }
 
@@ -159,23 +175,16 @@ export default function SubmitManuscript() {
           : !answers[index]
         : false
     );
-    if (missingRequired) {
-      setMessage("Please fill in all required fields.");
-      return;
-    }
+    if (missingRequired) return setMessage("Please fill all required fields.");
 
     const manuscriptTitleIndex = form.questions.findIndex(
       (q) => q.isManuscriptTitle
     );
-    if (manuscriptTitleIndex === -1) {
-      setMessage("The form must include a 'Manuscript Title' field.");
-      return;
-    }
+    if (manuscriptTitleIndex === -1)
+      return setMessage("Form must have a 'Manuscript Title' field.");
     const manuscriptTitleAnswer = answers[manuscriptTitleIndex] || "";
-    if (!manuscriptTitleAnswer.trim()) {
-      setMessage("Please enter a Manuscript Title before submitting.");
-      return;
-    }
+    if (!manuscriptTitleAnswer.trim())
+      return setMessage("Please enter a Manuscript Title.");
 
     try {
       const userSnap = await getDoc(doc(db, "Users", currentUser.uid));
@@ -183,7 +192,6 @@ export default function SubmitManuscript() {
       const userInfo = userSnap.data();
       const initialStatus = "Pending";
 
-      // Build answeredQuestions and coAuthor metadata
       const answeredQuestions = form.questions.map((q, index) =>
         q.type === "coauthors"
           ? {
@@ -203,7 +211,6 @@ export default function SubmitManuscript() {
             }
       );
 
-      // Build coAuthors objects and ids
       const coAuthors = selectedUsers.map((u) => ({
         id: u.id,
         name: u.name,
@@ -211,7 +218,6 @@ export default function SubmitManuscript() {
       }));
       const coAuthorsIds = selectedUsers.map((u) => u.id);
 
-      // Build a simple searchIndex for client-side searching
       const searchIndex = [
         (userInfo.email || "").toLowerCase(),
         ((userInfo.firstName || "") + " " + (userInfo.lastName || ""))
@@ -225,7 +231,6 @@ export default function SubmitManuscript() {
       setCooldown(5);
       cooldownRef.current = 5;
 
-      // add response doc
       const responseRef = await addDoc(collection(db, "form_responses"), {
         formId: form.id,
         formTitle: form.title || "",
@@ -245,7 +250,6 @@ export default function SubmitManuscript() {
         submittedAt: serverTimestamp(),
       });
 
-      // add manuscript doc
       await addDoc(collection(db, "manuscripts"), {
         responseId: responseRef.id,
         formId: form.id,
@@ -273,6 +277,7 @@ export default function SubmitManuscript() {
       setAnswers({});
       setSelectedUsers([]);
       setMessage("Form submitted successfully!");
+      setTimeout(() => setMessage(""), 4000);
     } catch (err) {
       console.error("Error submitting form:", err);
       setMessage("Failed to submit form. Check console for details.");
@@ -280,125 +285,168 @@ export default function SubmitManuscript() {
   };
 
   if (loading) return <p className="text-center py-10">Loading...</p>;
-  if (!form) return <p className="text-center py-10">No form available.</p>;
 
   return (
     <div className="min-h-screen px-4 md:py-12 lg:py-16 mx-auto max-w-3xl mt-12 bg-white text-[#222]">
       <h1 className="text-2xl font-semibold mb-6 text-[#111] text-center">
-        {form.title}
+        Submit Manuscript
       </h1>
 
-      <div className="flex flex-col gap-6">
-        {form.questions.map((q, index) => (
-          <div
-            key={q.id || index}
-            className="bg-[#e0e0e0] rounded-xl p-4 flex flex-col gap-2"
-          >
-            {q.type === "coauthors" ? (
-              <>
-                <label className="block font-semibold mb-2">Co-Authors</label>
-                <input
-                  type="text"
-                  placeholder="Type name or email to add co-author..."
-                  value={userSearch}
-                  onChange={(e) => setUserSearch(e.target.value)}
-                  className="border p-2 w-full rounded mb-2 focus:outline-none focus:ring-2 focus:ring-green-400"
-                />
-                {userSearch && filteredUsers.length > 0 && (
-                  <div className="border rounded bg-white max-h-40 overflow-y-auto mb-2">
-                    {filteredUsers.map((u) => (
-                      <div
-                        key={u.id}
-                        className="p-2 cursor-pointer hover:bg-gray-200 break-words"
-                        onClick={() =>
-                          addUser({
-                            id: u.id,
-                            name: `${u.firstName} ${u.lastName}`,
-                            email: u.email,
-                          })
-                        }
-                      >
-                        {u.firstName} {u.lastName} ({u.email})
-                      </div>
-                    ))}
-                  </div>
-                )}
-                <div className="flex flex-wrap gap-2 mt-2">
-                  {selectedUsers.map((u) => (
-                    <span
-                      key={u.id}
-                      className="px-2 py-1 rounded bg-blue-200 text-blue-800 flex items-center gap-1"
-                    >
-                      {u.name} ({u.email})
-                      <button onClick={() => removeUser(u.id)}>x</button>
-                    </span>
-                  ))}
-                </div>
-              </>
-            ) : (
-              <>
-                <label className="block font-semibold mb-1">
-                  {q.text}{" "}
-                  {q.required && <span className="text-red-500">*</span>}
-                </label>
-                {q.type === "text" && (
-                  <input
-                    type="text"
-                    value={answers[index] || ""}
-                    onChange={(e) => handleChange(index, e.target.value)}
-                    className="border p-2 w-full rounded focus:outline-none focus:ring-2 focus:ring-green-400"
-                  />
-                )}
-                {q.type === "textarea" && (
-                  <textarea
-                    value={answers[index] || ""}
-                    onChange={(e) => handleChange(index, e.target.value)}
-                    className="border p-2 w-full rounded focus:outline-none focus:ring-2 focus:ring-green-400"
-                    rows={4}
-                  />
-                )}
-                {["radio", "checkbox", "select", "multiple"].includes(q.type) &&
-                  q.options.map((opt) => (
-                    <label
-                      key={opt.id}
-                      className="flex items-center gap-2 break-words"
-                    >
-                      <input
-                        type={q.type === "checkbox" ? "checkbox" : "radio"}
-                        name={`q${index}`}
-                        value={opt.value}
-                        checked={
-                          q.type === "checkbox"
-                            ? answers[index]?.includes(opt.value) || false
-                            : answers[index] === opt.value
-                        }
-                        onChange={() => handleChange(index, opt.value, q.type)}
-                        className="accent-blue-500"
-                      />
-                      <span>{opt.value}</span>
-                    </label>
-                  ))}
-              </>
-            )}
-          </div>
-        ))}
-      </div>
-
-      <div className="flex justify-end mt-8">
-        <button
-          onClick={submitAnswers}
-          className={`${
-            cooldown > 0 ? "bg-gray-400 cursor-not-allowed" : "bg-[#4CC97B]"
-          } text-white text-base rounded-lg px-[22px] h-[38px] font-medium`}
-          disabled={!currentUser || cooldown > 0}
+      {/* Form selection dropdown */}
+      <div className="mb-6">
+        <label className="block mb-2 font-semibold">Select Form:</label>
+        <select
+          value={form?.id || ""}
+          onChange={(e) => selectForm(e.target.value)}
+          className="border p-2 rounded w-full focus:outline-none focus:ring-2 focus:ring-green-400"
         >
-          {cooldown > 0 ? `Please wait ${cooldown}s` : "Submit"}
-        </button>
+          <option value="" disabled>
+            -- Select a Form --
+          </option>
+          {forms.map((f) => (
+            <option key={f.id} value={f.id}>
+              {f.title}
+            </option>
+          ))}
+        </select>
       </div>
 
-      {message && (
-        <p className="mt-2 text-center text-sm text-red-500">{message}</p>
+      {!form && <p className="text-center py-10">No form selected.</p>}
+
+      {form && (
+        <>
+          <h2 className="text-xl font-semibold mb-4 text-center">
+            {form.title}
+          </h2>
+
+          <div className="flex flex-col gap-6">
+            {form.questions.map((q, index) => (
+              <div
+                key={q.id || index}
+                className="bg-[#e0e0e0] rounded-xl p-4 flex flex-col gap-2"
+              >
+                {q.type === "coauthors" ? (
+                  <>
+                    <label className="block font-semibold mb-2">
+                      Co-Authors
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Type name or email to add co-author..."
+                      value={userSearch}
+                      onChange={(e) => setUserSearch(e.target.value)}
+                      className="border p-2 w-full rounded mb-2 focus:outline-none focus:ring-2 focus:ring-green-400"
+                    />
+                    {userSearch && filteredUsers.length > 0 && (
+                      <div className="border rounded bg-white max-h-40 overflow-y-auto mb-2">
+                        {filteredUsers.map((u) => (
+                          <div
+                            key={u.id}
+                            className="p-2 cursor-pointer hover:bg-gray-200 break-words"
+                            onClick={() =>
+                              addUser({
+                                id: u.id,
+                                name: `${u.firstName} ${u.lastName}`,
+                                email: u.email,
+                              })
+                            }
+                          >
+                            {u.firstName} {u.lastName} ({u.email})
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      {selectedUsers.map((u) => (
+                        <span
+                          key={u.id}
+                          className="px-2 py-1 rounded bg-blue-200 text-blue-800 flex items-center gap-1"
+                        >
+                          {u.name} ({u.email})
+                          <button onClick={() => removeUser(u.id)}>x</button>
+                        </span>
+                      ))}
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <label className="block font-semibold mb-1">
+                      {q.text}{" "}
+                      {q.required && <span className="text-red-500">*</span>}
+                    </label>
+                    {q.type === "text" && (
+                      <input
+                        type="text"
+                        value={answers[index] || ""}
+                        onChange={(e) => handleChange(index, e.target.value)}
+                        className="border p-2 w-full rounded focus:outline-none focus:ring-2 focus:ring-green-400"
+                      />
+                    )}
+                    {q.type === "textarea" && (
+                      <textarea
+                        value={answers[index] || ""}
+                        onChange={(e) => handleChange(index, e.target.value)}
+                        className="border p-2 w-full rounded focus:outline-none focus:ring-2 focus:ring-green-400"
+                        rows={4}
+                      />
+                    )}
+                    {["radio", "checkbox", "select", "multiple"].includes(
+                      q.type
+                    ) &&
+                      q.options.map((opt) => (
+                        <label
+                          key={opt.id}
+                          className="flex items-center gap-2 break-words"
+                        >
+                          <input
+                            type={q.type === "checkbox" ? "checkbox" : "radio"}
+                            name={`q${index}`}
+                            value={opt.value}
+                            checked={
+                              q.type === "checkbox"
+                                ? answers[index]?.includes(opt.value) || false
+                                : answers[index] === opt.value
+                            }
+                            onChange={() =>
+                              handleChange(index, opt.value, q.type)
+                            }
+                            className="accent-blue-500"
+                          />
+                          <span>{opt.value}</span>
+                        </label>
+                      ))}
+                  </>
+                )}
+              </div>
+            ))}
+          </div>
+
+          <div className="flex justify-end mt-8">
+            <button
+              onClick={submitAnswers}
+              className={`${
+                cooldown > 0 ? "bg-gray-400 cursor-not-allowed" : "bg-[#4CC97B]"
+              } text-white text-base rounded-lg px-[22px] h-[38px] font-medium`}
+              disabled={!currentUser || cooldown > 0}
+            >
+              {cooldown > 0 ? `Please wait ${cooldown}s` : "Submit"}
+            </button>
+          </div>
+
+          {message && (
+            <p
+              className={`mt-2 text-center text-sm ${
+                message.toLowerCase().includes("successfully")
+                  ? "text-green-500"
+                  : "text-red-500"
+              }`}
+            >
+              {message}
+            </p>
+          )}
+        </>
       )}
+
       {!currentUser && (
         <p className="text-red-500 mt-2 text-sm text-center">
           You must be signed in to submit the form.
