@@ -141,12 +141,14 @@ const Sidebar = ({ role, isOpen, toggleSidebar }) => {
         {isOpen ? <FaTimes /> : <FaBars />}
       </button>
 
-      {/* Mobile Bottom Menu - always stick to bottom */}
-      <div className="md:hidden fixed bottom-0 left-0 w-full bg-red-800 text-white z-30 flex justify-around p-2 h-16">
-        {renderLinks(links, true)}
-        {role === "Admin" && renderLinks(adminLinks, true)}
-        {role === "Researcher" && renderLinks(researcherLinks, true)}
-        {role === "Peer Reviewer" && renderLinks(peerReviewerLinks, true)}
+      {/* Mobile Bottom Menu - horizontally scrollable with subtle scrollbar */}
+      <div className="md:hidden fixed bottom-0 left-0 w-full bg-red-800 text-white z-30 overflow-x-auto scrollbar-thin scrollbar-thumb-yellow-500 scrollbar-track-red-800">
+        <ul className="flex flex-nowrap p-2 gap-2 min-w-max">
+          {renderLinks(links, true)}
+          {role === "Admin" && renderLinks(adminLinks, true)}
+          {role === "Researcher" && renderLinks(researcherLinks, true)}
+          {role === "Peer Reviewer" && renderLinks(peerReviewerLinks, true)}
+        </ul>
       </div>
     </>
   );
