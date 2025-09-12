@@ -24,9 +24,6 @@ const Footer = () => {
         <a href="/terms" className="hover:underline">
           Terms of Service
         </a>
-        <a href="/contact" className="hover:underline">
-          Contact Us
-        </a>
       </div>
     </footer>
   );
