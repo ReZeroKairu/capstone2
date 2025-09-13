@@ -89,7 +89,9 @@ export default function SubmitManuscript() {
         const coAuthors =
           docSnap.data().coAuthors?.map((c) => ({
             id: c.id,
-            name: c.name,
+            firstName: c.firstName,
+            middleName: c.middleName || "",
+            lastName: c.lastName,
             email: c.email,
           })) || [];
         setSelectedUsers(coAuthors);
@@ -110,6 +112,7 @@ export default function SubmitManuscript() {
         (u) =>
           (u.firstName?.toLowerCase().includes(term) ||
             u.lastName?.toLowerCase().includes(term) ||
+            u.middleName?.toLowerCase().includes(term) ||
             (u.email || "").toLowerCase().includes(term)) &&
           !selectedUsers.some((su) => su.id === u.id)
       )
@@ -156,6 +159,13 @@ export default function SubmitManuscript() {
   const removeUser = (id) =>
     setSelectedUsers(selectedUsers.filter((u) => u.id !== id));
 
+  // Format name with middle initial
+  const formatName = (first, middle, last) => {
+    if (!first && !last) return "";
+    const middleInitial = middle ? `${middle.charAt(0)}.` : "";
+    return `${first || ""} ${middleInitial} ${last || ""}`.trim();
+  };
+
   // Submit answers
   const submitAnswers = async () => {
     if (!form) return setMessage("No form selected.");
@@ -198,7 +208,12 @@ export default function SubmitManuscript() {
               question: "Co-Authors",
               type: "coauthors",
               required: q.required || false,
-              answer: selectedUsers.map((u) => `${u.name} (${u.email})`),
+              answer: selectedUsers.map(
+                (u) =>
+                  `${formatName(u.firstName, u.middleName, u.lastName)} (${
+                    u.email
+                  })`
+              ),
             }
           : {
               question: q.text,
@@ -213,19 +228,37 @@ export default function SubmitManuscript() {
 
       const coAuthors = selectedUsers.map((u) => ({
         id: u.id,
-        name: u.name,
+        firstName: u.firstName,
+        middleName: u.middleName || "",
+        lastName: u.lastName,
         email: u.email,
       }));
       const coAuthorsIds = selectedUsers.map((u) => u.id);
 
       const searchIndex = [
         (userInfo.email || "").toLowerCase(),
-        ((userInfo.firstName || "") + " " + (userInfo.lastName || ""))
+        (
+          (userInfo.firstName || "") +
+          " " +
+          (userInfo.middleName || "") +
+          " " +
+          (userInfo.lastName || "")
+        )
           .trim()
           .toLowerCase(),
         manuscriptTitleAnswer.toLowerCase(),
         ...selectedUsers.map((u) => (u.email || "").toLowerCase()),
-        ...selectedUsers.map((u) => (u.name || "").toLowerCase()),
+        ...selectedUsers.map((u) =>
+          (
+            (u.firstName || "") +
+            " " +
+            (u.middleName || "") +
+            " " +
+            (u.lastName || "")
+          )
+            .trim()
+            .toLowerCase()
+        ),
       ].filter(Boolean);
 
       setCooldown(5);
@@ -237,6 +270,7 @@ export default function SubmitManuscript() {
         manuscriptTitle: manuscriptTitleAnswer,
         userId: currentUser.uid,
         firstName: userInfo.firstName || "",
+        middleName: userInfo.middleName || "",
         lastName: userInfo.lastName || "",
         email: userInfo.email || "",
         role: userInfo.role || "Researcher",
@@ -258,6 +292,7 @@ export default function SubmitManuscript() {
         answeredQuestions,
         userId: currentUser.uid,
         firstName: userInfo.firstName || "",
+        middleName: userInfo.middleName || "",
         lastName: userInfo.lastName || "",
         role: userInfo.role || "Researcher",
         coAuthors,
@@ -346,12 +381,15 @@ export default function SubmitManuscript() {
                             onClick={() =>
                               addUser({
                                 id: u.id,
-                                name: `${u.firstName} ${u.lastName}`,
+                                firstName: u.firstName,
+                                middleName: u.middleName || "",
+                                lastName: u.lastName,
                                 email: u.email,
                               })
                             }
                           >
-                            {u.firstName} {u.lastName} ({u.email})
+                            {formatName(u.firstName, u.middleName, u.lastName)}{" "}
+                            ({u.email})
                           </div>
                         ))}
                       </div>
@@ -360,9 +398,13 @@ export default function SubmitManuscript() {
                       {selectedUsers.map((u) => (
                         <span
                           key={u.id}
+                          title={`${u.firstName} ${u.middleName || ""} ${
+                            u.lastName
+                          }`}
                           className="px-2 py-1 rounded bg-blue-200 text-blue-800 flex items-center gap-1"
                         >
-                          {u.name} ({u.email})
+                          {formatName(u.firstName, u.middleName, u.lastName)} (
+                          {u.email})
                           <button onClick={() => removeUser(u.id)}>x</button>
                         </span>
                       ))}

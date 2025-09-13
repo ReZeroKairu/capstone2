@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   collection,
   query,
@@ -11,62 +11,106 @@ import {
   deleteDoc,
 } from "firebase/firestore";
 import { db } from "../../firebase/firebase";
+import { userCache, getUserInfo } from "../../utils/userCache";
+
+// ... (imports remain unchanged)
 
 const UserLog = ({ onLogsUpdated }) => {
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [lastVisible, setLastVisible] = useState(null);
+  const [pageCursors, setPageCursors] = useState([]);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [logsPerPage, setLogsPerPage] = useState(10);
   const [hasMore, setHasMore] = useState(true);
   const [error, setError] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
 
-  const fetchLogs = async (isInitialLoad = false) => {
-    try {
-      const logsRef = collection(db, "UserLog");
-      let logsQuery = query(logsRef, orderBy("timestamp", "desc"), limit(10));
+  const fetchFullName = async (log) => {
+    let first = log.previousFirstName || log.newFirstName || "";
+    let middle = log.previousMiddleName || log.newMiddleName || "";
+    let last = log.previousLastName || log.newLastName || "";
 
-      if (!isInitialLoad && lastVisible) {
-        logsQuery = query(
-          logsRef,
-          orderBy("timestamp", "desc"),
-          startAfter(lastVisible),
-          limit(10)
-        );
+    if (!first && !middle && !last && log.userId) {
+      try {
+        const info = await getUserInfo(log.userId);
+        const nameParts = info.fullName.split(" ");
+        first = nameParts[0] || "";
+        middle = nameParts.length > 2 ? nameParts[1] : "";
+        last =
+          nameParts.length > 2
+            ? nameParts.slice(2).join(" ")
+            : nameParts[1] || "";
+      } catch (err) {
+        console.error("Error fetching user full name:", err);
+      }
+    }
+
+    return [first, middle, last].filter(Boolean).join(" ");
+  };
+
+  const fetchLogs = async (page = 1) => {
+    try {
+      setLoading(true);
+      const logsRef = collection(db, "UserLog");
+      const baseQuery = [orderBy("timestamp", "desc"), limit(logsPerPage)];
+
+      let logsQuery;
+      if (page === 1) {
+        logsQuery = query(logsRef, ...baseQuery);
+      } else {
+        const cursor = pageCursors[page - 2];
+        logsQuery = query(logsRef, ...baseQuery, startAfter(cursor));
       }
 
       const logsSnapshot = await getDocs(logsQuery);
+
       if (logsSnapshot.empty) {
         setHasMore(false);
         return;
       }
 
-      const fetchedLogs = logsSnapshot.docs.map((doc) => {
-        const data = doc.data();
-        return {
-          id: doc.id,
-          timestamp:
+      const fetchedLogs = await Promise.all(
+        logsSnapshot.docs.map(async (doc) => {
+          const data = doc.data();
+          const fullName = await fetchFullName(data);
+          const timestamp =
             data.timestamp instanceof Timestamp
               ? data.timestamp.toDate()
-              : new Date(data.timestamp.seconds * 1000),
-          email: data.email || "",
-          action: data.action || "",
-          adminId: data.adminId || "",
-          newFirstName: data.newFirstName || "",
-          newLastName: data.newLastName || "",
-          previousFirstName: data.previousFirstName || "",
-          previousLastName: data.previousLastName || "",
-          userId: data.userId || "",
-        };
+              : data.timestamp?.seconds
+              ? new Date(data.timestamp.seconds * 1000)
+              : new Date();
+
+          return {
+            id: doc.id,
+            timestamp,
+            formattedTimestamp: timestamp.toLocaleString(),
+            email: data.email || "",
+            action: data.action || "",
+            adminId: data.adminId || "",
+            newFirstName: data.newFirstName || "",
+            newMiddleName: data.newMiddleName || "",
+            newLastName: data.newLastName || "",
+            previousFirstName: data.previousFirstName || "",
+            previousMiddleName: data.previousMiddleName || "",
+            previousLastName: data.previousLastName || "",
+            userId: data.userId || "",
+            fullName,
+          };
+        })
+      );
+
+      setLogs(fetchedLogs);
+
+      const lastDoc = logsSnapshot.docs[logsSnapshot.docs.length - 1];
+      setPageCursors((prev) => {
+        const newCursors = [...prev];
+        newCursors[page - 1] = lastDoc;
+        return newCursors;
       });
 
-      setLogs((prev) =>
-        isInitialLoad ? fetchedLogs : [...prev, ...fetchedLogs]
-      );
-      setLastVisible(logsSnapshot.docs[logsSnapshot.docs.length - 1]);
-      setHasMore(fetchedLogs.length > 0);
-
+      setHasMore(fetchedLogs.length === logsPerPage);
       if (onLogsUpdated) onLogsUpdated(fetchedLogs);
     } catch (err) {
       console.error("Error fetching logs:", err);
@@ -89,57 +133,62 @@ const UserLog = ({ onLogsUpdated }) => {
   };
 
   useEffect(() => {
-    setLogs([]);
-    setLastVisible(null);
-    setHasMore(true);
-    setLoading(true);
-    setError(null);
-    fetchLogs(true);
-  }, []);
+    fetchLogs(currentPage);
+  }, [currentPage, logsPerPage]);
 
-  const handleLoadMore = () => {
-    if (hasMore && !loading) {
-      setLoading(true);
-      fetchLogs();
-    }
-  };
+  const filteredLogs = useMemo(
+    () =>
+      logs.filter((log) => {
+        const fullName = log.fullName || "";
+        const matchesSearch =
+          log.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          log.action.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          log.userId.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          fullName.toLowerCase().includes(searchTerm.toLowerCase());
 
-  // Filtered logs based on search, name, and date
-  const filteredLogs = logs.filter((log) => {
-    const fullName = `${log.newFirstName} ${log.newLastName} ${log.previousFirstName} ${log.previousLastName}`;
-    const matchesSearch =
-      log.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      log.action.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      log.userId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      fullName.toLowerCase().includes(searchTerm.toLowerCase());
+        const matchesStartDate = startDate
+          ? log.timestamp >= new Date(startDate)
+          : true;
+        const matchesEndDate = endDate
+          ? log.timestamp <=
+            new Date(new Date(endDate).setHours(23, 59, 59, 999))
+          : true;
 
-    const matchesStartDate = startDate
-      ? log.timestamp >= new Date(startDate)
-      : true;
-
-    const matchesEndDate = endDate
-      ? log.timestamp <= new Date(new Date(endDate).setHours(23, 59, 59, 999))
-      : true;
-
-    return matchesSearch && matchesStartDate && matchesEndDate;
-  });
-
-  // Determine which columns actually have data
-  const allColumns = [
-    { key: "timestamp", label: "Timestamp" },
-    { key: "email", label: "Email" },
-    { key: "action", label: "Action" },
-    { key: "userId", label: "User ID" },
-    { key: "newFirstName", label: "New First Name" },
-    { key: "newLastName", label: "New Last Name" },
-    { key: "previousFirstName", label: "Previous First Name" },
-    { key: "previousLastName", label: "Previous Last Name" },
-    { key: "adminId", label: "Admin ID" },
-  ];
-
-  const visibleColumns = allColumns.filter((col) =>
-    filteredLogs.some((log) => log[col.key])
+        return matchesSearch && matchesStartDate && matchesEndDate;
+      }),
+    [logs, searchTerm, startDate, endDate]
   );
+
+  // Reliable total pages based on Firestore cursor
+  const totalPages = pageCursors.length + (hasMore ? 1 : 0);
+
+  const getPageNumbers = (current, total) => {
+    const delta = 2;
+    const range = [];
+    const rangeWithDots = [];
+
+    for (let i = 1; i <= total; i++) {
+      if (
+        i === 1 ||
+        i === total ||
+        (i >= current - delta && i <= current + delta)
+      ) {
+        range.push(i);
+      }
+    }
+
+    let prev = null;
+    for (let num of range) {
+      if (prev) {
+        if (num - prev === 2) rangeWithDots.push(prev + 1);
+        else if (num - prev > 2) rangeWithDots.push("...");
+      }
+      rangeWithDots.push(num);
+      prev = num;
+    }
+
+    return rangeWithDots;
+  };
 
   return (
     <div className="flex justify-center items-start min-h-screen pt-28 md:pt-24 bg-gray-100 p-2 md:p-4">
@@ -175,7 +224,7 @@ const UserLog = ({ onLogsUpdated }) => {
 
         {error && <div className="text-red-500 text-center mb-2">{error}</div>}
 
-        {/* Cards layout for all screens */}
+        {/* Cards */}
         <div className="flex flex-col gap-3">
           {filteredLogs.length > 0 ? (
             filteredLogs.map((log) => (
@@ -184,17 +233,80 @@ const UserLog = ({ onLogsUpdated }) => {
                 className="bg-white rounded-lg border border-gray-200 p-4 shadow-sm flex flex-col md:flex-row md:justify-between gap-2"
               >
                 <div className="flex flex-col gap-1">
-                  {Object.entries(log).map(([key, value]) => {
-                    if (!value || key === "id") return null;
-                    return (
-                      <p key={key} className="text-sm md:text-base truncate">
-                        <span className="font-semibold text-gray-700">
-                          {allColumns.find((c) => c.key === key)?.label || key}:
-                        </span>{" "}
-                        {value instanceof Date ? value.toLocaleString() : value}
-                      </p>
-                    );
-                  })}
+                  <p className="text-sm md:text-base truncate">
+                    <span className="font-semibold text-gray-700">Email:</span>{" "}
+                    {log.email}
+                  </p>
+                  <p className="text-sm md:text-base truncate">
+                    <span className="font-semibold text-gray-700">
+                      Timestamp:
+                    </span>{" "}
+                    {log.formattedTimestamp}
+                  </p>
+                  {log.newFirstName && (
+                    <p className="text-sm md:text-base truncate">
+                      <span className="font-semibold text-gray-700">
+                        New First Name:
+                      </span>{" "}
+                      {log.newFirstName}
+                    </p>
+                  )}
+                  {log.newMiddleName && (
+                    <p className="text-sm md:text-base truncate">
+                      <span className="font-semibold text-gray-700">
+                        New Middle Name:
+                      </span>{" "}
+                      {log.newMiddleName}
+                    </p>
+                  )}
+                  {log.newLastName && (
+                    <p className="text-sm md:text-base truncate">
+                      <span className="font-semibold text-gray-700">
+                        New Last Name:
+                      </span>{" "}
+                      {log.newLastName}
+                    </p>
+                  )}
+                  {log.previousFirstName && (
+                    <p className="text-sm md:text-base truncate">
+                      <span className="font-semibold text-gray-700">
+                        Previous First Name:
+                      </span>{" "}
+                      {log.previousFirstName}
+                    </p>
+                  )}
+                  {log.previousMiddleName && (
+                    <p className="text-sm md:text-base truncate">
+                      <span className="font-semibold text-gray-700">
+                        Previous Middle Name:
+                      </span>{" "}
+                      {log.previousMiddleName}
+                    </p>
+                  )}
+                  {log.previousLastName && (
+                    <p className="text-sm md:text-base truncate">
+                      <span className="font-semibold text-gray-700">
+                        Previous Last Name:
+                      </span>{" "}
+                      {log.previousLastName}
+                    </p>
+                  )}
+                  {log.action && (
+                    <p className="text-sm md:text-base truncate">
+                      <span className="font-semibold text-gray-700">
+                        Action:
+                      </span>{" "}
+                      {log.action}
+                    </p>
+                  )}
+                  {log.userId && (
+                    <p className="text-sm md:text-base truncate">
+                      <span className="font-semibold text-gray-700">
+                        User ID:
+                      </span>{" "}
+                      {log.userId}
+                    </p>
+                  )}
                 </div>
 
                 <div className="flex justify-end items-start md:items-center mt-2 md:mt-0">
@@ -214,23 +326,76 @@ const UserLog = ({ onLogsUpdated }) => {
           )}
         </div>
 
-        {/* Load More */}
-        {hasMore && !loading && (
-          <div className="flex justify-center mt-4">
-            <button
-              onClick={handleLoadMore}
-              className="bg-blue-500 text-white px-6 py-2 rounded-md shadow hover:bg-blue-400 transition"
+        {/* Pagination */}
+        <div className="mt-4 p-2 bg-yellow-400 shadow-lg flex flex-col sm:flex-row justify-between items-center gap-2 rounded-sm">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-sm font-bold text-red-900">Page Size:</span>
+            <select
+              value={logsPerPage}
+              onChange={(e) => {
+                setLogsPerPage(Number(e.target.value));
+                setCurrentPage(1);
+              }}
+              className="border-2 border-red-800 bg-yellow-400 rounded-md text-red-900 font-bold text-sm"
             >
-              Load More
+              <option value={5}>5</option>
+              <option value={10}>10</option>
+              <option value={20}>20</option>
+            </select>
+          </div>
+
+          <div className="flex items-center flex-wrap gap-1 text-sm">
+            <button
+              onClick={() => setCurrentPage(1)}
+              disabled={currentPage === 1}
+              className="px-3 py-1 mr-1 bg-yellow-400 text-red-900 rounded-md border border-red-900 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              First
+            </button>
+            <button
+              onClick={() => setCurrentPage(Math.max(currentPage - 1, 1))}
+              disabled={currentPage === 1}
+              className="px-3 py-1 mr-1 bg-yellow-400 text-red-900 rounded-md border border-red-900 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Prev
+            </button>
+
+            {getPageNumbers(currentPage, totalPages).map((num, idx) =>
+              num === "..." ? (
+                <span key={idx} className="px-3 py-1">
+                  ...
+                </span>
+              ) : (
+                <button
+                  key={idx}
+                  onClick={() => setCurrentPage(num)}
+                  className={`px-3 py-1 mr-1 rounded-lg ${
+                    num === currentPage
+                      ? "bg-red-900 text-white border border-red-900"
+                      : "bg-yellow-400 text-red-900 border border-red-900"
+                  }`}
+                >
+                  {num}
+                </button>
+              )
+            )}
+
+            <button
+              onClick={() => hasMore && setCurrentPage(currentPage + 1)}
+              disabled={!hasMore}
+              className="px-3 py-1 mr-1 bg-yellow-400 text-red-900 rounded-md border border-red-900 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Next
+            </button>
+            <button
+              onClick={() => setCurrentPage(totalPages)}
+              disabled={!hasMore}
+              className="px-3 py-1 mr-1 bg-yellow-400 text-red-900 rounded-md border border-red-900 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Last
             </button>
           </div>
-        )}
-
-        {loading && logs.length > 0 && (
-          <div className="text-center py-2 text-gray-500">
-            Loading more logs...
-          </div>
-        )}
+        </div>
       </div>
     </div>
   );
