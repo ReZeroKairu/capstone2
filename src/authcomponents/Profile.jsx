@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from "react";
 import { db } from "../firebase/firebase";
-import { doc, getDoc, updateDoc, addDoc, collection } from "firebase/firestore";
+import { doc, getDoc, updateDoc } from "firebase/firestore";
 import { useAuth } from "../authcontext/AuthContext";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faUser, faEdit } from "@fortawesome/free-solid-svg-icons";
+import { logProfileUpdate } from "../utils/logger"; // updated logger
 
 function Profile() {
   const { currentUser } = useAuth();
@@ -12,15 +13,21 @@ function Profile() {
   const [message, setMessage] = useState("");
   const [messageType, setMessageType] = useState("");
   const [messageTimeout, setMessageTimeout] = useState(null);
+  const [showFullMiddle, setShowFullMiddle] = useState(false);
+
   const messageRef = useRef(null);
   const firstNameRef = useRef(null);
   const lastNameRef = useRef(null);
 
-  const getInitials = (firstName, lastName) => {
-    return ((firstName?.[0] || "") + (lastName?.[0] || "")).toUpperCase();
-  };
+  const getInitials = (firstName, middleName, lastName) =>
+    (
+      (firstName?.[0] || "") +
+      (middleName?.[0] || "") +
+      (lastName?.[0] || "")
+    ).toUpperCase();
 
   const [originalFirstName, setOriginalFirstName] = useState("");
+  const [originalMiddleName, setOriginalMiddleName] = useState("");
   const [originalLastName, setOriginalLastName] = useState("");
 
   const [peerReviewerInfo, setPeerReviewerInfo] = useState({
@@ -64,8 +71,8 @@ function Profile() {
           photoURL: currentUser.photoURL,
         });
         setOriginalFirstName(userData.firstName);
+        setOriginalMiddleName(userData.middleName || "");
         setOriginalLastName(userData.lastName);
-
         if (userData.role === "Peer Reviewer") {
           setPeerReviewerInfo({
             affiliation: userData.affiliation || "",
@@ -73,9 +80,7 @@ function Profile() {
             interests: userData.interests || "",
           });
         }
-      } else {
-        showMessage("Profile not found.", "error");
-      }
+      } else showMessage("Profile not found.", "error");
     } catch (error) {
       console.error("Error fetching profile:", error);
       showMessage("Failed to fetch profile.", "error");
@@ -93,92 +98,54 @@ function Profile() {
       block: "start",
     });
   };
-
-  const logUserAction = async (
-    user,
-    action,
-    previousFirstName,
-    previousLastName,
-    newFirstName,
-    newLastName,
-    adminId
-  ) => {
-    try {
-      const userLogRef = collection(db, "UserLog");
-      const timestamp = new Date();
-
-      await addDoc(userLogRef, {
-        userId: user.uid,
-        adminId: adminId || null,
-        action,
-        email: user.email,
-        previousFirstName,
-        previousLastName,
-        newFirstName,
-        newLastName,
-        timestamp,
-      });
-    } catch (err) {
-      console.error("Failed to log action:", err);
-    }
-  };
-
-  // --- UPDATED handleUpdateProfile ---
   const handleUpdateProfile = async () => {
-    let noChanges =
-      profile.firstName === originalFirstName &&
-      profile.lastName === originalLastName;
+    const before = {
+      firstName: originalFirstName,
+      middleName: originalMiddleName,
+      lastName: originalLastName,
+      ...(profile.role === "Peer Reviewer" ? peerReviewerInfo : {}),
+    };
+    const after = {
+      firstName: profile.firstName,
+      middleName: profile.middleName || "",
+      lastName: profile.lastName,
+      ...(profile.role === "Peer Reviewer" ? peerReviewerInfo : {}),
+    };
 
-    if (profile.role === "Peer Reviewer") {
-      noChanges =
-        noChanges &&
-        Object.keys(peerReviewerInfo).every(
-          (field) => peerReviewerInfo[field] === (profile[field] || "")
-        );
-    }
+    // Detect changed fields
+    const changedFields = {};
+    Object.keys(after).forEach((key) => {
+      if (after[key] !== before[key])
+        changedFields[key] = { before: before[key], after: after[key] };
+    });
 
-    if (noChanges) {
+    if (Object.keys(changedFields).length === 0) {
       showMessage("No changes to save.", "error");
       window.scrollTo({ top: 0, behavior: "smooth" });
       return;
     }
 
+    // Inside handleUpdateProfile
     try {
-      const adminId = currentUser.uid;
+      await updateDoc(doc(db, "Users", profile.id), after);
 
-      const updateData = {
-        firstName: profile.firstName,
-        lastName: profile.lastName,
-      };
-
-      if (profile.role === "Peer Reviewer") {
-        Object.keys(peerReviewerInfo).forEach(
-          (field) => (updateData[field] = peerReviewerInfo[field])
-        );
-      }
-
-      await updateDoc(doc(db, "Users", profile.id), updateData);
-
-      await logUserAction(
-        currentUser,
-        "Profile Update",
-        originalFirstName,
-        originalLastName,
-        profile.firstName,
-        profile.lastName,
-        adminId
-      );
+      // ✅ Use updated logger: provide actingUserId and before/after objects
+      await logProfileUpdate({
+        actingUserId: currentUser.uid, // your current user
+        before, // previous profile values
+        after, // updated profile values
+      });
 
       const updatedUserDoc = await getDoc(doc(db, "Users", profile.id));
       if (updatedUserDoc.exists()) {
         const updatedUserData = updatedUserDoc.data();
         setProfile((prev) => ({
           ...prev,
-          firstName: updatedUserData.firstName,
-          lastName: updatedUserData.lastName,
-          ...(profile.role === "Peer Reviewer" && { ...updatedUserData }),
+          ...updatedUserData,
+          middleName: updatedUserData.middleName || "",
         }));
         setOriginalFirstName(updatedUserData.firstName);
+        setOriginalMiddleName(updatedUserData.middleName || "");
         setOriginalLastName(updatedUserData.lastName);
       }
 
@@ -191,7 +158,6 @@ function Profile() {
       window.scrollTo({ top: 0, behavior: "smooth" });
     }
   };
-  // --- END UPDATE ---
 
   const showMessage = (text, type) => {
     setMessage(text);
@@ -203,11 +169,9 @@ function Profile() {
     }, 5000);
     setMessageTimeout(timeout);
 
-    if (messageRef.current) {
+    if (messageRef.current)
       messageRef.current.scrollIntoView({ behavior: "smooth" });
-    } else {
-      window.scrollTo({ top: 100, behavior: "smooth" });
-    }
+    else window.scrollTo({ top: 100, behavior: "smooth" });
   };
 
   const handlePeerReviewerChange = (field, value) => {
@@ -217,7 +181,6 @@ function Profile() {
   return (
     <div className="flex justify-center items-start min-h-screen pt-28 px-4 pb-10 bg-gray-100">
       <div className="relative bg-red-800 w-full max-w-md rounded-lg shadow-2xl p-6 sm:p-8 pt-16 pb-36">
-        {/* Edit Button */}
         <button
           className="absolute top-4 right-4 text-white hover:text-yellow-300 active:text-yellow-500 transition-all z-10"
           onClick={handleEdit}
@@ -225,7 +188,6 @@ function Profile() {
           <FontAwesomeIcon icon={faEdit} className="text-2xl" />
         </button>
 
-        {/* Message */}
         {message && (
           <div
             ref={messageRef}
@@ -242,14 +204,12 @@ function Profile() {
         )}
         {!message && <div className="h-8 mb-4"></div>}
 
-        {/* Profile Title */}
         <h2 className="text-3xl font-semibold mb-6 text-center text-white">
           Profile
         </h2>
 
         {profile ? (
           <div className="space-y-6 pr-2">
-            {/* Profile Photo + Name */}
             <div className="flex flex-col items-center mb-6">
               {profile.photoURL ? (
                 <img
@@ -259,18 +219,28 @@ function Profile() {
                 />
               ) : (
                 <div className="w-32 h-32 rounded-full bg-yellow-400 flex justify-center items-center text-white text-6xl shadow-lg mb-4">
-                  {getInitials(profile.firstName, profile.lastName) || (
-                    <FontAwesomeIcon icon={faUser} />
-                  )}
+                  {getInitials(
+                    profile.firstName,
+                    profile.middleName,
+                    profile.lastName
+                  ) || <FontAwesomeIcon icon={faUser} />}
                 </div>
               )}
-              <p className="text-white text-3xl font-bold text-center mb-1">
-                {profile.firstName} {profile.lastName}
+              <p
+                className="text-white text-3xl font-bold text-center mb-1 cursor-pointer"
+                onClick={() => setShowFullMiddle(!showFullMiddle)}
+              >
+                {profile.firstName}{" "}
+                {profile.middleName
+                  ? showFullMiddle
+                    ? profile.middleName
+                    : `${profile.middleName.charAt(0)}.`
+                  : ""}{" "}
+                {profile.lastName}
               </p>
               <p className="text-white text-xl text-center">{profile.role}</p>
             </div>
 
-            {/* Email */}
             <div className="border-b-2 border-white pb-3 mb-6">
               <label className="font-semibold text-white text-sm mb-2">
                 Email:
@@ -278,7 +248,6 @@ function Profile() {
               <p className="text-white mb-4 text-lg">{currentUser.email}</p>
             </div>
 
-            {/* First Name */}
             <div className="border-b-2 border-white pb-3 mb-6">
               <label className="font-semibold text-white text-sm mb-2">
                 First Name:
@@ -300,7 +269,27 @@ function Profile() {
               )}
             </div>
 
-            {/* Last Name */}
+            <div className="border-b-2 border-white pb-3 mb-6">
+              <label className="font-semibold text-white text-sm mb-2">
+                Middle Name:
+              </label>
+              {!isEditing ? (
+                <p className="text-white text-lg">
+                  {profile.middleName || "No middle name"}
+                </p>
+              ) : (
+                <input
+                  type="text"
+                  value={profile.middleName || ""}
+                  onChange={(e) =>
+                    setProfile({ ...profile, middleName: e.target.value })
+                  }
+                  placeholder="Enter middle name"
+                  className="w-full p-1 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-black shadow-md transition-all ease-in-out duration-300"
+                />
+              )}
+            </div>
+
             <div className="border-b-2 border-white pb-3 mb-6">
               <label className="font-semibold text-white text-sm mb-2">
                 Last Name:
@@ -322,7 +311,6 @@ function Profile() {
               )}
             </div>
 
-            {/* Peer Reviewer Fields */}
             {profile.role === "Peer Reviewer" && peerReviewerInfo && (
               <div className="border-b-2 border-white pb-3 mb-6 space-y-3">
                 {["affiliation", "expertise", "interests"].map((field) => (
@@ -349,7 +337,6 @@ function Profile() {
               </div>
             )}
 
-            {/* Edit Buttons */}
             {isEditing ? (
               <div className="flex flex-col sm:flex-row justify-between mt-6 space-y-3 sm:space-y-0 sm:space-x-3">
                 <button

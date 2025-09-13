@@ -1,9 +1,8 @@
-import { signInWithEmailAndPassword, signInWithPopup } from "firebase/auth";
+import { signInWithEmailAndPassword } from "firebase/auth";
 import React, { useEffect, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { auth, provider } from "../firebase/firebase";
-import { db } from "../firebase/firebase"; // Firestore
-import { collection, addDoc, doc, getDoc } from "firebase/firestore"; // Firestore methods
+import { auth, db } from "../firebase/firebase";
+import { doc, getDoc } from "firebase/firestore";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faLock,
@@ -12,6 +11,7 @@ import {
   faEnvelope,
 } from "@fortawesome/free-solid-svg-icons";
 import SignInwithGoogle from "./SignInWithGoogle";
+import { logUserAction } from "../utils/logger";
 
 function SignIn() {
   const [email, setEmail] = useState("");
@@ -20,11 +20,9 @@ function SignIn() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const [isAppReady, setIsAppReady] = useState(false); // Track if app is ready to render
+  const [isAppReady, setIsAppReady] = useState(false);
 
-  const togglePasswordVisibility = () => {
-    setShowPassword((prev) => !prev);
-  };
+  const togglePasswordVisibility = () => setShowPassword((prev) => !prev);
 
   const checkEmailVerification = async (user) => {
     try {
@@ -36,6 +34,14 @@ function SignIn() {
           type: "error",
         });
         await auth.signOut();
+
+        // ✅ log failed login attempt
+        await logUserAction({
+          actingUserId: user.uid,
+          email: user.email,
+          action: "Sign In Blocked (Unverified Email)",
+        });
+
         return false;
       }
       return true;
@@ -49,46 +55,15 @@ function SignIn() {
     }
   };
 
-  // Log user action function
-  const logUserAction = async (user, action) => {
-    const userLogRef = collection(db, "UserLog");
-    const userDocRef = doc(db, "Users", user.uid);
-    const userDoc = await getDoc(userDocRef);
-    let adminId = null;
-
-    if (userDoc.exists()) {
-      const userData = userDoc.data();
-      if (userData.role === "Admin") {
-        adminId = user.uid;
-      }
-    }
-
-    await addDoc(userLogRef, {
-      userId: user.uid,
-      adminId: adminId,
-      action: action,
-      email: user.email,
-      timestamp: new Date(),
-    });
-  };
-
-  // ✅ Fix the flicker issue here
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged((user) => {
-      if (user) {
-        // Already signed in → redirect immediately
-        navigate("/home", { replace: true });
-      } else {
-        // No user → show Sign In form
-        setIsAppReady(true);
-      }
+      if (user) navigate("/home", { replace: true });
+      else setIsAppReady(true);
       setLoading(false);
     });
-
     return () => unsubscribe();
   }, [navigate]);
 
-  // While the app is not ready, show "checking auth" to prevent flicker
   if (!isAppReady) {
     return (
       <div className="flex justify-center items-center min-h-screen">
@@ -140,12 +115,25 @@ function SignIn() {
             "No user profile found. Please contact admin or sign up again.",
           type: "error",
         });
+
+        // ✅ log failed login (no profile)
+        await logUserAction({
+          actingUserId: user.uid,
+          email: user.email,
+          action: "Sign In Blocked (No Profile)",
+        });
+
         await auth.signOut();
         setLoading(false);
         return;
       }
 
-      await logUserAction(user, "Sign In");
+      // ✅ log successful login
+      await logUserAction({
+        actingUserId: user.uid,
+        email: user.email,
+        action: "Sign In",
+      });
 
       setAlert({ message: "User logged in successfully!", type: "success" });
       navigate("/home");
@@ -173,6 +161,14 @@ function SignIn() {
       }
 
       setAlert({ message: errorMessage, type: "error" });
+
+      // ✅ log failed attempt
+      await logUserAction({
+        actingUserId: null,
+        email,
+        action: "Sign In Failed",
+        metadata: { errorCode: error.code, errorMessage },
+      });
     } finally {
       setLoading(false);
     }
@@ -198,7 +194,8 @@ function SignIn() {
             alt="Logo"
             className="h-20 w-auto mb-6 mx-auto"
           />
-          {/* Alert Messages */}
+
+          {/* Alerts */}
           {alert.message && (
             <div
               className={`mb-4 p-2 rounded text-white text-center mx-auto w-full bg-${
@@ -213,6 +210,7 @@ function SignIn() {
             </div>
           )}
 
+          {/* Email */}
           <div className="mb-3">
             <label>Email address:</label>
             <div className="relative">
@@ -233,6 +231,7 @@ function SignIn() {
             </div>
           </div>
 
+          {/* Password */}
           <div className="mb-3">
             <label>Password:</label>
             <div className="relative">
@@ -263,6 +262,7 @@ function SignIn() {
             </div>
           </div>
 
+          {/* Submit */}
           <div className="flex justify-center">
             <button
               type="submit"
@@ -272,20 +272,22 @@ function SignIn() {
               {loading ? "Signing In..." : "Sign In"}
             </button>
           </div>
+
+          {/* Links */}
           <p className="forgot-password text-center mt-4">
             New user?{" "}
-            <a
-              href="/SignUp"
-              className="text-red-700 hover:text-red-800  active:text-red-950 underline"
+            <Link
+              to="/SignUp"
+              className="text-red-700 hover:text-red-800 active:text-red-950 underline"
             >
               Sign Up
-            </a>
+            </Link>
           </p>
           <SignInwithGoogle />
-          <div className=" text-center mt-5 ">
+          <div className="text-center mt-5">
             <Link
               to="/forgot-password"
-              className="text-red-700 hover:text-red-800  active:text-red-950 underline"
+              className="text-red-700 hover:text-red-800 active:text-red-950 underline"
             >
               Forgot Password?
             </Link>

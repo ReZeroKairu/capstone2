@@ -16,6 +16,7 @@ import {
   faEnvelope,
   faLock,
 } from "@fortawesome/free-solid-svg-icons";
+import { logUserAction } from "../utils/logger"; // ✅ centralized logger
 
 function SignUp() {
   const location = useLocation();
@@ -29,6 +30,7 @@ function SignUp() {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [firstName, setFirstName] = useState("");
+  const [middleName, setMiddleName] = useState(""); // ✅ optional middle name
   const [lastName, setLastName] = useState("");
 
   const [errorMessage, setErrorMessage] = useState("");
@@ -56,7 +58,7 @@ function SignUp() {
     setSuccessMessage("");
 
     if (!firstName || !lastName || !email || !password || !confirmPassword) {
-      setErrorMessage("Please fill out all fields.");
+      setErrorMessage("Please fill out all required fields.");
       return;
     }
     if (password.length < 6) {
@@ -80,23 +82,37 @@ function SignUp() {
       const user = userCredential.user;
 
       try {
-        // 2️⃣ Create Firestore document
+        // 2️⃣ Create Firestore document (middleName optional)
         await setDoc(doc(db, "Users", user.uid), {
           uid: user.uid,
           firstName,
+          middleName: middleName || "",
           lastName,
           email: user.email,
           role,
           photo: null,
         });
 
-        // 3️⃣ Send verification email
+        // 3️⃣ Log sign up action
+        await logUserAction({
+          userId: user.uid,
+          email: user.email,
+          action: "Signed up with Email",
+          metadata: {
+            firstName,
+            middleName: middleName || null,
+            lastName,
+            role,
+          },
+        });
+
+        // 4️⃣ Send verification email
         await sendEmailVerification(user);
 
-        // 4️⃣ Sign out the user (optional, user must verify email)
+        // 5️⃣ Sign out the user (require verification)
         await signOut(auth);
 
-        // 5️⃣ Success message
+        // 6️⃣ Success message
         setSuccessMessage(
           "User registered successfully! A verification email has been sent. Please check your inbox before signing in."
         );
@@ -142,7 +158,6 @@ function SignUp() {
             alt="Logo"
             className="h-20 w-auto mb-6 mx-auto"
           />
-          {/* Display role below logo */}
           <p className="text-center text-black font-semibold text-lg mb-6">
             {role + " Sign Up"}
           </p>
@@ -161,7 +176,7 @@ function SignUp() {
             </div>
           )}
 
-          {/* First & Last Name */}
+          {/* First Name */}
           <div className="relative mb-3">
             <label className="block text-sm font-medium text-gray-700">
               First Name:
@@ -172,12 +187,32 @@ function SignUp() {
               placeholder="First Name"
               value={firstName}
               onChange={(e) => setFirstName(e.target.value)}
+              required
             />
             <span className="absolute inset-y-0 left-0 flex items-center pl-3 mt-6 text-red-800">
               <FontAwesomeIcon icon={faUser} />
             </span>
           </div>
 
+          {/* Middle Name (Optional) */}
+          <div className="relative mb-3">
+            <label className="block text-sm font-medium text-gray-700">
+              Middle Name{" "}
+              <span className="text-gray-500 text-xs">(optional)</span>
+            </label>
+            <input
+              type="text"
+              className="w-full mt-1 p-2 pl-10 border text-black rounded-lg focus:ring-blue-500 focus:border-blue-500"
+              placeholder="Middle Name"
+              value={middleName}
+              onChange={(e) => setMiddleName(e.target.value)}
+            />
+            <span className="absolute inset-y-0 left-0 flex items-center pl-3 mt-6 text-red-800">
+              <FontAwesomeIcon icon={faUser} />
+            </span>
+          </div>
+
+          {/* Last Name */}
           <div className="relative mb-3">
             <label className="block text-sm font-medium text-gray-700">
               Last Name:
@@ -188,6 +223,7 @@ function SignUp() {
               placeholder="Last Name"
               value={lastName}
               onChange={(e) => setLastName(e.target.value)}
+              required
             />
             <span className="absolute inset-y-0 left-0 flex items-center pl-3 mt-6 text-red-800">
               <FontAwesomeIcon icon={faUser} />
@@ -213,6 +249,7 @@ function SignUp() {
                   setEmailError("");
                 }}
                 autoComplete="email"
+                required
               />
             </div>
             {emailError && (
@@ -238,6 +275,7 @@ function SignUp() {
                   setPassword(e.target.value);
                   setPasswordError("");
                 }}
+                required
               />
               <span
                 className="absolute right-3 top-1/2 -translate-y-1/2 cursor-pointer"
@@ -272,6 +310,7 @@ function SignUp() {
                   setConfirmPassword(e.target.value);
                   setConfirmPasswordError("");
                 }}
+                required
               />
               <span
                 className="absolute right-3 top-1/2 -translate-y-1/2 cursor-pointer"
