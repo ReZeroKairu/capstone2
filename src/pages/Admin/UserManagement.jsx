@@ -194,9 +194,13 @@ function UserManagement() {
     if (!searchQuery) return true;
     const queryWords = searchQuery.toLowerCase().split(" ");
     return queryWords.every((word) =>
-      [user.firstName, user.lastName, user.email, user.role].some((field) =>
-        field?.toLowerCase().includes(word)
-      )
+      [
+        user.firstName,
+        user.lastName,
+        user.email,
+        user.role,
+        user.middleName,
+      ].some((field) => field?.toLowerCase().includes(word))
     );
   });
 
@@ -231,7 +235,7 @@ function UserManagement() {
       <div className="relative mb-4 w-full sm:w-72 mx-auto">
         <input
           type="text"
-          placeholder="Search user"
+          placeholder="Search user/email"
           value={searchQuery}
           onChange={(e) => {
             setSearchQuery(e.target.value);
@@ -243,13 +247,14 @@ function UserManagement() {
       </div>
 
       {loading ? (
-        <p className="text-center text-gray-500">Loading users...</p>
+        <p className="text-center text-gray-500 text-base">Loading users...</p>
       ) : (
         <div className="overflow-x-auto max-h-[400px]">
           {/* Table header (desktop only) */}
-          <div className="hidden sm:grid bg-yellow-400 text-red-800 rounded-t-md p-2 sm:p-3 grid-cols-5 text-center font-semibold">
+          <div className="hidden sm:grid bg-yellow-400 text-red-800 rounded-t-md p-3 grid-cols-6 text-center font-semibold text-base">
             <span>Email</span>
             <span>First</span>
+            <span>Middle</span>
             <span>Last</span>
             <span>Role</span>
             <span>Actions</span>
@@ -262,12 +267,15 @@ function UserManagement() {
                 className={`bg-white hover:bg-gray-100 border-b border-red-800 sm:border-none`}
               >
                 {/* Mobile view */}
-                <div className="flex flex-col sm:hidden p-3 gap-1">
+                <div className="flex flex-col sm:hidden p-3 gap-1 text-base">
                   <span>
                     <strong>Email:</strong> {user.email}
                   </span>
                   <span>
                     <strong>First:</strong> {user.firstName}
+                  </span>
+                  <span>
+                    <strong>Middle:</strong> {user.middleName || "N/A"}
                   </span>
                   <span>
                     <strong>Last:</strong> {user.lastName}
@@ -277,13 +285,13 @@ function UserManagement() {
                   </span>
                   <div className="flex flex-row gap-2 mt-2">
                     <button
-                      className="bg-blue-500 text-white px-4 py-1 rounded hover:bg-blue-600 text-xs"
+                      className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 text-sm"
                       onClick={() => handleEdit(user)}
                     >
                       Edit
                     </button>
                     <button
-                      className="bg-red-700 text-white px-4 py-1 rounded hover:bg-red-800 text-xs"
+                      className="bg-red-700 text-white px-4 py-2 rounded hover:bg-red-800 text-sm"
                       onClick={() => handleDeleteConfirmation(user.id)}
                     >
                       Delete
@@ -293,7 +301,7 @@ function UserManagement() {
 
                 {/* Desktop view */}
                 <div
-                  className={`hidden sm:grid grid-cols-5 items-center p-2 sm:p-3 text-center ${
+                  className={`hidden sm:grid grid-cols-6 items-center p-3 text-center text-base ${
                     idx < currentUsers.length - 1
                       ? "border-b border-red-800"
                       : ""
@@ -301,17 +309,20 @@ function UserManagement() {
                 >
                   <span className="text-red-800">{user.email}</span>
                   <span className="text-red-800">{user.firstName}</span>
+                  <span className="text-red-800">
+                    {user.middleName || "N/A"}
+                  </span>
                   <span className="text-red-800">{user.lastName}</span>
                   <span className="text-red-800">{user.role}</span>
-                  <div className="flex flex-col sm:flex-row justify-center items-center gap-1 sm:gap-2">
+                  <div className="flex flex-col sm:flex-row justify-center items-center gap-2">
                     <button
-                      className="bg-blue-500 text-white px-6 py-2 rounded-sm hover:bg-blue-600 text-xs sm:text-sm"
+                      className="bg-blue-500 text-white px-6 py-2 rounded-sm hover:bg-blue-600 text-sm"
                       onClick={() => handleEdit(user)}
                     >
                       Edit
                     </button>
                     <button
-                      className="bg-red-700 text-white px-4 py-2 rounded-sm hover:bg-red-800 text-xs sm:text-sm"
+                      className="bg-red-700 text-white px-4 py-2 rounded-sm hover:bg-red-800 text-sm"
                       onClick={() => handleDeleteConfirmation(user.id)}
                     >
                       Delete
@@ -322,7 +333,7 @@ function UserManagement() {
             ))}
 
             {currentUsers.length === 0 && (
-              <div className="p-4 text-center text-gray-600">
+              <div className="p-4 text-center text-gray-600 text-base">
                 No users found.
               </div>
             )}

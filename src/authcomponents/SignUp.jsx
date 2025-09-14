@@ -18,6 +18,10 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 import { logUserAction } from "../utils/logger"; // ✅ centralized logger
 
+// 🔤 Helper function to enforce capitalization
+const toProperCase = (str) =>
+  str.toLowerCase().replace(/\b\w/g, (char) => char.toUpperCase());
+
 function SignUp() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -82,37 +86,44 @@ function SignUp() {
       const user = userCredential.user;
 
       try {
-        // 2️⃣ Create Firestore document (middleName optional)
+        // 2️⃣ Proper case conversion before saving
+        const formattedFirst = toProperCase(firstName.trim());
+        const formattedMiddle = middleName
+          ? toProperCase(middleName.trim())
+          : "";
+        const formattedLast = toProperCase(lastName.trim());
+
+        // 3️⃣ Create Firestore document (middleName optional)
         await setDoc(doc(db, "Users", user.uid), {
           uid: user.uid,
-          firstName,
-          middleName: middleName || "",
-          lastName,
+          firstName: formattedFirst,
+          middleName: formattedMiddle,
+          lastName: formattedLast,
           email: user.email,
           role,
           photo: null,
         });
 
-        // 3️⃣ Log sign up action
+        // 4️⃣ Log sign up action
         await logUserAction({
           userId: user.uid,
           email: user.email,
           action: "Signed up with Email",
           metadata: {
-            firstName,
-            middleName: middleName || null,
-            lastName,
+            firstName: formattedFirst,
+            middleName: formattedMiddle || null,
+            lastName: formattedLast,
             role,
           },
         });
 
-        // 4️⃣ Send verification email
+        // 5️⃣ Send verification email
         await sendEmailVerification(user);
 
-        // 5️⃣ Sign out the user (require verification)
+        // 6️⃣ Sign out the user (require verification)
         await signOut(auth);
 
-        // 6️⃣ Success message
+        // 7️⃣ Success message
         setSuccessMessage(
           "User registered successfully! A verification email has been sent. Please check your inbox before signing in."
         );
@@ -139,6 +150,7 @@ function SignUp() {
 
   return (
     <div className="min-h-screen flex flex-col">
+      {/* Background */}
       <div
         className="fixed inset-0 bg-cover bg-center"
         style={{
