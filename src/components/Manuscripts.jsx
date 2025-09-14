@@ -126,10 +126,10 @@ const Manuscripts = () => {
         const manuscriptsRef = collection(db, "manuscripts");
         unsubscribeManuscripts = onSnapshot(manuscriptsRef, (snapshot) => {
           const allMss = snapshot.docs.map((doc) => {
-            const data = doc.data();
+            const data = doc.data() || {};
             const assignedReviewersNames = data.assignedReviewers?.map((id) => {
               const u = allUsers.find((user) => user.id === id);
-              return u ? `${u.firstName} ${u.lastName}` : id;
+              return u ? `${u.firstName ?? ""} ${u.lastName ?? ""}`.trim() : id;
             });
             return { id: doc.id, ...data, assignedReviewersNames };
           });
@@ -245,10 +245,16 @@ const Manuscripts = () => {
   // ✅ Filtering + Search
   const filteredManuscripts = manuscripts
     .filter((m) => {
-      if (filter === "in-progress")
-        return IN_PROGRESS_STATUSES.includes(m.status);
-      if (filter === "for-publication") return m.status === "For Publication";
-      if (filter === "rejected") return m.status === "Rejected";
+      if (filter === "Assigning Peer Reviewer")
+        return m.status === "Assigning Peer Reviewer";
+      if (filter === "Peer Reviewer Assigned")
+        return m.status === "Peer Reviewer Assigned";
+      if (filter === "Peer Reviewer Reviewing")
+        return m.status === "Peer Reviewer Reviewing";
+      if (filter === "Back to Admin") return m.status === "Back to Admin";
+      if (filter === "For Revision") return m.status === "For Revision";
+      if (filter === "For Publication") return m.status === "For Publication";
+      if (filter === "Rejected") return m.status === "Rejected";
       return true;
     })
     .filter((m) => {
@@ -313,42 +319,6 @@ const Manuscripts = () => {
       {/* Filter controls */}
       <div className="flex gap-2 mb-6 justify-center sm:justify-start">
         <button
-          onClick={() => setFilter("in-progress")}
-          className={`px-3 py-1 rounded ${
-            filter === "in-progress"
-              ? "bg-yellow-200 text-[#211B17] border border-[#7B2E19]"
-              : "bg-white border border-gray-300"
-          }`}
-        >
-          In-progress (
-          {
-            manuscripts.filter((m) => IN_PROGRESS_STATUSES.includes(m.status))
-              .length
-          }
-          )
-        </button>
-        <button
-          onClick={() => setFilter("for-publication")}
-          className={`px-3 py-1 rounded ${
-            filter === "for-publication"
-              ? "bg-yellow-200 text-[#211B17] border border-[#7B2E19]"
-              : "bg-white border border-gray-300"
-          }`}
-        >
-          For publication (
-          {manuscripts.filter((m) => m.status === "For Publication").length})
-        </button>
-        <button
-          onClick={() => setFilter("rejected")}
-          className={`px-3 py-1 rounded ${
-            filter === "rejected"
-              ? "bg-yellow-200 text-[#211B17] border border-[#7B2E19]"
-              : "bg-white border border-gray-300"
-          }`}
-        >
-          Rejected ({manuscripts.filter((m) => m.status === "Rejected").length})
-        </button>
-        <button
           onClick={() => setFilter("all")}
           className={`px-3 py-1 rounded ${
             filter === "all"
@@ -357,6 +327,84 @@ const Manuscripts = () => {
           }`}
         >
           All ({manuscripts.length})
+        </button>
+        <button
+          onClick={() => setFilter("Assigning Peer Reviewer")}
+          className={`px-3 py-1 rounded ${
+            filter === "Assigning Peer Reviewer"
+              ? "bg-yellow-200 text-[#211B17] border border-[#7B2E19]"
+              : "bg-white border border-gray-300"
+          }`}
+        >
+          Assigning Peer Reviewer (
+          {
+            manuscripts.filter((m) => m.status === "Assigning Peer Reviewer")
+              .length
+          }
+          )
+        </button>
+        <button
+          onClick={() => setFilter("Peer Reviewer Assigned")}
+          className={`px-3 py-1 rounded ${
+            filter === "Peer Reviewer Assigned"
+              ? "bg-yellow-200 text-[#211B17] border border-[#7B2E19]"
+              : "bg-white border border-gray-300"
+          }`}
+        >
+          Peer Reviewer Assigned (
+          {
+            manuscripts.filter((m) => m.status === "Peer Reviewer Assigned")
+              .length
+          }
+          )
+        </button>
+        <button
+          onClick={() => setFilter("Peer Reviewer Reviewing")}
+          className={`px-3 py-1 rounded ${
+            filter === "Peer Reviewer Reviewing"
+              ? "bg-yellow-200 text-[#211B17] border border-[#7B2E19]"
+              : "bg-white border border-gray-300"
+          }`}
+        >
+          Peer Reviewer Reviewing (
+          {
+            manuscripts.filter((m) => m.status === "Peer Reviewer Reviewing")
+              .length
+          }
+          )
+        </button>
+
+        <button
+          onClick={() => setFilter("Back to Admin")}
+          className={`px-3 py-1 rounded ${
+            filter === "Back to Admin"
+              ? "bg-yellow-200 text-[#211B17] border border-[#7B2E19]"
+              : "bg-white border border-gray-300"
+          }`}
+        >
+          Back to Admin (
+          {manuscripts.filter((m) => m.status === "Back to Admin").length})
+        </button>
+        <button
+          onClick={() => setFilter("For Publication")}
+          className={`px-3 py-1 rounded ${
+            filter === "For Publication"
+              ? "bg-yellow-200 text-[#211B17] border border-[#7B2E19]"
+              : "bg-white border border-gray-300"
+          }`}
+        >
+          For publication (
+          {manuscripts.filter((m) => m.status === "For Publication").length})
+        </button>
+        <button
+          onClick={() => setFilter("Rejected")}
+          className={`px-3 py-1 rounded ${
+            filter === "Rejected"
+              ? "bg-yellow-200 text-[#211B17] border border-[#7B2E19]"
+              : "bg-white border border-gray-300"
+          }`}
+        >
+          Rejected ({manuscripts.filter((m) => m.status === "Rejected").length})
         </button>
       </div>
       {/* Manuscript List */}
@@ -449,7 +497,7 @@ const Manuscripts = () => {
                       }
                       className="px-3 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 text-sm"
                     >
-                      Assign Peer Reviewer
+                      Assigning Peer Reviewer
                     </button>
                   ) : (
                     <button
