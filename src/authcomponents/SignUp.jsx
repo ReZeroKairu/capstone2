@@ -86,7 +86,7 @@ function SignUp() {
       const user = userCredential.user;
 
       try {
-        // 2️⃣ Proper case conversion before saving
+        // 2️⃣ Pushed in previous commit Proper case conversion before saving
         const formattedFirst = toProperCase(firstName.trim());
         const formattedMiddle = middleName
           ? toProperCase(middleName.trim())

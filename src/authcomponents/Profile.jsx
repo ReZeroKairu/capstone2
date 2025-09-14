@@ -110,7 +110,7 @@ function Profile() {
   };
 
   const handleUpdateProfile = async () => {
-    // ✅ Capitalize before saving
+    // ✅ Pushed in previous commit Capitalize before saving
     const normalizedProfile = {
       ...profile,
       firstName: capitalizeWords(profile.firstName),
