@@ -93,13 +93,23 @@ const Sidebar = ({ role, isOpen, toggleSidebar }) => {
         <div className={mobile ? "mx-1" : "mx-4"}>
           <Link
             to={link.path}
-            onClick={handleLinkClick}
-            className={`flex items-center rounded justify-start px-4 py-2 mb-1 transition-colors duration-150
-            ${
-              location.pathname === link.path
-                ? "bg-white text-black font-bold shadow"
-                : "text-white hover:bg-white hover:text-black hover:font-bold"
-            } w-auto max-w-[230px]`}
+            onClick={() => {
+              handleLinkClick();
+              if (!mobile) {
+                // Small visual feedback on desktop
+                const el = document.activeElement;
+                if (el) {
+                  el.classList.add("scale-95");
+                  setTimeout(() => el.classList.remove("scale-95"), 150);
+                }
+              }
+            }}
+            className={`flex items-center rounded justify-start px-4 py-2 mb-1 transition-all duration-150
+          ${
+            location.pathname === link.path
+              ? "bg-white text-black font-bold shadow"
+              : "text-white hover:bg-white hover:text-black hover:font-bold"
+          } w-auto max-w-[230px] active:scale-95`}
           >
             {link.icon}
             {!mobile && isOpen && <span className="ml-2">{link.name}</span>}

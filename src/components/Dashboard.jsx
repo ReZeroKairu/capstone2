@@ -204,7 +204,7 @@ const Dashboard = ({ sidebarOpen }) => {
 
   return (
     <div
-      className={`flex flex-col min-h-screen pb-36 pt-24 px-4 sm:px-6 lg:px-24 ${
+      className={`flex flex-col min-h-screen pb-36 pt-40 px-4 sm:px-6 lg:px-24 ${
         sidebarOpen ? "lg:pl-64" : ""
       }`}
     >
