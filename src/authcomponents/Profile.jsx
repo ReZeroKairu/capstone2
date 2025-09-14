@@ -36,6 +36,16 @@ function Profile() {
     interests: "",
   });
 
+  // ✅ Capitalize helper
+  const capitalizeWords = (str) => {
+    if (!str) return "";
+    return str
+      .toLowerCase()
+      .split(" ")
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(" ");
+  };
+
   const smoothScrollTo = (element, offset = 0, duration = 300) => {
     if (!element) return;
     const start = window.scrollY;
@@ -98,7 +108,16 @@ function Profile() {
       block: "start",
     });
   };
+
   const handleUpdateProfile = async () => {
+    // ✅ Capitalize before saving
+    const normalizedProfile = {
+      ...profile,
+      firstName: capitalizeWords(profile.firstName),
+      middleName: capitalizeWords(profile.middleName || ""),
+      lastName: capitalizeWords(profile.lastName),
+    };
+
     const before = {
       firstName: originalFirstName,
       middleName: originalMiddleName,
@@ -106,9 +125,9 @@ function Profile() {
       ...(profile.role === "Peer Reviewer" ? peerReviewerInfo : {}),
     };
     const after = {
-      firstName: profile.firstName,
-      middleName: profile.middleName || "",
-      lastName: profile.lastName,
+      firstName: normalizedProfile.firstName,
+      middleName: normalizedProfile.middleName,
+      lastName: normalizedProfile.lastName,
       ...(profile.role === "Peer Reviewer" ? peerReviewerInfo : {}),
     };
 
@@ -125,15 +144,13 @@ function Profile() {
       return;
     }
 
-    // Inside handleUpdateProfile
     try {
       await updateDoc(doc(db, "Users", profile.id), after);
 
-      // ✅ Use updated logger: provide actingUserId and before/after objects
       await logProfileUpdate({
-        actingUserId: currentUser.uid, // your current user
-        before, // previous profile values
-        after, // updated profile values
+        actingUserId: currentUser.uid,
+        before,
+        after,
       });
 
       const updatedUserDoc = await getDoc(doc(db, "Users", profile.id));
@@ -177,7 +194,6 @@ function Profile() {
   const handlePeerReviewerChange = (field, value) => {
     setPeerReviewerInfo({ ...peerReviewerInfo, [field]: value });
   };
-
   return (
     <div className="flex justify-center items-start min-h-screen pt-28 px-4 pb-10 bg-gray-100">
       <div className="relative bg-red-800 w-full max-w-md rounded-lg shadow-2xl p-6 sm:p-8 pt-16 pb-36">

@@ -692,13 +692,15 @@ export default function FormResponses() {
           onClick={() => setSelectedResponse(null)}
         >
           <div
-            className="bg-[#fafbfc] rounded-md p-5 max-w-md w-full shadow-lg border"
+            className="bg-[#fafbfc] rounded-md p-5 max-w-lg w-full shadow-lg border overflow-y-auto max-h-[80vh]"
             onClick={(e) => e.stopPropagation()}
           >
+            {/* User info */}
             <div className="text-sm text-gray-600 mb-3">
-              User: {selectedResponse.firstName} {selectedResponse.lastName} |
-              Email: {selectedResponse.email} | Role:{" "}
-              {selectedResponse.role || "N/A"} | Submitted at:{" "}
+              <strong>User:</strong> {selectedResponse.firstName}{" "}
+              {selectedResponse.lastName} | <strong>Email:</strong>{" "}
+              {selectedResponse.email} | <strong>Role:</strong>{" "}
+              {selectedResponse.role || "N/A"} | <strong>Submitted at:</strong>{" "}
               {selectedResponse.submittedAt?.toDate?.()?.toLocaleString() ||
                 (selectedResponse.submittedAt?.seconds
                   ? new Date(
@@ -707,15 +709,61 @@ export default function FormResponses() {
                   : "")}
             </div>
 
-            <div className="space-y-2 mb-3">
+            {/* Answers */}
+            <div className="space-y-3 mb-3">
               {(selectedResponse.answeredQuestions || []).map((q, idx) => (
-                <div key={idx} className="text-sm">
-                  <span className="font-bold">{q.question}:</span>{" "}
-                  <span>{formatAnswer(q.answer)}</span>
+                <div
+                  key={idx}
+                  className="bg-gray-50 p-3 rounded-md border border-gray-200"
+                >
+                  <div className="font-semibold mb-1">{q.question}</div>
+                  <div className="text-gray-800 text-sm">
+                    {(() => {
+                      if (!q.answer) return "—"; // empty
+                      switch (q.type) {
+                        case "text":
+                        case "textarea":
+                        case "radio":
+                        case "select":
+                          return q.answer;
+                        case "checkbox":
+                        case "multi-select":
+                          return Array.isArray(q.answer)
+                            ? q.answer.join(", ")
+                            : q.answer;
+                        case "file":
+                          return Array.isArray(q.answer) ? (
+                            q.answer.map((f, i) => (
+                              <a
+                                key={i}
+                                href={f.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-blue-600 underline mr-2"
+                              >
+                                {f.name || `File ${i + 1}`}
+                              </a>
+                            ))
+                          ) : (
+                            <a
+                              href={q.answer.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-blue-600 underline"
+                            >
+                              {q.answer.name || "File"}
+                            </a>
+                          );
+                        default:
+                          return JSON.stringify(q.answer);
+                      }
+                    })()}
+                  </div>
                 </div>
               ))}
             </div>
 
+            {/* Status */}
             <div className="mb-2 text-sm font-semibold">
               Status:{" "}
               <span className="font-normal">
@@ -723,15 +771,14 @@ export default function FormResponses() {
               </span>
             </div>
 
+            {/* History */}
             <div className="mb-2 text-sm font-semibold">History:</div>
             <div className="mb-3 text-sm">
               {(selectedResponse.history || []).length === 0 && (
-                <div className="text-sm text-gray-500 mb-2">
-                  No history yet.
-                </div>
+                <div className="text-gray-500">No history yet.</div>
               )}
               {(selectedResponse.history || []).map((h, i) => (
-                <div key={i} className="text-sm text-gray-700">
+                <div key={i} className="text-gray-700">
                   [
                   {h.timestamp?.seconds
                     ? new Date(h.timestamp.seconds * 1000).toLocaleString()
@@ -741,6 +788,7 @@ export default function FormResponses() {
               ))}
             </div>
 
+            {/* Admin actions */}
             {isAdmin && selectedResponse.status === "Pending" && (
               <div className="flex gap-3">
                 <button
