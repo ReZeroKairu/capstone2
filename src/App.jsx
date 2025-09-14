@@ -36,7 +36,6 @@ import SubmitManuscript from "./pages/Researcher/SubmitManuscript";
 import CreateForm from "./formcomponents/CreateForm";
 import FormResponses from "./formcomponents/FormResponses";
 import Dashboard from "./components/Dashboard";
-import Submissions from "./components/Submissions";
 import ReviewManuscript from "./pages/PeerReviewer/ReviewManuscript";
 
 // ⬇️ New admin pages
@@ -121,7 +120,6 @@ function App() {
                 <Route path="/manuscripts" element={<Manuscripts />} />
                 <Route path="/createform" element={<CreateForm />} />
                 <Route path="/formresponses" element={<FormResponses />} />
-                <Route path="/submissions" element={<Submissions />} />
                 <Route path="/dashboard" element={<Dashboard />} />
                 <Route
                   path="/review-manuscript"
