@@ -64,7 +64,6 @@ const Dashboard = ({ sidebarOpen }) => {
 
         const manuscriptsRef = collection(db, "manuscripts");
 
-        // Admin: all manuscripts
         if (userRole === "Admin") {
           const q = query(manuscriptsRef, orderBy("submittedAt", "desc"));
           const unsub = onSnapshot(q, (snapshot) => {
@@ -76,7 +75,6 @@ const Dashboard = ({ sidebarOpen }) => {
           return;
         }
 
-        // Peer Reviewer: only assigned
         if (userRole === "Peer Reviewer") {
           const q = query(
             manuscriptsRef,
@@ -92,18 +90,7 @@ const Dashboard = ({ sidebarOpen }) => {
           return;
         }
 
-        // Researcher: own + assigned + recent co-author fallback
-        const qOwn = query(
-          manuscriptsRef,
-          where("userId", "==", currentUser.uid),
-          orderBy("submittedAt", "desc")
-        );
-        const qAssigned = query(
-          manuscriptsRef,
-          where("assignedReviewers", "array-contains", currentUser.uid),
-          orderBy("submittedAt", "desc")
-        );
-
+        // ---------- Researcher Logic ----------
         const localMap = new Map();
 
         const mergeAndSet = () => {
@@ -115,12 +102,29 @@ const Dashboard = ({ sidebarOpen }) => {
           setManuscripts(merged);
         };
 
+        const qOwn = query(
+          manuscriptsRef,
+          where("userId", "==", currentUser.uid),
+          orderBy("submittedAt", "desc")
+        );
+        const qAssigned = query(
+          manuscriptsRef,
+          where("assignedReviewers", "array-contains", currentUser.uid),
+          orderBy("submittedAt", "desc")
+        );
+        const qRecent = query(
+          manuscriptsRef,
+          orderBy("submittedAt", "desc"),
+          limit(50)
+        );
+
         const unsubOwn = onSnapshot(qOwn, (snap) => {
           snap.docs.forEach((d) =>
             localMap.set(d.id, { id: d.id, ...d.data() })
           );
           mergeAndSet();
         });
+
         const unsubAssigned = onSnapshot(qAssigned, (snap) => {
           snap.docs.forEach((d) =>
             localMap.set(d.id, { id: d.id, ...d.data() })
@@ -128,12 +132,6 @@ const Dashboard = ({ sidebarOpen }) => {
           mergeAndSet();
         });
 
-        // Recent manuscripts fallback (limit for performance)
-        const qRecent = query(
-          manuscriptsRef,
-          orderBy("submittedAt", "desc"),
-          limit(50)
-        );
         const unsubRecent = onSnapshot(qRecent, (snap) => {
           const email = currentUser.email || "";
           const name =
@@ -144,23 +142,28 @@ const Dashboard = ({ sidebarOpen }) => {
 
           snap.docs.forEach((d) => {
             const data = { id: d.id, ...d.data() };
-            if (localMap.has(d.id)) return;
+            if (localMap.has(d.id)) return; // Already added
 
             const isCoAuthor =
               data.coAuthors?.some?.((c) => c.id === currentUser.uid) ||
-              data.answeredQuestions?.some(
-                (q) =>
-                  q.type === "coauthors" &&
-                  (Array.isArray(q.answer)
-                    ? q.answer.some(
-                        (a) =>
-                          (email && a.includes(email)) ||
-                          (name && a.includes(name))
-                      )
-                    : typeof q.answer === "string" &&
-                      ((email && q.answer.includes(email)) ||
-                        (name && q.answer.includes(name))))
-              );
+              data.answeredQuestions?.some((q) => {
+                if (q.type !== "coauthors") return false;
+
+                if (Array.isArray(q.answer)) {
+                  return q.answer.some(
+                    (a) =>
+                      typeof a === "string" &&
+                      ((email && a.includes(email)) ||
+                        (name && a.includes(name)))
+                  );
+                } else if (typeof q.answer === "string") {
+                  return (
+                    (email && q.answer.includes(email)) ||
+                    (name && q.answer.includes(name))
+                  );
+                }
+                return false;
+              });
 
             if (isCoAuthor) localMap.set(d.id, data);
           });

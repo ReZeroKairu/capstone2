@@ -200,6 +200,7 @@ function UserManagement() {
         user.email,
         user.role,
         user.middleName,
+        user.id,
       ].some((field) => field?.toLowerCase().includes(word))
     );
   });
