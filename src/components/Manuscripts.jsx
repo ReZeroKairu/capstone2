@@ -109,24 +109,55 @@ const Manuscripts = () => {
 
         const manuscriptsRef = collection(db, "manuscripts");
         unsubscribeManuscripts = onSnapshot(manuscriptsRef, (snapshot) => {
-          const allMss = snapshot.docs.map((doc) => {
-            const data = doc.data() || {};
-            const assignedReviewersNames = data.assignedReviewers?.map((id) => {
-              const u = allUsers.find((user) => user.id === id);
-              if (!u)
-                return { id, firstName: id, middleName: "", lastName: "" };
+          const allMss = snapshot.docs
+            .map((doc) => {
+              const data = doc.data() || {};
+
+              // Hide reviewer names for non-admins but keep status visible
+              const assignedReviewersNames =
+                role === "Admin"
+                  ? data.assignedReviewers?.map((id) => {
+                      const u = allUsers.find((user) => user.id === id);
+                      if (!u)
+                        return {
+                          id,
+                          firstName: id,
+                          middleName: "",
+                          lastName: "",
+                        };
+                      return {
+                        id: u.id,
+                        firstName: u.firstName,
+                        middleName: u.middleName || "",
+                        lastName: u.lastName,
+                      };
+                    })
+                  : []; // non-admins see empty array
+
+              // Ensure coAuthorsIds exists and is an array
+              const coAuthorsIds = Array.isArray(data.coAuthorsIds)
+                ? data.coAuthorsIds.map((c) =>
+                    typeof c === "string" ? c : c.id
+                  )
+                : [];
 
               return {
-                id: u.id,
-                firstName: u.firstName,
-                middleName: u.middleName || "",
-                lastName: u.lastName,
+                id: doc.id,
+                ...data,
+                assignedReviewersNames,
+                coAuthorsIds,
               };
+            })
+            .filter((m) => {
+              // Only admins see everything; others see only their own or coauthored manuscripts
+              if (userRole === "Admin") return true;
+              return (
+                m.submitterId === currentUser.uid ||
+                m.coAuthorsIds.includes(currentUser.uid)
+              );
             });
 
-            return { id: doc.id, ...data, assignedReviewersNames };
-          });
-
+          // Sort by submission/acceptance date descending
           allMss.sort((a, b) => {
             const aTime =
               a.acceptedAt?.toDate?.()?.getTime?.() ||
@@ -162,7 +193,7 @@ const Manuscripts = () => {
       unsubscribeAuth();
       if (unsubscribeManuscripts) unsubscribeManuscripts();
     };
-  }, [showFullName]);
+  }, [showFullName, role]);
 
   if (loading)
     return <div className="p-28 text-gray-700">Loading manuscripts...</div>;
@@ -185,7 +216,7 @@ const Manuscripts = () => {
       const fields = [
         manuscriptTitle,
         m.firstName,
-        m.middleName, // include middleName for search
+        m.middleName,
         m.lastName,
         m.role,
         m.email,
