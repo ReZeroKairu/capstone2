@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import { getAuth } from "firebase/auth";
 import {
   doc,
@@ -8,6 +8,7 @@ import {
   query,
   where,
   orderBy,
+  limit,
 } from "firebase/firestore";
 import { db } from "../firebase/firebase";
 import Progressbar from "./Progressbar.jsx";
@@ -56,7 +57,6 @@ const Dashboard = ({ sidebarOpen }) => {
       setUser(currentUser);
 
       try {
-        // fetch role
         const userRef = doc(db, "Users", currentUser.uid);
         const docSnap = await getDoc(userRef);
         const userRole = docSnap.exists() ? docSnap.data().role : "Researcher";
@@ -64,18 +64,19 @@ const Dashboard = ({ sidebarOpen }) => {
 
         const manuscriptsRef = collection(db, "manuscripts");
 
-        // Admin: listen to all manuscripts
+        // Admin: all manuscripts
         if (userRole === "Admin") {
           const q = query(manuscriptsRef, orderBy("submittedAt", "desc"));
           const unsub = onSnapshot(q, (snapshot) => {
-            const all = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
-            setManuscripts(all);
+            setManuscripts(
+              snapshot.docs.map((d) => ({ id: d.id, ...d.data() }))
+            );
           });
           unsubscribes.push(unsub);
           return;
         }
 
-        // Peer Reviewer: only assigned to them
+        // Peer Reviewer: only assigned
         if (userRole === "Peer Reviewer") {
           const q = query(
             manuscriptsRef,
@@ -83,17 +84,15 @@ const Dashboard = ({ sidebarOpen }) => {
             orderBy("submittedAt", "desc")
           );
           const unsub = onSnapshot(q, (snapshot) => {
-            const arr = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
-            setManuscripts(arr);
+            setManuscripts(
+              snapshot.docs.map((d) => ({ id: d.id, ...d.data() }))
+            );
           });
           unsubscribes.push(unsub);
           return;
         }
 
-        // Researcher (and fallback): use two queries (own submissions + co-author) and merge
-        // Note: this tries to match common co-author storage patterns:
-        // - m.coAuthors array with {id,...}
-        // - m.answeredQuestions coauthors text that may include email/name
+        // Researcher: own + assigned + recent co-author fallback
         const qOwn = query(
           manuscriptsRef,
           where("userId", "==", currentUser.uid),
@@ -105,7 +104,7 @@ const Dashboard = ({ sidebarOpen }) => {
           orderBy("submittedAt", "desc")
         );
 
-        const localMap = new Map(); // id -> manuscript
+        const localMap = new Map();
 
         const mergeAndSet = () => {
           const merged = Array.from(localMap.values());
@@ -129,9 +128,12 @@ const Dashboard = ({ sidebarOpen }) => {
           mergeAndSet();
         });
 
-        // As a fallback to catch manuscripts where co-authors are saved only in answeredQuestions
-        // we also listen to a small recent set and merge client-side (works for small projects)
-        const qRecent = query(manuscriptsRef, orderBy("submittedAt", "desc"));
+        // Recent manuscripts fallback (limit for performance)
+        const qRecent = query(
+          manuscriptsRef,
+          orderBy("submittedAt", "desc"),
+          limit(50)
+        );
         const unsubRecent = onSnapshot(qRecent, (snap) => {
           const email = currentUser.email || "";
           const name =
@@ -139,10 +141,11 @@ const Dashboard = ({ sidebarOpen }) => {
             `${currentUser.firstName || ""} ${
               currentUser.lastName || ""
             }`.trim();
+
           snap.docs.forEach((d) => {
             const data = { id: d.id, ...d.data() };
-            const already = localMap.has(d.id);
-            if (already) return;
+            if (localMap.has(d.id)) return;
+
             const isCoAuthor =
               data.coAuthors?.some?.((c) => c.id === currentUser.uid) ||
               data.answeredQuestions?.some(
@@ -158,6 +161,7 @@ const Dashboard = ({ sidebarOpen }) => {
                       ((email && q.answer.includes(email)) ||
                         (name && q.answer.includes(name))))
               );
+
             if (isCoAuthor) localMap.set(d.id, data);
           });
           mergeAndSet();
@@ -175,8 +179,20 @@ const Dashboard = ({ sidebarOpen }) => {
       unsubscribeAuth();
       unsubscribes.forEach((u) => u && u());
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Memoized counts for summary cards
+  const memoizedCounts = useMemo(
+    () => ({
+      inProgress: manuscripts.filter((m) =>
+        IN_PROGRESS_STATUSES.includes(m.status)
+      ).length,
+      rejected: manuscripts.filter((m) => m.status === "Rejected").length,
+      forPublication: manuscripts.filter((m) => m.status === "For Publication")
+        .length,
+    }),
+    [manuscripts]
+  );
 
   if (loading)
     return <div className="p-28 text-gray-700">Loading dashboard...</div>;
@@ -186,17 +202,6 @@ const Dashboard = ({ sidebarOpen }) => {
         You must be signed in to view the dashboard.
       </div>
     );
-
-  const countByCustomStatus = (status) => {
-    if (status === "In Progress")
-      return manuscripts.filter((m) => IN_PROGRESS_STATUSES.includes(m.status))
-        .length;
-    if (status === "Rejected")
-      return manuscripts.filter((m) => m.status === "Rejected").length;
-    if (status === "For Publication")
-      return manuscripts.filter((m) => m.status === "For Publication").length;
-    return 0;
-  };
 
   const handleStatusClick = (status) => {
     navigate(`/manuscripts?status=${encodeURIComponent(status)}`);
@@ -214,14 +219,18 @@ const Dashboard = ({ sidebarOpen }) => {
 
       {/* Summary Counts */}
       <div className="grid grid-cols-1 sm:grid-cols-5 gap-4 mb-6">
-        {["In Progress", "For Publication", "Rejected"].map((status) => (
+        {[
+          { label: "In Progress", count: memoizedCounts.inProgress },
+          { label: "For Publication", count: memoizedCounts.forPublication },
+          { label: "Rejected", count: memoizedCounts.rejected },
+        ].map(({ label, count }) => (
           <div
-            key={status}
+            key={label}
             className="bg-gray-100 p-4 rounded shadow-sm cursor-pointer hover:shadow-md text-center"
-            onClick={() => handleStatusClick(status)}
+            onClick={() => handleStatusClick(label)}
           >
-            <p className="text-lg font-semibold">{status}</p>
-            <p className="text-2xl font-bold">{countByCustomStatus(status)}</p>
+            <p className="text-lg font-semibold">{label}</p>
+            <p className="text-2xl font-bold">{count}</p>
           </div>
         ))}
       </div>
@@ -231,11 +240,14 @@ const Dashboard = ({ sidebarOpen }) => {
         const manuscriptTitle =
           m.manuscriptTitle ||
           m.title ||
-          m.answeredQuestions?.find((q) =>
-            q.question?.toLowerCase().trim().startsWith("manuscript title")
-          )?.answer ||
+          m.answeredQuestions
+            ?.find((q) =>
+              q.question?.toLowerCase().trim().startsWith("manuscript title")
+            )
+            ?.answer?.toString() ||
           m.formTitle ||
           "Untitled";
+
         const submittedAtText = m.submittedAt?.toDate
           ? m.submittedAt.toDate().toLocaleString()
           : m.submittedAt?.seconds
@@ -260,10 +272,9 @@ const Dashboard = ({ sidebarOpen }) => {
             </p>
 
             <Progressbar
-              currentStatus={m.status}
-              inProgressStatuses={IN_PROGRESS_STATUSES}
               currentStep={stepIndex}
               steps={STATUS_STEPS}
+              currentStatus={m.status} // Pass the actual status
             />
           </div>
         );
