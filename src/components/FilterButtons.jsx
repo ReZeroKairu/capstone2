@@ -7,6 +7,7 @@ const FilterButtons = ({ filter, setFilter, manuscripts }) => {
     { label: "Peer Reviewer Assigned", value: "Peer Reviewer Assigned" },
     { label: "Peer Reviewer Reviewing", value: "Peer Reviewer Reviewing" },
     { label: "Back to Admin", value: "Back to Admin" },
+    { label: "For Revision", value: "For Revision" },
     { label: "For Publication", value: "For Publication" },
     { label: "Rejected", value: "Rejected" },
   ];
