@@ -290,10 +290,11 @@ export default function SubmitManuscript() {
         formTitle: form.title || "",
         manuscriptTitle: manuscriptTitleAnswer,
         answeredQuestions,
-        userId: currentUser.uid,
+        submitterId: currentUser.uid, // ✅ FIXED
         firstName: userInfo.firstName || "",
         middleName: userInfo.middleName || "",
         lastName: userInfo.lastName || "",
+        email: userInfo.email || "",
         role: userInfo.role || "Researcher",
         coAuthors,
         coAuthorsIds,

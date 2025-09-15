@@ -82,6 +82,11 @@ const Sidebar = ({ role, isOpen, toggleSidebar }) => {
 
   const peerReviewerLinks = [
     {
+      name: "Manuscripts",
+      path: "/manuscripts",
+      icon: <FaBook className="text-xl" />,
+    },
+    {
       name: "Review Manuscript",
       path: "/review-manuscript",
       icon: <FaFileUpload className="text-xl" />,
