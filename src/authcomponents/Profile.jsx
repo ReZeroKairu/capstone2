@@ -36,7 +36,6 @@ function Profile() {
     interests: "",
   });
 
-  // ✅ Capitalize helper
   const capitalizeWords = (str) => {
     if (!str) return "";
     return str
@@ -110,7 +109,6 @@ function Profile() {
   };
 
   const handleUpdateProfile = async () => {
-    // ✅ Pushed in previous commit Capitalize before saving
     const normalizedProfile = {
       ...profile,
       firstName: capitalizeWords(profile.firstName),
@@ -131,7 +129,6 @@ function Profile() {
       ...(profile.role === "Peer Reviewer" ? peerReviewerInfo : {}),
     };
 
-    // Detect changed fields
     const changedFields = {};
     Object.keys(after).forEach((key) => {
       if (after[key] !== before[key])
@@ -194,6 +191,7 @@ function Profile() {
   const handlePeerReviewerChange = (field, value) => {
     setPeerReviewerInfo({ ...peerReviewerInfo, [field]: value });
   };
+
   return (
     <div className="flex justify-center items-start min-h-screen pt-28 px-4 pb-10 bg-gray-100">
       <div className="relative bg-red-800 w-full max-w-md rounded-lg shadow-2xl p-6 sm:p-8 pt-16 pb-36">
@@ -258,91 +256,113 @@ function Profile() {
             </div>
 
             <div className="border-b-2 border-white pb-3 mb-6">
-              <label className="font-semibold text-white text-sm mb-2">
-                Email:
-              </label>
+              <p className="font-semibold text-white text-sm mb-2">Email:</p>
               <p className="text-white mb-4 text-lg">{currentUser.email}</p>
             </div>
 
+            {/* First Name */}
             <div className="border-b-2 border-white pb-3 mb-6">
-              <label className="font-semibold text-white text-sm mb-2">
-                First Name:
-              </label>
-              {!isEditing ? (
+              {isEditing ? (
+                <label
+                  htmlFor="firstName"
+                  className="font-semibold text-white text-sm mb-2 flex flex-col"
+                >
+                  First Name:
+                  <input
+                    ref={firstNameRef}
+                    id="firstName"
+                    name="firstName"
+                    type="text"
+                    value={profile.firstName || ""}
+                    onChange={(e) =>
+                      setProfile({ ...profile, firstName: e.target.value })
+                    }
+                    className="w-full p-1 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-black shadow-md transition-all ease-in-out duration-300 mt-1"
+                  />
+                </label>
+              ) : (
                 <p className="text-white text-lg">
                   {profile.firstName || "No first name"}
                 </p>
-              ) : (
-                <input
-                  ref={firstNameRef}
-                  type="text"
-                  value={profile.firstName || ""}
-                  onChange={(e) =>
-                    setProfile({ ...profile, firstName: e.target.value })
-                  }
-                  className="w-full p-1 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-black shadow-md transition-all ease-in-out duration-300"
-                />
               )}
             </div>
 
+            {/* Middle Name */}
             <div className="border-b-2 border-white pb-3 mb-6">
-              <label className="font-semibold text-white text-sm mb-2">
-                Middle Name:
-              </label>
-              {!isEditing ? (
+              {isEditing ? (
+                <label
+                  htmlFor="middleName"
+                  className="font-semibold text-white text-sm mb-2 flex flex-col"
+                >
+                  Middle Name:
+                  <input
+                    id="middleName"
+                    name="middleName"
+                    type="text"
+                    value={profile.middleName || ""}
+                    onChange={(e) =>
+                      setProfile({ ...profile, middleName: e.target.value })
+                    }
+                    placeholder="Enter middle name"
+                    className="w-full p-1 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-black shadow-md transition-all ease-in-out duration-300 mt-1"
+                  />
+                </label>
+              ) : (
                 <p className="text-white text-lg">
                   {profile.middleName || "No middle name"}
                 </p>
-              ) : (
-                <input
-                  type="text"
-                  value={profile.middleName || ""}
-                  onChange={(e) =>
-                    setProfile({ ...profile, middleName: e.target.value })
-                  }
-                  placeholder="Enter middle name"
-                  className="w-full p-1 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-black shadow-md transition-all ease-in-out duration-300"
-                />
               )}
             </div>
 
+            {/* Last Name */}
             <div className="border-b-2 border-white pb-3 mb-6">
-              <label className="font-semibold text-white text-sm mb-2">
-                Last Name:
-              </label>
-              {!isEditing ? (
+              {isEditing ? (
+                <label
+                  htmlFor="lastName"
+                  className="font-semibold text-white text-sm mb-2 flex flex-col"
+                >
+                  Last Name:
+                  <input
+                    ref={lastNameRef}
+                    id="lastName"
+                    name="lastName"
+                    type="text"
+                    value={profile.lastName || ""}
+                    onChange={(e) =>
+                      setProfile({ ...profile, lastName: e.target.value })
+                    }
+                    className="w-full p-1 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-black shadow-md transition-all ease-in-out duration-300 mt-1"
+                  />
+                </label>
+              ) : (
                 <p className="text-white text-lg">
                   {profile.lastName || "No last name"}
                 </p>
-              ) : (
-                <input
-                  ref={lastNameRef}
-                  type="text"
-                  value={profile.lastName || ""}
-                  onChange={(e) =>
-                    setProfile({ ...profile, lastName: e.target.value })
-                  }
-                  className="w-full p-1 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-black shadow-md transition-all ease-in-out duration-300"
-                />
               )}
             </div>
 
+            {/* Peer Reviewer Fields */}
             {profile.role === "Peer Reviewer" && peerReviewerInfo && (
               <div className="border-b-2 border-white pb-3 mb-6 space-y-3">
                 {["affiliation", "expertise", "interests"].map((field) => (
                   <div key={field}>
-                    <label className="font-semibold text-white text-sm mb-2 capitalize">
-                      {field.replace(/([A-Z])/g, " $1")}
-                    </label>
                     {isEditing ? (
-                      <input
-                        type="text"
-                        value={peerReviewerInfo[field] || ""}
-                        onChange={(e) =>
-                          handlePeerReviewerChange(field, e.target.value)
-                        }
-                        className="w-full p-1 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-black shadow-md"
-                      />
+                      <label
+                        htmlFor={field}
+                        className="font-semibold text-white text-sm mb-2 flex flex-col capitalize"
+                      >
+                        {field}:
+                        <input
+                          id={field}
+                          name={field}
+                          type="text"
+                          value={peerReviewerInfo[field] || ""}
+                          onChange={(e) =>
+                            handlePeerReviewerChange(field, e.target.value)
+                          }
+                          className="w-full p-1 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-black shadow-md mt-1"
+                        />
+                      </label>
                     ) : (
                       <p className="text-white">
                         {peerReviewerInfo[field] || `No ${field}`}
