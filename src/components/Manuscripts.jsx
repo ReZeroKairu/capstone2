@@ -125,14 +125,15 @@ const Manuscripts = () => {
         setUser(currentUser);
 
         const manuscriptsRef = collection(db, "manuscripts");
-        // --- Only change is inside onSnapshot mapping ---
+        // --- Only change is inside onSnapshot
+        // mapping ---
         // assignedReviewersData is now sorted by assignedAt
         unsubscribeManuscripts = onSnapshot(manuscriptsRef, (snapshot) => {
           const allMss = snapshot.docs
             .map((doc) => {
               const data = doc.data() || {};
 
-              // Map assigned reviewers with metadata and consistent timestamps
+              // Map assigned reviewers with metadata and include reviewer decision timestamps
               const assignedReviewersData =
                 userRole === "Admin"
                   ? (data.assignedReviewers || [])
@@ -142,13 +143,15 @@ const Manuscripts = () => {
                         const assignedByUser = allUsers.find(
                           (user) => user.id === meta.assignedBy
                         );
+                        const decisionMeta =
+                          data.reviewerDecisionMeta?.[id] || {};
 
                         return {
                           id,
                           firstName: u?.firstName || "",
                           middleName: u?.middleName || "",
                           lastName: u?.lastName || "",
-                          assignedAt: meta.assignedAt || null, // Firestore Timestamp
+                          assignedAt: meta.assignedAt || null,
                           assignedBy: assignedByUser
                             ? `${assignedByUser.firstName} ${
                                 assignedByUser.middleName
@@ -156,6 +159,8 @@ const Manuscripts = () => {
                                   : ""
                               }${assignedByUser.lastName}`
                             : "—",
+                          decision: decisionMeta.decision || null,
+                          decidedAt: decisionMeta.decidedAt || null,
                         };
                       })
                       .sort((a, b) => {
@@ -188,7 +193,7 @@ const Manuscripts = () => {
               );
             });
 
-          // Keep global manuscript order unchanged (by submittedAt / acceptedAt)
+          // Keep global manuscript order unchanged
           allMss.sort((a, b) => {
             const aTime =
               a.acceptedAt?.toDate?.()?.getTime?.() ||
@@ -236,9 +241,16 @@ const Manuscripts = () => {
     );
 
   const filteredManuscripts = manuscripts
-    .filter((m) =>
-      filter === "all" ? m.status !== "Pending" : m.status === filter
-    )
+    .filter((m) => {
+      if (filter === "all") return m.status !== "Pending";
+
+      // --- Updated: treat "Rejected" and "Peer Reviewer Rejected" as same filter ---
+      if (filter === "Rejected") {
+        return m.status === "Rejected" || m.status === "Peer Reviewer Rejected";
+      }
+
+      return m.status === filter;
+    })
     .filter((m) => {
       if (!searchQuery) return true;
       const queryWords = searchQuery.toLowerCase().split(" ");

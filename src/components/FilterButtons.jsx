@@ -14,6 +14,14 @@ const FilterButtons = ({ filter, setFilter, manuscripts }) => {
   const countByFilter = (value) => {
     if (value === "all")
       return manuscripts.filter((m) => m.status !== "Pending").length;
+
+    if (value === "Rejected") {
+      // Count both "Rejected" and "Peer Reviewer Rejected"
+      return manuscripts.filter(
+        (m) => m.status === "Rejected" || m.status === "Peer Reviewer Rejected"
+      ).length;
+    }
+
     return manuscripts.filter((m) => m.status === value).length;
   };
 
