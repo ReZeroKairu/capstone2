@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { useLocation } from "react-router-dom";
+import { getAuth } from "firebase/auth";
+import { serverTimestamp } from "firebase/firestore";
 import { db } from "../../firebase/firebase";
 import {
   collection,
@@ -83,20 +85,36 @@ export default function PeerReviewerList() {
       alert("No manuscript selected for assignment.");
       return;
     }
+
     try {
+      const auth = getAuth();
+      const currentUser = auth.currentUser;
+      if (!currentUser) throw new Error("Not signed in");
+
       const msRef = doc(db, "manuscripts", manuscriptId);
       const msSnap = await getDoc(msRef);
       if (!msSnap.exists()) {
         alert("Manuscript not found.");
         return;
       }
+
       const assigned = msSnap.data().assignedReviewers || [];
+      const assignedMeta = msSnap.data().assignedReviewersMeta || {};
+
       if (!assigned.includes(reviewerId)) {
+        assigned.push(reviewerId);
+        assignedMeta[reviewerId] = {
+          assignedAt: serverTimestamp(),
+          assignedBy: currentUser.uid,
+        };
+
         await updateDoc(msRef, {
-          assignedReviewers: [...assigned, reviewerId],
+          assignedReviewers: assigned,
+          assignedReviewersMeta: assignedMeta,
           status: "Peer Reviewer Assigned",
         });
       }
+
       fetchReviewers();
       alert("Reviewer successfully assigned!");
     } catch (err) {
