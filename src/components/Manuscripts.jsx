@@ -7,6 +7,7 @@ import {
   getDocs,
   onSnapshot,
   updateDoc,
+  serverTimestamp,
 } from "firebase/firestore";
 import { db } from "../firebase/firebase";
 
@@ -27,9 +28,15 @@ const Manuscripts = () => {
   const [filter, setFilter] = useState("all");
   const [currentPage, setCurrentPage] = useState(1);
   const [manuscriptsPerPage, setManuscriptsPerPage] = useState(5);
-
-  // Toggle for middle name display
   const [showFullName, setShowFullName] = useState({});
+
+  // --- Helper function for consistent Firestore timestamp display ---
+  const formatFirestoreDate = (ts) =>
+    ts?.toDate?.()
+      ? ts.toDate().toLocaleString()
+      : ts instanceof Date
+      ? ts.toLocaleString()
+      : "N/A";
 
   const toggleExpand = (id) =>
     setExpanded((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -43,9 +50,18 @@ const Manuscripts = () => {
       if (!msSnap.exists()) return;
 
       const assigned = msSnap.data().assignedReviewers || [];
+      const assignedMeta = msSnap.data().assignedReviewersMeta || {};
+
       if (!assigned.includes(reviewerId)) {
+        assigned.push(reviewerId);
+        assignedMeta[reviewerId] = {
+          assignedAt: serverTimestamp(), // Firestore Timestamp
+          assignedBy: user.uid,
+        };
+
         await updateDoc(msRef, {
-          assignedReviewers: [...assigned, reviewerId],
+          assignedReviewers: assigned,
+          assignedReviewersMeta: assignedMeta,
           status: "Peer Reviewer Assigned",
         });
       }
@@ -60,6 +76,7 @@ const Manuscripts = () => {
       const msRef = doc(db, "manuscripts", manuscriptId);
       await updateDoc(msRef, {
         assignedReviewers: [],
+        assignedReviewersMeta: {},
         status: "Assigning Peer Reviewer",
       });
     } catch (err) {
@@ -108,33 +125,48 @@ const Manuscripts = () => {
         setUser(currentUser);
 
         const manuscriptsRef = collection(db, "manuscripts");
+        // --- Only change is inside onSnapshot mapping ---
+        // assignedReviewersData is now sorted by assignedAt
         unsubscribeManuscripts = onSnapshot(manuscriptsRef, (snapshot) => {
           const allMss = snapshot.docs
             .map((doc) => {
               const data = doc.data() || {};
 
-              // Hide reviewer names for non-admins but keep status visible
-              const assignedReviewersNames =
-                role === "Admin"
-                  ? data.assignedReviewers?.map((id) => {
-                      const u = allUsers.find((user) => user.id === id);
-                      if (!u)
+              // Map assigned reviewers with metadata and consistent timestamps
+              const assignedReviewersData =
+                userRole === "Admin"
+                  ? (data.assignedReviewers || [])
+                      .map((id) => {
+                        const u = allUsers.find((user) => user.id === id);
+                        const meta = data.assignedReviewersMeta?.[id] || {};
+                        const assignedByUser = allUsers.find(
+                          (user) => user.id === meta.assignedBy
+                        );
+
                         return {
                           id,
-                          firstName: id,
-                          middleName: "",
-                          lastName: "",
+                          firstName: u?.firstName || "",
+                          middleName: u?.middleName || "",
+                          lastName: u?.lastName || "",
+                          assignedAt: meta.assignedAt || null, // Firestore Timestamp
+                          assignedBy: assignedByUser
+                            ? `${assignedByUser.firstName} ${
+                                assignedByUser.middleName
+                                  ? assignedByUser.middleName + " "
+                                  : ""
+                              }${assignedByUser.lastName}`
+                            : "—",
                         };
-                      return {
-                        id: u.id,
-                        firstName: u.firstName,
-                        middleName: u.middleName || "",
-                        lastName: u.lastName,
-                      };
-                    })
-                  : []; // non-admins see empty array
+                      })
+                      .sort((a, b) => {
+                        const aTime =
+                          a.assignedAt?.toDate?.()?.getTime?.() || 0;
+                        const bTime =
+                          b.assignedAt?.toDate?.()?.getTime?.() || 0;
+                        return aTime - bTime; // ascending: oldest assigned first
+                      })
+                  : [];
 
-              // Ensure coAuthorsIds exists and is an array
               const coAuthorsIds = Array.isArray(data.coAuthorsIds)
                 ? data.coAuthorsIds.map((c) =>
                     typeof c === "string" ? c : c.id
@@ -144,12 +176,11 @@ const Manuscripts = () => {
               return {
                 id: doc.id,
                 ...data,
-                assignedReviewersNames,
+                assignedReviewersData,
                 coAuthorsIds,
               };
             })
             .filter((m) => {
-              // Only admins see everything; others see only their own or coauthored manuscripts
               if (userRole === "Admin") return true;
               return (
                 m.submitterId === currentUser.uid ||
@@ -157,7 +188,7 @@ const Manuscripts = () => {
               );
             });
 
-          // Sort by submission/acceptance date descending
+          // Keep global manuscript order unchanged (by submittedAt / acceptedAt)
           allMss.sort((a, b) => {
             const aTime =
               a.acceptedAt?.toDate?.()?.getTime?.() ||
@@ -204,7 +235,6 @@ const Manuscripts = () => {
       </div>
     );
 
-  // Filter + search
   const filteredManuscripts = manuscripts
     .filter((m) =>
       filter === "all" ? m.status !== "Pending" : m.status === filter
@@ -227,7 +257,6 @@ const Manuscripts = () => {
       );
     });
 
-  // Pagination
   const indexOfLast = currentPage * manuscriptsPerPage;
   const indexOfFirst = indexOfLast - manuscriptsPerPage;
   const currentManuscripts = filteredManuscripts.slice(

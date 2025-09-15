@@ -33,14 +33,11 @@ const ManuscriptItem = ({
     submittedAt,
     acceptedAt,
     status,
-    assignedReviewersNames = [], // now array of {id, firstName, middleName, lastName}
   } = manuscript;
 
   const navigate = useNavigate();
   const hasReviewer = manuscript.assignedReviewers?.length > 0;
   const [showModal, setShowModal] = useState(false);
-
-  // local state for toggling full name per reviewer
   const [showFullName, setShowFullName] = useState({});
 
   const manuscriptTitle =
@@ -55,9 +52,14 @@ const ManuscriptItem = ({
     (status === "Assigning Peer Reviewer" ||
       status === "Peer Reviewer Assigned");
 
-  const formatDate = (ts) =>
-    ts?.toDate?.()?.toLocaleString?.() ||
-    (ts?.seconds ? new Date(ts.seconds * 1000).toLocaleString() : "");
+  // ✅ Helper for consistent Firestore / JS date handling
+  const formatDate = (ts) => {
+    if (!ts) return "—";
+    if (ts.toDate) return ts.toDate().toLocaleString();
+    if (ts.seconds) return new Date(ts.seconds * 1000).toLocaleString();
+    if (ts instanceof Date) return ts.toLocaleString();
+    return ts;
+  };
 
   return (
     <>
@@ -92,35 +94,64 @@ const ManuscriptItem = ({
         </div>
 
         {/* Assigned reviewers */}
-        {hasReviewer && assignedReviewersNames.length > 0 && (
+        {hasReviewer && manuscript.assignedReviewersData?.length > 0 && (
           <div className="mt-2">
             {status === "Peer Reviewer Assigned" && (
               <p className="text-sm font-medium text-gray-700 mb-1">
                 Peer Reviewer Assigned:
               </p>
             )}
-            <div className="flex flex-wrap gap-1">
-              {assignedReviewersNames.map((r, idx) => {
+            <div className="flex flex-col gap-2">
+              {manuscript.assignedReviewersData.map((r) => {
                 const displayName = showFullName[r.id]
                   ? `${r.firstName} ${r.middleName} ${r.lastName}`.trim()
                   : `${r.firstName} ${
                       r.middleName ? r.middleName.charAt(0) + "." : ""
                     } ${r.lastName}`.trim();
 
+                const assignedByUser = users.find((u) => u.id === r.assignedBy);
+                const assignedByName = assignedByUser
+                  ? `${assignedByUser.firstName} ${
+                      assignedByUser.middleName
+                        ? assignedByUser.middleName + " "
+                        : ""
+                    }${assignedByUser.lastName}`
+                  : r.assignedBy || "—";
+
+                const decisionMeta =
+                  manuscript.reviewerDecisionMeta?.[r.id] || null;
+
                 return (
-                  <span
-                    key={idx}
-                    className="bg-blue-100 text-blue-800 text-xs sm:text-sm px-2 py-1 rounded-full font-medium cursor-pointer"
-                    onClick={() =>
-                      setShowFullName((prev) => ({
-                        ...prev,
-                        [r.id]: !prev[r.id],
-                      }))
-                    }
-                    title="Click to toggle full name"
-                  >
-                    {displayName}
-                  </span>
+                  <div key={r.id} className="bg-blue-50 px-2 py-1 rounded-md">
+                    <span
+                      className="text-blue-800 text-xs sm:text-sm font-medium cursor-pointer"
+                      onClick={() =>
+                        setShowFullName((prev) => ({
+                          ...prev,
+                          [r.id]: !prev[r.id],
+                        }))
+                      }
+                      title="Click to toggle full name"
+                    >
+                      {displayName}
+                    </span>
+                    <div className="text-xs text-gray-500">
+                      Assigned At: {formatDate(r.assignedAt)}
+                      <br />
+                      Assigned By: {assignedByName}
+                      {decisionMeta && (
+                        <>
+                          <br />
+                          {decisionMeta.decision === "accept"
+                            ? "Accepted by reviewer at: "
+                            : decisionMeta.decision === "reject"
+                            ? "Rejected by reviewer at: "
+                            : ""}
+                          {formatDate(decisionMeta.timestamp)}
+                        </>
+                      )}
+                    </div>
+                  </div>
                 );
               })}
             </div>
@@ -192,7 +223,6 @@ const ManuscriptItem = ({
             className="bg-white rounded-md p-6 max-w-2xl w-full shadow-lg border overflow-y-auto max-h-[80vh]"
             onClick={(e) => e.stopPropagation()}
           >
-            {/* User Info */}
             <div className="text-sm text-gray-600 mb-4">
               <strong>User:</strong> {firstName} {middleName} {lastName} |{" "}
               <strong>Email:</strong> {email} | <strong>Role:</strong>{" "}
@@ -200,7 +230,6 @@ const ManuscriptItem = ({
               {formatDate(submittedAt)}
             </div>
 
-            {/* Answers */}
             <div className="space-y-4 mb-4">
               {answeredQuestions
                 .filter(
@@ -231,7 +260,6 @@ const ManuscriptItem = ({
                 ))}
             </div>
 
-            {/* Status */}
             <div className="mb-4 text-sm font-semibold">
               Status: <span className="font-normal">{status}</span>
             </div>
