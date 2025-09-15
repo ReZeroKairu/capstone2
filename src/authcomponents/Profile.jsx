@@ -14,10 +14,12 @@ function Profile() {
   const [messageType, setMessageType] = useState("");
   const [messageTimeout, setMessageTimeout] = useState(null);
   const [showFullMiddle, setShowFullMiddle] = useState(false);
+  const [selectedFile, setSelectedFile] = useState(null);
 
   const messageRef = useRef(null);
   const firstNameRef = useRef(null);
   const lastNameRef = useRef(null);
+  const originalPhotoRef = useRef(null); // store original Base64 photo
 
   const getInitials = (firstName, middleName, lastName) =>
     (
@@ -77,8 +79,9 @@ function Profile() {
         setProfile({
           id: userDoc.id,
           ...userData,
-          photoURL: currentUser.photoURL,
+          photoURL: userData.photoURL || currentUser.photoURL,
         });
+        originalPhotoRef.current = userData.photoURL || currentUser.photoURL;
         setOriginalFirstName(userData.firstName);
         setOriginalMiddleName(userData.middleName || "");
         setOriginalLastName(userData.lastName);
@@ -108,24 +111,80 @@ function Profile() {
     });
   };
 
+  const handleProfilePicChange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      showMessage("Please select an image file.", "error");
+      return;
+    }
+    if (file.size > 1024 * 1024) {
+      showMessage("Image size must be less than 1MB.", "error");
+      return;
+    }
+    setSelectedFile(file);
+    setProfile((prev) => ({
+      ...prev,
+      photoURL: URL.createObjectURL(file), // show temporary preview
+    }));
+  };
+
+  const uploadProfilePicture = async (file) => {
+    if (!file) return null;
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+        const base64String = reader.result;
+        try {
+          await updateDoc(doc(db, "Users", profile.id), {
+            photoURL: base64String,
+          });
+          resolve(base64String);
+        } catch (error) {
+          console.error("Error updating profile picture:", error);
+          showMessage("Failed to update profile picture.", "error");
+          reject(error);
+        }
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
   const handleUpdateProfile = async () => {
+    let newPhotoURL = originalPhotoRef.current;
+
+    if (selectedFile) {
+      const reader = new FileReader();
+      await new Promise((resolve, reject) => {
+        reader.onloadend = async () => {
+          newPhotoURL = reader.result;
+          resolve();
+        };
+        reader.readAsDataURL(selectedFile);
+      });
+    }
+
     const normalizedProfile = {
       ...profile,
       firstName: capitalizeWords(profile.firstName),
       middleName: capitalizeWords(profile.middleName || ""),
       lastName: capitalizeWords(profile.lastName),
+      photoURL: newPhotoURL,
     };
 
     const before = {
       firstName: originalFirstName,
       middleName: originalMiddleName,
       lastName: originalLastName,
+      photoURL: originalPhotoRef.current,
       ...(profile.role === "Peer Reviewer" ? peerReviewerInfo : {}),
     };
+
     const after = {
       firstName: normalizedProfile.firstName,
       middleName: normalizedProfile.middleName,
       lastName: normalizedProfile.lastName,
+      photoURL: normalizedProfile.photoURL,
       ...(profile.role === "Peer Reviewer" ? peerReviewerInfo : {}),
     };
 
@@ -143,7 +202,6 @@ function Profile() {
 
     try {
       await updateDoc(doc(db, "Users", profile.id), after);
-
       await logProfileUpdate({
         actingUserId: currentUser.uid,
         before,
@@ -158,11 +216,13 @@ function Profile() {
           ...updatedUserData,
           middleName: updatedUserData.middleName || "",
         }));
+        originalPhotoRef.current = updatedUserData.photoURL;
         setOriginalFirstName(updatedUserData.firstName);
         setOriginalMiddleName(updatedUserData.middleName || "");
         setOriginalLastName(updatedUserData.lastName);
       }
 
+      setSelectedFile(null);
       showMessage("Profile updated successfully.", "success");
       window.scrollTo({ top: 0, behavior: "smooth" });
       setIsEditing(false);
@@ -190,6 +250,15 @@ function Profile() {
 
   const handlePeerReviewerChange = (field, value) => {
     setPeerReviewerInfo({ ...peerReviewerInfo, [field]: value });
+  };
+
+  const handleCancel = () => {
+    setIsEditing(false);
+    setSelectedFile(null);
+    setProfile((prev) => ({
+      ...prev,
+      photoURL: originalPhotoRef.current,
+    }));
   };
 
   return (
@@ -224,22 +293,45 @@ function Profile() {
 
         {profile ? (
           <div className="space-y-6 pr-2">
-            <div className="flex flex-col items-center mb-6">
-              {profile.photoURL ? (
-                <img
-                  src={profile.photoURL}
-                  alt="Profile"
-                  className="w-32 h-32 rounded-full object-cover shadow-md mb-4"
-                />
-              ) : (
-                <div className="w-32 h-32 rounded-full bg-yellow-400 flex justify-center items-center text-white text-6xl shadow-lg mb-4">
-                  {getInitials(
-                    profile.firstName,
-                    profile.middleName,
-                    profile.lastName
-                  ) || <FontAwesomeIcon icon={faUser} />}
-                </div>
-              )}
+            {/* ===== Profile Picture Section ===== */}
+            <div className="flex flex-col items-center mb-8 relative">
+              <div className="relative">
+                {profile.photoURL ? (
+                  <img
+                    src={profile.photoURL}
+                    alt="Profile"
+                    className="w-32 h-32 rounded-full object-cover shadow-md mb-4"
+                  />
+                ) : (
+                  <div className="w-32 h-32 rounded-full bg-yellow-400 flex justify-center items-center text-white text-5xl font-bold shadow-lg mb-4">
+                    {getInitials(
+                      profile.firstName,
+                      profile.middleName,
+                      profile.lastName
+                    ) || <FontAwesomeIcon icon={faUser} className="text-3xl" />}
+                  </div>
+                )}
+
+                {isEditing && (
+                  <label
+                    htmlFor="profilePicInput"
+                    className="absolute bottom-0 right-0 bg-yellow-500 hover:bg-yellow-600 w-10 h-10 rounded-full flex justify-center items-center cursor-pointer shadow-lg transition-all duration-200"
+                  >
+                    <FontAwesomeIcon
+                      icon={faEdit}
+                      className="text-white text-lg"
+                    />
+                    <input
+                      id="profilePicInput"
+                      type="file"
+                      accept="image/*"
+                      onChange={handleProfilePicChange}
+                      className="hidden"
+                    />
+                  </label>
+                )}
+              </div>
+
               <p
                 className="text-white text-3xl font-bold text-center mb-1 cursor-pointer"
                 onClick={() => setShowFullMiddle(!showFullMiddle)}
@@ -254,115 +346,89 @@ function Profile() {
               </p>
               <p className="text-white text-xl text-center">{profile.role}</p>
             </div>
-
+            {/* ===== Profile Fields ===== */}
             <div className="border-b-2 border-white pb-3 mb-6">
-              <p className="font-semibold text-white text-sm mb-2">Email:</p>
+              <label className="font-semibold text-white text-sm mb-2">
+                Email:
+              </label>
               <p className="text-white mb-4 text-lg">{currentUser.email}</p>
             </div>
-
-            {/* First Name */}
             <div className="border-b-2 border-white pb-3 mb-6">
-              {isEditing ? (
-                <label
-                  htmlFor="firstName"
-                  className="font-semibold text-white text-sm mb-2 flex flex-col"
-                >
-                  First Name:
-                  <input
-                    ref={firstNameRef}
-                    id="firstName"
-                    name="firstName"
-                    type="text"
-                    value={profile.firstName || ""}
-                    onChange={(e) =>
-                      setProfile({ ...profile, firstName: e.target.value })
-                    }
-                    className="w-full p-1 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-black shadow-md transition-all ease-in-out duration-300 mt-1"
-                  />
-                </label>
-              ) : (
+              <label className="font-semibold text-white text-sm mb-2">
+                First Name:
+              </label>
+              {!isEditing ? (
                 <p className="text-white text-lg">
                   {profile.firstName || "No first name"}
                 </p>
+              ) : (
+                <input
+                  ref={firstNameRef}
+                  type="text"
+                  value={profile.firstName || ""}
+                  onChange={(e) =>
+                    setProfile({ ...profile, firstName: e.target.value })
+                  }
+                  className="w-full p-1 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-black shadow-md transition-all ease-in-out duration-300"
+                />
               )}
             </div>
-
-            {/* Middle Name */}
             <div className="border-b-2 border-white pb-3 mb-6">
-              {isEditing ? (
-                <label
-                  htmlFor="middleName"
-                  className="font-semibold text-white text-sm mb-2 flex flex-col"
-                >
-                  Middle Name:
-                  <input
-                    id="middleName"
-                    name="middleName"
-                    type="text"
-                    value={profile.middleName || ""}
-                    onChange={(e) =>
-                      setProfile({ ...profile, middleName: e.target.value })
-                    }
-                    placeholder="Enter middle name"
-                    className="w-full p-1 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-black shadow-md transition-all ease-in-out duration-300 mt-1"
-                  />
-                </label>
-              ) : (
+              <label className="font-semibold text-white text-sm mb-2">
+                Middle Name:
+              </label>
+              {!isEditing ? (
                 <p className="text-white text-lg">
                   {profile.middleName || "No middle name"}
                 </p>
+              ) : (
+                <input
+                  type="text"
+                  value={profile.middleName || ""}
+                  onChange={(e) =>
+                    setProfile({ ...profile, middleName: e.target.value })
+                  }
+                  placeholder="Enter middle name"
+                  className="w-full p-1 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-black shadow-md transition-all ease-in-out duration-300"
+                />
               )}
             </div>
-
-            {/* Last Name */}
             <div className="border-b-2 border-white pb-3 mb-6">
-              {isEditing ? (
-                <label
-                  htmlFor="lastName"
-                  className="font-semibold text-white text-sm mb-2 flex flex-col"
-                >
-                  Last Name:
-                  <input
-                    ref={lastNameRef}
-                    id="lastName"
-                    name="lastName"
-                    type="text"
-                    value={profile.lastName || ""}
-                    onChange={(e) =>
-                      setProfile({ ...profile, lastName: e.target.value })
-                    }
-                    className="w-full p-1 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-black shadow-md transition-all ease-in-out duration-300 mt-1"
-                  />
-                </label>
-              ) : (
+              <label className="font-semibold text-white text-sm mb-2">
+                Last Name:
+              </label>
+              {!isEditing ? (
                 <p className="text-white text-lg">
                   {profile.lastName || "No last name"}
                 </p>
+              ) : (
+                <input
+                  ref={lastNameRef}
+                  type="text"
+                  value={profile.lastName || ""}
+                  onChange={(e) =>
+                    setProfile({ ...profile, lastName: e.target.value })
+                  }
+                  className="w-full p-1 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-black shadow-md transition-all ease-in-out duration-300"
+                />
               )}
             </div>
-
-            {/* Peer Reviewer Fields */}
             {profile.role === "Peer Reviewer" && peerReviewerInfo && (
               <div className="border-b-2 border-white pb-3 mb-6 space-y-3">
                 {["affiliation", "expertise", "interests"].map((field) => (
                   <div key={field}>
+                    <label className="font-semibold text-white text-sm mb-2 capitalize">
+                      {field.replace(/([A-Z])/g, " $1")}
+                    </label>
                     {isEditing ? (
-                      <label
-                        htmlFor={field}
-                        className="font-semibold text-white text-sm mb-2 flex flex-col capitalize"
-                      >
-                        {field}:
-                        <input
-                          id={field}
-                          name={field}
-                          type="text"
-                          value={peerReviewerInfo[field] || ""}
-                          onChange={(e) =>
-                            handlePeerReviewerChange(field, e.target.value)
-                          }
-                          className="w-full p-1 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-black shadow-md mt-1"
-                        />
-                      </label>
+                      <input
+                        type="text"
+                        value={peerReviewerInfo[field] || ""}
+                        onChange={(e) =>
+                          handlePeerReviewerChange(field, e.target.value)
+                        }
+                        className="w-full p-1 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-black shadow-md"
+                      />
                     ) : (
                       <p className="text-white">
                         {peerReviewerInfo[field] || `No ${field}`}
@@ -372,25 +438,117 @@ function Profile() {
                 ))}
               </div>
             )}
+            {/* ===== Save / Cancel Buttons ===== */}
 
-            {isEditing ? (
+            {isEditing && (
               <div className="flex flex-col sm:flex-row justify-between mt-6 space-y-3 sm:space-y-0 sm:space-x-3">
                 <button
                   className="bg-blue-500 hover:bg-blue-600 active:bg-blue-700 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-200 shadow-lg w-full sm:w-auto"
-                  onClick={handleUpdateProfile}
+                  onClick={async () => {
+                    try {
+                      let newPhotoURL = originalPhotoRef.current;
+
+                      // Step 1: Convert selected file to Base64 if a new photo is selected
+                      if (selectedFile) {
+                        const reader = new FileReader();
+                        newPhotoURL = await new Promise((resolve, reject) => {
+                          reader.onloadend = () => resolve(reader.result);
+                          reader.onerror = reject;
+                          reader.readAsDataURL(selectedFile);
+                        });
+                      }
+
+                      // Step 2: Prepare normalized profile
+                      const normalizedProfile = {
+                        ...profile,
+                        firstName: capitalizeWords(profile.firstName),
+                        middleName: capitalizeWords(profile.middleName || ""),
+                        lastName: capitalizeWords(profile.lastName),
+                        photoURL: newPhotoURL,
+                      };
+
+                      // Step 3: Compare with original
+                      const before = {
+                        firstName: originalFirstName,
+                        middleName: originalMiddleName,
+                        lastName: originalLastName,
+                        photoURL: originalPhotoRef.current,
+                        ...(profile.role === "Peer Reviewer"
+                          ? peerReviewerInfo
+                          : {}),
+                      };
+
+                      const after = {
+                        firstName: normalizedProfile.firstName,
+                        middleName: normalizedProfile.middleName,
+                        lastName: normalizedProfile.lastName,
+                        photoURL: normalizedProfile.photoURL,
+                        ...(profile.role === "Peer Reviewer"
+                          ? peerReviewerInfo
+                          : {}),
+                      };
+
+                      const changedFields = {};
+                      Object.keys(after).forEach((key) => {
+                        if (after[key] !== before[key])
+                          changedFields[key] = {
+                            before: before[key],
+                            after: after[key],
+                          };
+                      });
+
+                      if (Object.keys(changedFields).length === 0) {
+                        showMessage("No changes to save.", "error");
+                        window.scrollTo({ top: 0, behavior: "smooth" });
+                        return;
+                      }
+
+                      // Step 4: Update Firestore
+                      await updateDoc(doc(db, "Users", profile.id), after);
+                      await logProfileUpdate({
+                        actingUserId: currentUser.uid,
+                        before,
+                        after,
+                      });
+
+                      // Step 5: Update local state
+                      setProfile((prev) => ({
+                        ...prev,
+                        ...after,
+                      }));
+                      originalPhotoRef.current = newPhotoURL;
+                      setOriginalFirstName(normalizedProfile.firstName);
+                      setOriginalMiddleName(normalizedProfile.middleName);
+                      setOriginalLastName(normalizedProfile.lastName);
+                      setSelectedFile(null);
+                      showMessage("Profile updated successfully.", "success");
+                      setIsEditing(false);
+                      window.scrollTo({ top: 0, behavior: "smooth" });
+                    } catch (error) {
+                      console.error("Error updating profile:", error);
+                      showMessage("Failed to update profile.", "error");
+                    }
+                  }}
                 >
                   Save Changes
                 </button>
+
                 <button
                   className="bg-gray-300 hover:bg-gray-400 active:bg-gray-500 text-gray-800 font-semibold py-3 px-6 rounded-lg transition-all duration-200 shadow-md w-full sm:w-auto"
-                  onClick={() => setIsEditing(false)}
+                  onClick={() => {
+                    setIsEditing(false);
+                    setSelectedFile(null);
+                    setProfile((prev) => ({
+                      ...prev,
+                      photoURL: originalPhotoRef.current,
+                    }));
+                  }}
                 >
                   Cancel
                 </button>
               </div>
-            ) : (
-              <div className="mt-10 h-10"></div>
             )}
+            {!isEditing && <div className="mt-10 h-10"></div>}
           </div>
         ) : (
           <p className="text-center text-gray-100">Loading profile...</p>
