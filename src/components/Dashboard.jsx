@@ -90,9 +90,8 @@ const Dashboard = ({ sidebarOpen }) => {
           return;
         }
 
-        // ---------- Researcher Logic ----------
+        // Researcher logic
         const localMap = new Map();
-
         const mergeAndSet = () => {
           const merged = Array.from(localMap.values());
           merged.sort(
@@ -142,7 +141,7 @@ const Dashboard = ({ sidebarOpen }) => {
 
           snap.docs.forEach((d) => {
             const data = { id: d.id, ...d.data() };
-            if (localMap.has(d.id)) return; // Already added
+            if (localMap.has(d.id)) return;
 
             const isCoAuthor =
               data.coAuthors?.some?.((c) => c.id === currentUser.uid) ||
@@ -184,18 +183,19 @@ const Dashboard = ({ sidebarOpen }) => {
     };
   }, []);
 
-  // Memoized counts for summary cards
-  const memoizedCounts = useMemo(
-    () => ({
+  // Memoized counts
+  const memoizedCounts = useMemo(() => {
+    const rejectedStatuses = ["Rejected", "Peer Reviewer Rejected"];
+    return {
       inProgress: manuscripts.filter((m) =>
         IN_PROGRESS_STATUSES.includes(m.status)
       ).length,
-      rejected: manuscripts.filter((m) => m.status === "Rejected").length,
+      rejected: manuscripts.filter((m) => rejectedStatuses.includes(m.status))
+        .length,
       forPublication: manuscripts.filter((m) => m.status === "For Publication")
         .length,
-    }),
-    [manuscripts]
-  );
+    };
+  }, [manuscripts]);
 
   if (loading)
     return <div className="p-28 text-gray-700">Loading dashboard...</div>;
@@ -257,27 +257,52 @@ const Dashboard = ({ sidebarOpen }) => {
           ? new Date(m.submittedAt.seconds * 1000).toLocaleString()
           : "";
 
+        // Map "Peer Reviewer Rejected" to "Rejected" for progress bar
+        const statusForProgress =
+          m.status === "Peer Reviewer Rejected" ? "Rejected" : m.status;
+
         const stepIndex = Math.max(
           0,
           STATUS_STEPS.indexOf(
-            typeof m.status === "string" ? m.status : "Pending"
+            typeof statusForProgress === "string"
+              ? statusForProgress
+              : "Pending"
           )
         );
+
+        const isRejected =
+          m.status === "Rejected" || m.status === "Peer Reviewer Rejected";
+        const isCompleted = m.status === "For Publication";
 
         return (
           <div
             key={m.id}
-            className="mb-4 border p-4 rounded bg-gray-50 shadow-sm"
+            className="mb-4 border p-4 rounded bg-gray-50 shadow-sm relative"
           >
             <p className="font-semibold">{manuscriptTitle}</p>
             <p className="text-sm text-gray-500 mb-2">
               Submitted on: {submittedAtText}
             </p>
 
+            {/* Rejected badge */}
+            {isRejected && (
+              <span className="absolute top-2 right-2 bg-red-500 text-white px-2 py-1 text-xs rounded">
+                Rejected
+              </span>
+            )}
+
+            {/* Completed badge */}
+            {isCompleted && (
+              <span className="absolute top-2 right-2 bg-green-500 text-white px-2 py-1 text-xs rounded">
+                Completed
+              </span>
+            )}
+
             <Progressbar
               currentStep={stepIndex}
               steps={STATUS_STEPS}
-              currentStatus={m.status} // Pass the actual status
+              currentStatus={statusForProgress}
+              forceComplete={isCompleted} // optional prop to show green check for For Publication
             />
           </div>
         );
