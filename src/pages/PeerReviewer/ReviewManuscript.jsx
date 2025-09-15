@@ -96,7 +96,6 @@ export default function ReviewManuscript() {
   ) => {
     const msRef = doc(db, "manuscripts", manuscriptId);
 
-    // Filter out reviewers who backed out
     const activeDecisions = Object.entries(updatedDecisions).filter(
       ([_, meta]) => meta.decision !== "backedOut"
     );
@@ -145,7 +144,6 @@ export default function ReviewManuscript() {
     await updateManuscriptStatus(manuscriptId, updatedDecisions);
   };
 
-  // --- New Back Out Handler ---
   const handleBackOut = async (manuscriptId) => {
     setDecisions((prev) => ({ ...prev, [manuscriptId]: "backedOut" }));
     const selected = manuscripts.find((m) => m.id === manuscriptId);
@@ -161,7 +159,6 @@ export default function ReviewManuscript() {
       },
     });
 
-    // Update status excluding backed out reviewers
     const completedReviewers =
       selected.reviewerSubmissions?.map((r) => r.reviewerId) || [];
     await updateManuscriptStatus(
@@ -190,7 +187,7 @@ export default function ReviewManuscript() {
         comment: review.comment || "",
         rating: review.rating || 0,
         status: "Completed",
-        completedAt: new Date(), // <- use JS Date instead of serverTimestamp
+        completedAt: new Date(),
       }),
     });
 
@@ -234,144 +231,150 @@ export default function ReviewManuscript() {
     <div className="px-24 py-40">
       <h1 className="text-2xl font-bold mb-6">My Assigned Manuscripts</h1>
       <ul className="space-y-6">
-        {manuscripts.map((m) => (
-          <li
-            key={m.id}
-            className="p-4 border rounded bg-white shadow-sm flex flex-col gap-3"
-          >
-            <p className="font-semibold">{getManuscriptDisplayTitle(m)}</p>
-            <p>Status: {m.status}</p>
-            <p>
-              Submitted:{" "}
-              {m.submittedAt ? formatFirestoreDate(m.submittedAt) : "N/A"}
-            </p>
-            {m.assignedReviewersMeta?.[reviewerId] && (
+        {manuscripts.map((m) => {
+          const myDecision =
+            m.reviewerDecisionMeta?.[reviewerId]?.decision || "pending";
+          return (
+            <li
+              key={m.id}
+              className="p-4 border rounded bg-white shadow-sm flex flex-col gap-3"
+            >
+              <p className="font-semibold">{getManuscriptDisplayTitle(m)}</p>
+              <p>Status: {m.status}</p>
               <p>
-                Assigned at:{" "}
-                {formatFirestoreDate(
-                  m.assignedReviewersMeta[reviewerId].assignedAt
-                )}
-                <br />
-                Assigned by:{" "}
-                {m.assignedReviewersMeta[reviewerId].assignedByName}
+                Submitted:{" "}
+                {m.submittedAt ? formatFirestoreDate(m.submittedAt) : "N/A"}
               </p>
-            )}
+              {m.assignedReviewersMeta?.[reviewerId] && (
+                <p>
+                  Assigned at:{" "}
+                  {formatFirestoreDate(
+                    m.assignedReviewersMeta[reviewerId].assignedAt
+                  )}
+                  <br />
+                  Assigned by:{" "}
+                  {m.assignedReviewersMeta[reviewerId].assignedByName}
+                </p>
+              )}
 
-            {/* Reviewer decisions tracker */}
-            {m.reviewerDecisionMeta && (
-              <div className="flex flex-wrap gap-2 mt-1">
-                {Object.entries(m.reviewerDecisionMeta).map(([id, meta]) => {
-                  const decisionTime = meta.decidedAt || meta.timestamp || null; // handle both local Date and serverTimestamp
-                  return (
-                    <span
-                      key={id}
-                      className={`px-2 py-1 rounded text-white text-xs ${
-                        meta.decision === "accept"
-                          ? "bg-green-500"
-                          : meta.decision === "reject"
-                          ? "bg-red-500"
-                          : meta.decision === "backedOut"
-                          ? "bg-yellow-500"
-                          : "bg-gray-400"
-                      }`}
-                    >
-                      {users[id]?.firstName || id}: {meta.decision || "Pending"}
-                      {meta.decision === "accept" && decisionTime && (
-                        <> | Accepted at: {formatFirestoreDate(decisionTime)}</>
-                      )}
-                      {meta.decision === "reject" && decisionTime && (
-                        <> | Rejected at: {formatFirestoreDate(decisionTime)}</>
-                      )}
-                    </span>
-                  );
-                })}
-              </div>
-            )}
+              {/* Reviewer decisions tracker */}
+              {m.reviewerDecisionMeta && (
+                <div className="flex flex-wrap gap-2 mt-1">
+                  {Object.entries(m.reviewerDecisionMeta).map(([id, meta]) => {
+                    const decisionTime =
+                      meta.decidedAt || meta.timestamp || null;
+                    return (
+                      <span
+                        key={id}
+                        className={`px-2 py-1 rounded text-white text-xs ${
+                          meta.decision === "accept"
+                            ? "bg-green-500"
+                            : meta.decision === "reject"
+                            ? "bg-red-500"
+                            : meta.decision === "backedOut"
+                            ? "bg-yellow-500"
+                            : "bg-gray-400"
+                        }`}
+                      >
+                        {users[id]?.firstName || id}:{" "}
+                        {meta.decision || "Pending"}
+                        {meta.decision === "accept" && decisionTime && (
+                          <>
+                            {" "}
+                            | Accepted at: {formatFirestoreDate(decisionTime)}
+                          </>
+                        )}
+                        {meta.decision === "reject" && decisionTime && (
+                          <>
+                            {" "}
+                            | Rejected at: {formatFirestoreDate(decisionTime)}
+                          </>
+                        )}
+                      </span>
+                    );
+                  })}
+                </div>
+              )}
 
-            {/* Accept/Reject/Back Out buttons */}
-            {m.status === "Peer Reviewer Assigned" && !decisions[m.id] && (
-              <div className="flex gap-2 mt-2">
-                <button
-                  onClick={() => handleDecision(m.id, "accept")}
-                  className="px-3 py-1 bg-green-500 text-white rounded hover:bg-green-600 text-sm"
-                >
-                  Accept
-                </button>
-                <button
-                  onClick={() => handleDecision(m.id, "reject")}
-                  className="px-3 py-1 bg-red-500 text-white rounded hover:bg-red-600 text-sm"
-                >
-                  Reject
-                </button>
-                <button
-                  onClick={() => handleBackOut(m.id)}
-                  className="px-3 py-1 bg-yellow-500 text-white rounded hover:bg-yellow-600 text-sm"
-                >
-                  Back Out
-                </button>
-              </div>
-            )}
-
-            {/* Review button only for accepted reviewers */}
-            {m.reviewerDecisionMeta?.[reviewerId]?.decision === "accept" &&
-              m.status === "Peer Reviewer Reviewing" &&
-              (activeReview !== m.id ? (
-                <button
-                  onClick={() => setActiveReview(m.id)}
-                  className="mt-2 px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 text-sm"
-                >
-                  Review
-                </button>
-              ) : (
-                <div className="flex flex-col gap-2 mt-2">
-                  <textarea
-                    id={`reviewComment-${m.id}`}
-                    name={`reviewComment-${m.id}`}
-                    placeholder="Add your review comments"
-                    className="border p-2 rounded w-full"
-                    value={reviews[m.id]?.comment || ""}
-                    onChange={(e) =>
-                      handleReviewChange(m.id, "comment", e.target.value)
-                    }
-                  />
-                  <input
-                    id={`reviewRating-${m.id}`}
-                    name={`reviewRating-${m.id}`}
-                    type="number"
-                    min="0"
-                    max="5"
-                    placeholder="Rating (0-5)"
-                    className="border p-2 rounded w-32"
-                    value={reviews[m.id]?.rating || ""}
-                    onChange={(e) =>
-                      handleReviewChange(m.id, "rating", e.target.value)
-                    }
-                  />
+              {/* Accept/Reject/Back Out buttons (only if reviewer hasn't acted) */}
+              {myDecision === "pending" && (
+                <div className="flex gap-2 mt-2">
                   <button
-                    onClick={() => submitReview(m.id)}
-                    className="mt-2 px-3 py-1 bg-green-500 text-white rounded hover:bg-green-600 text-sm"
+                    onClick={() => handleDecision(m.id, "accept")}
+                    className="px-3 py-1 bg-green-500 text-white rounded hover:bg-green-600 text-sm"
                   >
-                    Submit Review & Mark Completed
+                    Accept
+                  </button>
+                  <button
+                    onClick={() => handleDecision(m.id, "reject")}
+                    className="px-3 py-1 bg-red-500 text-white rounded hover:bg-red-600 text-sm"
+                  >
+                    Reject
+                  </button>
+                  <button
+                    onClick={() => handleBackOut(m.id)}
+                    className="px-3 py-1 bg-yellow-500 text-white rounded hover:bg-yellow-600 text-sm"
+                  >
+                    Back Out
                   </button>
                 </div>
-              ))}
+              )}
 
-            {/* Show rejected message */}
-            {m.reviewerDecisionMeta?.[reviewerId]?.decision === "reject" && (
-              <p className="mt-2 text-red-600 font-semibold">
-                You have rejected this manuscript.
-              </p>
-            )}
+              {/* Review button only if reviewer accepted */}
+              {myDecision === "accept" &&
+                (activeReview !== m.id ? (
+                  <button
+                    onClick={() => setActiveReview(m.id)}
+                    className="mt-2 px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 text-sm"
+                  >
+                    Review
+                  </button>
+                ) : (
+                  <div className="flex flex-col gap-2 mt-2">
+                    <textarea
+                      placeholder="Add your review comments"
+                      className="border p-2 rounded w-full"
+                      value={reviews[m.id]?.comment || ""}
+                      onChange={(e) =>
+                        handleReviewChange(m.id, "comment", e.target.value)
+                      }
+                    />
+                    <input
+                      type="number"
+                      min="0"
+                      max="5"
+                      placeholder="Rating (0-5)"
+                      className="border p-2 rounded w-32"
+                      value={reviews[m.id]?.rating || ""}
+                      onChange={(e) =>
+                        handleReviewChange(m.id, "rating", e.target.value)
+                      }
+                    />
+                    <button
+                      onClick={() => submitReview(m.id)}
+                      className="mt-2 px-3 py-1 bg-green-500 text-white rounded hover:bg-green-600 text-sm"
+                    >
+                      Submit Review & Mark Completed
+                    </button>
+                  </div>
+                ))}
 
-            {/* Show backed out message */}
-            {m.reviewerDecisionMeta?.[reviewerId]?.decision === "backedOut" && (
-              <p className="mt-2 text-yellow-600 font-semibold">
-                You have backed out from this manuscript.
-              </p>
-            )}
-          </li>
-        ))}
+              {myDecision === "reject" && (
+                <p className="mt-2 text-red-600 font-semibold">
+                  You have rejected this manuscript.
+                </p>
+              )}
+
+              {myDecision === "backedOut" && (
+                <p className="mt-2 text-yellow-600 font-semibold">
+                  You have backed out from this manuscript.
+                </p>
+              )}
+            </li>
+          );
+        })}
       </ul>
     </div>
   );
 }
+// File: src/pages/PeerReviewer/ReviewManuscript.jsx

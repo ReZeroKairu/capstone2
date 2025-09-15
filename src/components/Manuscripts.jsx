@@ -178,18 +178,37 @@ const Manuscripts = () => {
                   )
                 : [];
 
-              return {
-                id: doc.id,
+              let filteredData = {
                 ...data,
                 assignedReviewersData,
                 coAuthorsIds,
               };
+
+              // --- DOUBLE-BLIND: hide author info for peer reviewers ---
+              if (userRole === "Peer Reviewer") {
+                filteredData.submitterId = undefined;
+                filteredData.coAuthorsIds = undefined;
+                filteredData.firstName = undefined;
+                filteredData.middleName = undefined;
+                filteredData.lastName = undefined;
+                filteredData.email = undefined;
+                filteredData.submitter = undefined;
+              }
+
+              return { id: doc.id, ...filteredData };
             })
             .filter((m) => {
               if (userRole === "Admin") return true;
+
+              if (userRole === "Peer Reviewer") {
+                // --- INCLUDE manuscripts assigned to this reviewer ---
+                return (m.assignedReviewers || []).includes(currentUser.uid);
+              }
+
+              // Researchers see their own manuscripts or where they are co-authors
               return (
                 m.submitterId === currentUser.uid ||
-                m.coAuthorsIds.includes(currentUser.uid)
+                (m.coAuthorsIds || []).includes(currentUser.uid)
               );
             });
 
