@@ -183,19 +183,61 @@ const Dashboard = ({ sidebarOpen }) => {
     };
   }, []);
 
-  // Memoized counts
-  const memoizedCounts = useMemo(() => {
+  // Memoized counts including role-specific totals
+  const summaryCounts = useMemo(() => {
+    if (!user || !manuscripts) return [];
+
     const rejectedStatuses = ["Rejected", "Peer Reviewer Rejected"];
-    return {
-      inProgress: manuscripts.filter((m) =>
-        IN_PROGRESS_STATUSES.includes(m.status)
-      ).length,
-      rejected: manuscripts.filter((m) => rejectedStatuses.includes(m.status))
-        .length,
-      forPublication: manuscripts.filter((m) => m.status === "For Publication")
-        .length,
-    };
-  }, [manuscripts]);
+    const counts = [];
+
+    // Role-specific total
+    if (role === "Admin") {
+      counts.push({
+        label: "Total Manuscripts",
+        count: manuscripts.length,
+      });
+    } else if (role === "Peer Reviewer") {
+      const reviewedCount = manuscripts.filter((m) =>
+        m.assignedReviewers?.includes(user.uid)
+      ).length;
+      counts.push({
+        label: "Total Manuscripts Reviewed",
+        count: reviewedCount,
+      });
+    } else if (role === "Researcher") {
+      const submittedCount = manuscripts.filter(
+        (m) =>
+          m.userId === user.uid ||
+          m.coAuthors?.some((c) => c.id === user.uid) ||
+          m.coAuthorsIds?.includes(user.uid)
+      ).length;
+      counts.push({
+        label: "Total Manuscripts Submitted",
+        count: submittedCount,
+      });
+    }
+
+    // Existing counts
+    counts.push(
+      {
+        label: "In Progress",
+        count: manuscripts.filter((m) =>
+          IN_PROGRESS_STATUSES.includes(m.status)
+        ).length,
+      },
+      {
+        label: "For Publication",
+        count: manuscripts.filter((m) => m.status === "For Publication").length,
+      },
+      {
+        label: "Rejected",
+        count: manuscripts.filter((m) => rejectedStatuses.includes(m.status))
+          .length,
+      }
+    );
+
+    return counts;
+  }, [manuscripts, user, role]);
 
   if (loading)
     return <div className="p-28 text-gray-700">Loading dashboard...</div>;
@@ -222,11 +264,7 @@ const Dashboard = ({ sidebarOpen }) => {
 
       {/* Summary Counts */}
       <div className="grid grid-cols-1 sm:grid-cols-5 gap-4 mb-6">
-        {[
-          { label: "In Progress", count: memoizedCounts.inProgress },
-          { label: "For Publication", count: memoizedCounts.forPublication },
-          { label: "Rejected", count: memoizedCounts.rejected },
-        ].map(({ label, count }) => (
+        {summaryCounts.map(({ label, count }) => (
           <div
             key={label}
             className="bg-gray-100 p-4 rounded shadow-sm cursor-pointer hover:shadow-md text-center"
@@ -257,7 +295,6 @@ const Dashboard = ({ sidebarOpen }) => {
           ? new Date(m.submittedAt.seconds * 1000).toLocaleString()
           : "";
 
-        // Map "Peer Reviewer Rejected" to "Rejected" for progress bar
         const statusForProgress =
           m.status === "Peer Reviewer Rejected" ? "Rejected" : m.status;
 
@@ -284,14 +321,12 @@ const Dashboard = ({ sidebarOpen }) => {
               Submitted on: {submittedAtText}
             </p>
 
-            {/* Rejected badge */}
             {isRejected && (
               <span className="absolute top-2 right-2 bg-red-500 text-white px-2 py-1 text-xs rounded">
                 Rejected
               </span>
             )}
 
-            {/* Completed badge */}
             {isCompleted && (
               <span className="absolute top-2 right-2 bg-green-500 text-white px-2 py-1 text-xs rounded">
                 Completed
@@ -302,7 +337,7 @@ const Dashboard = ({ sidebarOpen }) => {
               currentStep={stepIndex}
               steps={STATUS_STEPS}
               currentStatus={statusForProgress}
-              forceComplete={isCompleted} // optional prop to show green check for For Publication
+              forceComplete={isCompleted}
             />
           </div>
         );
