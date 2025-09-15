@@ -1,5 +1,7 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { doc, updateDoc } from "firebase/firestore";
+import { db } from "../firebase/firebase";
 
 const STATUS_COLORS = {
   "Assigning Peer Reviewer": "bg-yellow-100 text-yellow-800",
@@ -8,6 +10,7 @@ const STATUS_COLORS = {
   "Back to Admin": "bg-purple-100 text-purple-800",
   "For Revision": "bg-orange-100 text-orange-800",
   "For Publication": "bg-green-100 text-green-800",
+  "Peer Reviewer Rejected": "bg-red-100 text-red-800",
   Rejected: "bg-red-100 text-red-800",
 };
 
@@ -52,13 +55,22 @@ const ManuscriptItem = ({
     (status === "Assigning Peer Reviewer" ||
       status === "Peer Reviewer Assigned");
 
-  // ✅ Helper for consistent Firestore / JS date handling
   const formatDate = (ts) => {
     if (!ts) return "—";
     if (ts.toDate) return ts.toDate().toLocaleString();
     if (ts.seconds) return new Date(ts.seconds * 1000).toLocaleString();
     if (ts instanceof Date) return ts.toLocaleString();
     return ts;
+  };
+
+  // --- New: handle admin status changes ---
+  const handleStatusChange = async (manuscriptId, newStatus) => {
+    try {
+      const msRef = doc(db, "manuscripts", manuscriptId);
+      await updateDoc(msRef, { status: newStatus });
+    } catch (err) {
+      console.error("Error updating status:", err);
+    }
   };
 
   return (
@@ -147,7 +159,7 @@ const ManuscriptItem = ({
                             : decisionMeta.decision === "reject"
                             ? "Rejected by reviewer at: "
                             : ""}
-                          {formatDate(decisionMeta.timestamp)}
+                          {formatDate(decisionMeta.decidedAt)}
                         </>
                       )}
                     </div>
@@ -211,6 +223,73 @@ const ManuscriptItem = ({
             </ul>
           )}
         </div>
+
+        {/* --- New: Back to Admin Section --- */}
+        {status === "Back to Admin" && (
+          <div className="mt-4 border-t pt-3">
+            {/* Peer Reviewer Feedback */}
+            {manuscript.reviewerSubmissions?.length > 0 && (
+              <div className="mb-2">
+                <p className="font-medium text-gray-700 mb-1">
+                  Peer Reviewer Feedback:
+                </p>
+                <ul className="space-y-1">
+                  {manuscript.reviewerSubmissions.map((r, idx) => {
+                    const reviewer = manuscript.assignedReviewersData?.find(
+                      (u) => u.id === r.reviewerId
+                    );
+                    return (
+                      <li
+                        key={idx}
+                        className="bg-gray-50 p-2 rounded border border-gray-200"
+                      >
+                        <p className="text-sm font-medium">
+                          Reviewer:{" "}
+                          {reviewer
+                            ? `${reviewer.firstName} ${
+                                reviewer.middleName
+                                  ? reviewer.middleName.charAt(0) + "."
+                                  : ""
+                              } ${reviewer.lastName}`
+                            : r.reviewerId}
+                        </p>
+                        <p className="text-xs text-gray-600">
+                          Rating: {r.rating ?? "—"}
+                        </p>
+                        <p className="text-xs text-gray-600">
+                          Comment: {r.comment || "—"}
+                        </p>
+                        <p className="text-xs text-gray-400">
+                          Completed:{" "}
+                          {r.completedAt?.toDate
+                            ? r.completedAt.toDate().toLocaleString()
+                            : r.completedAt || "—"}
+                        </p>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            )}
+
+            {/* Status Buttons */}
+            <div className="flex flex-wrap gap-2 mt-2">
+              {[
+                "For Revision",
+                "For Publication",
+                "Peer Reviewer Rejected",
+              ].map((s) => (
+                <button
+                  key={s}
+                  onClick={() => handleStatusChange(id, s)}
+                  className="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 text-sm"
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </li>
 
       {/* View Response Modal */}
