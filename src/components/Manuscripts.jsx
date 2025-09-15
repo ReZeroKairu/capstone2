@@ -8,6 +8,7 @@ import {
   onSnapshot,
   updateDoc,
   serverTimestamp,
+  deleteField,
 } from "firebase/firestore";
 import { db } from "../firebase/firebase";
 
@@ -18,6 +19,7 @@ import PaginationControls from "./PaginationControls";
 
 const Manuscripts = () => {
   const [user, setUser] = useState(null);
+  const [userId, setUserId] = useState(null);
   const [role, setRole] = useState(null);
   const [manuscripts, setManuscripts] = useState([]);
   const [users, setUsers] = useState([]);
@@ -55,13 +57,14 @@ const Manuscripts = () => {
       if (!assigned.includes(reviewerId)) {
         assigned.push(reviewerId);
         assignedMeta[reviewerId] = {
-          assignedAt: serverTimestamp(), // Firestore Timestamp
-          assignedBy: user.uid,
+          assignedAt: serverTimestamp(),
+          assignedBy: userId,
         };
 
         await updateDoc(msRef, {
           assignedReviewers: assigned,
-          assignedReviewersMeta: assignedMeta,
+          // update the meta map
+          [`assignedReviewersMeta.${reviewerId}`]: assignedMeta[reviewerId],
           status: "Peer Reviewer Assigned",
         });
       }
@@ -71,14 +74,112 @@ const Manuscripts = () => {
     }
   };
 
-  const unassignReviewer = async (manuscriptId) => {
+  /**
+   * unassignReviewer(manuscriptId, reviewerId?)
+   * - if reviewerId is provided: remove that reviewer and their nested metadata/decision
+   * - if reviewerId is omitted: remove all reviewers and clear the reviewerDecisionMeta field
+   */
+  const unassignReviewer = async (manuscriptId, reviewerId = null) => {
     try {
       const msRef = doc(db, "manuscripts", manuscriptId);
-      await updateDoc(msRef, {
-        assignedReviewers: [],
-        assignedReviewersMeta: {},
-        status: "Assigning Peer Reviewer",
-      });
+      const msSnap = await getDoc(msRef);
+      if (!msSnap.exists()) return;
+
+      const data = msSnap.data();
+      let assigned = data.assignedReviewers || [];
+      let assignedMeta = { ...(data.assignedReviewersMeta || {}) };
+      let reviewerDecisionMeta = { ...(data.reviewerDecisionMeta || {}) };
+
+      let newStatus = data.status;
+
+      if (!reviewerId) {
+        // Remove ALL reviewers
+        assigned = [];
+        assignedMeta = {};
+        reviewerDecisionMeta = {};
+
+        newStatus = "Assigning Peer Reviewer";
+
+        // Delete the nested map entirely and set assigned arrays empty
+        await updateDoc(msRef, {
+          assignedReviewers: [],
+          assignedReviewersMeta: {},
+          // remove entire reviewerDecisionMeta field (clean)
+          reviewerDecisionMeta: deleteField(),
+          status: newStatus,
+        });
+
+        // update local state
+        setManuscripts((prev) =>
+          prev.map((m) =>
+            m.id === manuscriptId
+              ? {
+                  ...m,
+                  assignedReviewers: [],
+                  assignedReviewersMeta: {},
+                  reviewerDecisionMeta: undefined,
+                  status: newStatus,
+                }
+              : m
+          )
+        );
+        return;
+      }
+
+      // else: remove a single reviewer
+      assigned = assigned.filter((id) => id !== reviewerId);
+      delete assignedMeta[reviewerId];
+      delete reviewerDecisionMeta[reviewerId]; // local object updated
+
+      // Determine new status based on remaining reviewers/decisions
+      if (assigned.length === 0) {
+        newStatus = "Assigning Peer Reviewer";
+      } else {
+        // Look at remaining decisions (if any)
+        const remainingDecisions = Object.values(reviewerDecisionMeta || {});
+        const activeDecisions = remainingDecisions.filter(
+          (meta) => meta && meta.decision && meta.decision !== "backedOut"
+        );
+
+        if (activeDecisions.length === 0) {
+          newStatus = "Assigning Peer Reviewer";
+        } else if (activeDecisions.some((d) => d.decision === "reject")) {
+          newStatus = "Peer Reviewer Rejected";
+        } else if (activeDecisions.some((d) => d.decision === "accept")) {
+          newStatus = "Peer Reviewer Reviewing";
+        } else {
+          newStatus = "Peer Reviewer Assigned";
+        }
+      }
+
+      // Use deleteField to force Firestore to remove the nested keys for this reviewer
+      const updates = {
+        assignedReviewers: assigned,
+        status: newStatus,
+      };
+      updates[`assignedReviewersMeta.${reviewerId}`] = deleteField();
+      updates[`reviewerDecisionMeta.${reviewerId}`] = deleteField();
+
+      await updateDoc(msRef, updates);
+
+      // update local state
+      setManuscripts((prev) =>
+        prev.map((m) =>
+          m.id === manuscriptId
+            ? {
+                ...m,
+                assignedReviewers: assigned,
+                assignedReviewersMeta: assignedMeta,
+                // keep reviewerDecisionMeta with deleted key removed locally
+                reviewerDecisionMeta:
+                  Object.keys(reviewerDecisionMeta).length > 0
+                    ? reviewerDecisionMeta
+                    : undefined,
+                status: newStatus,
+              }
+            : m
+        )
+      );
     } catch (err) {
       console.error("Error unassigning reviewer:", err);
     }
@@ -122,55 +223,58 @@ const Manuscripts = () => {
         const docSnap = await getDoc(userRef);
         const userRole = docSnap.exists() ? docSnap.data().role : "User";
         setRole(userRole);
+
         setUser(currentUser);
+        setUserId(currentUser.uid);
 
         const manuscriptsRef = collection(db, "manuscripts");
-        // --- Only change is inside onSnapshot
-        // mapping ---
-        // assignedReviewersData is now sorted by assignedAt
+
         unsubscribeManuscripts = onSnapshot(manuscriptsRef, (snapshot) => {
           const allMss = snapshot.docs
             .map((doc) => {
               const data = doc.data() || {};
 
-              // Map assigned reviewers with metadata and include reviewer decision timestamps
-              const assignedReviewersData =
-                userRole === "Admin"
-                  ? (data.assignedReviewers || [])
-                      .map((id) => {
-                        const u = allUsers.find((user) => user.id === id);
-                        const meta = data.assignedReviewersMeta?.[id] || {};
-                        const assignedByUser = allUsers.find(
-                          (user) => user.id === meta.assignedBy
-                        );
-                        const decisionMeta =
-                          data.reviewerDecisionMeta?.[id] || {};
+              let assignedReviewersData = [];
+              if (data.assignedReviewers?.length > 0) {
+                assignedReviewersData = data.assignedReviewers
+                  .map((id) => {
+                    const u = allUsers.find((user) => user.id === id);
+                    const meta = data.assignedReviewersMeta?.[id] || {};
+                    const assignedByUser = allUsers.find(
+                      (user) => user.id === meta.assignedBy
+                    );
+                    const decisionMeta = data.reviewerDecisionMeta?.[id] || {};
 
-                        return {
-                          id,
-                          firstName: u?.firstName || "",
-                          middleName: u?.middleName || "",
-                          lastName: u?.lastName || "",
-                          assignedAt: meta.assignedAt || null,
-                          assignedBy: assignedByUser
-                            ? `${assignedByUser.firstName} ${
-                                assignedByUser.middleName
-                                  ? assignedByUser.middleName + " "
-                                  : ""
-                              }${assignedByUser.lastName}`
-                            : "—",
-                          decision: decisionMeta.decision || null,
-                          decidedAt: decisionMeta.decidedAt || null,
-                        };
-                      })
-                      .sort((a, b) => {
-                        const aTime =
-                          a.assignedAt?.toDate?.()?.getTime?.() || 0;
-                        const bTime =
-                          b.assignedAt?.toDate?.()?.getTime?.() || 0;
-                        return aTime - bTime; // ascending: oldest assigned first
-                      })
-                  : [];
+                    return {
+                      id,
+                      firstName: u?.firstName || "",
+                      middleName: u?.middleName || "",
+                      lastName: u?.lastName || "",
+                      assignedAt: meta.assignedAt || null,
+                      assignedBy: assignedByUser
+                        ? `${assignedByUser.firstName} ${
+                            assignedByUser.middleName
+                              ? assignedByUser.middleName + " "
+                              : ""
+                          }${assignedByUser.lastName}`
+                        : "—",
+                      decision: decisionMeta.decision || null,
+                      decidedAt: decisionMeta.decidedAt || null,
+                    };
+                  })
+                  .sort((a, b) => {
+                    const aTime = a.assignedAt?.toDate?.()?.getTime?.() || 0;
+                    const bTime = b.assignedAt?.toDate?.()?.getTime?.() || 0;
+                    return aTime - bTime;
+                  });
+
+                // Peer Reviewer: only see own record
+                if (userRole === "Peer Reviewer") {
+                  assignedReviewersData = assignedReviewersData.filter(
+                    (r) => r.id === currentUser.uid
+                  );
+                }
+              }
 
               const coAuthorsIds = Array.isArray(data.coAuthorsIds)
                 ? data.coAuthorsIds.map((c) =>
@@ -186,7 +290,7 @@ const Manuscripts = () => {
 
               // --- DOUBLE-BLIND: hide author info for peer reviewers ---
               if (userRole === "Peer Reviewer") {
-                filteredData.submitterId = undefined;
+                filteredData.userId = undefined;
                 filteredData.coAuthorsIds = undefined;
                 filteredData.firstName = undefined;
                 filteredData.middleName = undefined;
@@ -195,24 +299,27 @@ const Manuscripts = () => {
                 filteredData.submitter = undefined;
               }
 
+              // Researchers should not see reviewer data
+              if (userRole === "Researcher") {
+                filteredData.assignedReviewersData = [];
+              }
+
               return { id: doc.id, ...filteredData };
             })
             .filter((m) => {
               if (userRole === "Admin") return true;
 
               if (userRole === "Peer Reviewer") {
-                // --- INCLUDE manuscripts assigned to this reviewer ---
                 return (m.assignedReviewers || []).includes(currentUser.uid);
               }
 
               // Researchers see their own manuscripts or where they are co-authors
               return (
-                m.submitterId === currentUser.uid ||
+                m.userId === currentUser.uid ||
                 (m.coAuthorsIds || []).includes(currentUser.uid)
               );
             });
 
-          // Keep global manuscript order unchanged
           allMss.sort((a, b) => {
             const aTime =
               a.acceptedAt?.toDate?.()?.getTime?.() ||
@@ -239,6 +346,7 @@ const Manuscripts = () => {
       else {
         setUser(null);
         setRole(null);
+        setUserId(null);
         setManuscripts([]);
         setLoading(false);
       }
@@ -263,7 +371,6 @@ const Manuscripts = () => {
     .filter((m) => {
       if (filter === "all") return m.status !== "Pending";
 
-      // --- Updated: treat "Rejected" and "Peer Reviewer Rejected" as same filter ---
       if (filter === "Rejected") {
         return m.status === "Rejected" || m.status === "Peer Reviewer Rejected";
       }
@@ -331,6 +438,9 @@ const Manuscripts = () => {
             showAssignList={showAssignList[m.id]}
             toggleAssignList={() => toggleAssignList(m.id)}
             handleAssign={handleAssign}
+            // pass both args if you want to unassign a specific reviewer:
+            // unassignReviewer(manuscriptId, reviewerId)
+            // ManuscriptItem should call unassignReviewer(m.id) or unassignReviewer(m.id, reviewerId)
             unassignReviewer={unassignReviewer}
             showFullName={showFullName}
             setShowFullName={setShowFullName}

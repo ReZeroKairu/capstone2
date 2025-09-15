@@ -89,6 +89,16 @@ export default function ReviewManuscript() {
     fetchAssignedManuscripts();
   }, [reviewerId]);
 
+  // 🔹 helper to log reviewer history events
+  const logReviewerHistory = async (msRef, reviewerId, decision) => {
+    await updateDoc(msRef, {
+      [`reviewerHistory.${reviewerId}`]: arrayUnion({
+        decision,
+        decidedAt: new Date(),
+      }),
+    });
+  };
+
   const updateManuscriptStatus = async (
     manuscriptId,
     updatedDecisions,
@@ -105,7 +115,10 @@ export default function ReviewManuscript() {
       .map(([id]) => id);
 
     let newStatus;
-    if (activeAcceptedReviewers.length === 0) {
+
+    if (activeDecisions.length === 0) {
+      newStatus = "Assigning Peer Reviewer";
+    } else if (activeAcceptedReviewers.length === 0) {
       newStatus = activeDecisions.some(([, d]) => d.decision === "reject")
         ? "Peer Reviewer Rejected"
         : "Peer Reviewer Assigned";
@@ -135,32 +148,49 @@ export default function ReviewManuscript() {
       ...(selected.reviewerDecisionMeta || {}),
       [reviewerId]: { decision, decidedAt: new Date() },
     };
-    await updateDoc(doc(db, "manuscripts", manuscriptId), {
+
+    const msRef = doc(db, "manuscripts", manuscriptId);
+
+    await updateDoc(msRef, {
       [`reviewerDecisionMeta.${reviewerId}`]: {
         decision,
         decidedAt: serverTimestamp(),
       },
     });
+
+    await logReviewerHistory(msRef, reviewerId, decision);
+
     await updateManuscriptStatus(manuscriptId, updatedDecisions);
   };
 
   const handleBackOut = async (manuscriptId) => {
-    setDecisions((prev) => ({ ...prev, [manuscriptId]: "backedOut" }));
     const selected = manuscripts.find((m) => m.id === manuscriptId);
-    const updatedDecisions = {
-      ...(selected.reviewerDecisionMeta || {}),
-      [reviewerId]: { decision: "backedOut", decidedAt: new Date() },
-    };
+    const msRef = doc(db, "manuscripts", manuscriptId);
 
-    await updateDoc(doc(db, "manuscripts", manuscriptId), {
-      [`reviewerDecisionMeta.${reviewerId}`]: {
-        decision: "backedOut",
-        decidedAt: serverTimestamp(),
-      },
+    let assigned = (selected.assignedReviewers || []).filter(
+      (id) => id !== reviewerId
+    );
+    let assignedMeta = { ...(selected.assignedReviewersMeta || {}) };
+    delete assignedMeta[reviewerId];
+
+    let updatedDecisions = { ...(selected.reviewerDecisionMeta || {}) };
+    delete updatedDecisions[reviewerId];
+
+    let newStatus = selected.status;
+    if (assigned.length === 0) newStatus = "Assigning Peer Reviewer";
+
+    await updateDoc(msRef, {
+      assignedReviewers: assigned,
+      assignedReviewersMeta: assignedMeta,
+      reviewerDecisionMeta: updatedDecisions,
+      status: newStatus,
     });
+
+    await logReviewerHistory(msRef, reviewerId, "backedOut");
 
     const completedReviewers =
       selected.reviewerSubmissions?.map((r) => r.reviewerId) || [];
+
     await updateManuscriptStatus(
       manuscriptId,
       updatedDecisions,
@@ -170,7 +200,13 @@ export default function ReviewManuscript() {
     setManuscripts((prev) =>
       prev.map((m) =>
         m.id === manuscriptId
-          ? { ...m, reviewerDecisionMeta: updatedDecisions }
+          ? {
+              ...m,
+              assignedReviewers: assigned,
+              assignedReviewersMeta: assignedMeta,
+              reviewerDecisionMeta: updatedDecisions,
+              status: newStatus,
+            }
           : m
       )
     );
@@ -181,6 +217,12 @@ export default function ReviewManuscript() {
     if (!review) return;
 
     const selected = manuscripts.find((m) => m.id === manuscriptId);
+
+    const hasSubmittedReview = selected.reviewerSubmissions?.some(
+      (r) => r.reviewerId === reviewerId
+    );
+    if (hasSubmittedReview) return;
+
     await updateDoc(doc(db, "manuscripts", manuscriptId), {
       reviewerSubmissions: arrayUnion({
         reviewerId,
@@ -191,9 +233,12 @@ export default function ReviewManuscript() {
       }),
     });
 
-    const completedReviewers =
-      selected.reviewerSubmissions?.map((r) => r.reviewerId) || [];
-    completedReviewers.push(reviewerId);
+    const completedReviewers = Array.from(
+      new Set([
+        ...(selected.reviewerSubmissions?.map((r) => r.reviewerId) || []),
+        reviewerId,
+      ])
+    );
 
     const updatedDecisions = selected.reviewerDecisionMeta || {};
     await updateManuscriptStatus(
@@ -224,16 +269,33 @@ export default function ReviewManuscript() {
     "Untitled";
 
   if (loading) return <p className="pt-28 px-6">Loading manuscripts...</p>;
-  if (!manuscripts.length)
-    return <p className="pt-28 px-6">No assigned manuscripts found.</p>;
+
+  // 🔹 Filter only in-progress manuscripts
+  const inProgressStatuses = [
+    "Peer Reviewer Assigned",
+    "Peer Reviewer Reviewing",
+    "Back to Admin",
+    "For Revision",
+  ];
+
+  const inProgressManuscripts = manuscripts.filter((m) =>
+    inProgressStatuses.includes(m.status)
+  );
+
+  if (!inProgressManuscripts.length)
+    return <p className="pt-28 px-6">No in-progress manuscripts found.</p>;
 
   return (
     <div className="px-24 py-40">
       <h1 className="text-2xl font-bold mb-6">My Assigned Manuscripts</h1>
       <ul className="space-y-6">
-        {manuscripts.map((m) => {
+        {inProgressManuscripts.map((m) => {
           const myDecision =
             m.reviewerDecisionMeta?.[reviewerId]?.decision || "pending";
+          const hasSubmittedReview = m.reviewerSubmissions?.some(
+            (r) => r.reviewerId === reviewerId
+          );
+
           return (
             <li
               key={m.id}
@@ -257,7 +319,6 @@ export default function ReviewManuscript() {
                 </p>
               )}
 
-              {/* Reviewer decisions tracker */}
               {m.reviewerDecisionMeta && (
                 <div className="flex flex-wrap gap-2 mt-1">
                   {Object.entries(m.reviewerDecisionMeta).map(([id, meta]) => {
@@ -276,19 +337,10 @@ export default function ReviewManuscript() {
                             : "bg-gray-400"
                         }`}
                       >
-                        {users[id]?.firstName || id}:{" "}
+                        {users[id]?.firstName || "Unknown User"}:{" "}
                         {meta.decision || "Pending"}
-                        {meta.decision === "accept" && decisionTime && (
-                          <>
-                            {" "}
-                            | Accepted at: {formatFirestoreDate(decisionTime)}
-                          </>
-                        )}
-                        {meta.decision === "reject" && decisionTime && (
-                          <>
-                            {" "}
-                            | Rejected at: {formatFirestoreDate(decisionTime)}
-                          </>
+                        {decisionTime && (
+                          <> | {formatFirestoreDate(decisionTime)}</>
                         )}
                       </span>
                     );
@@ -296,7 +348,19 @@ export default function ReviewManuscript() {
                 </div>
               )}
 
-              {/* Accept/Reject/Back Out buttons (only if reviewer hasn't acted) */}
+              {m.reviewerHistory?.[reviewerId] && (
+                <div className="mt-2 text-xs text-gray-600">
+                  <p className="font-medium">History:</p>
+                  <ul className="list-disc ml-4">
+                    {m.reviewerHistory[reviewerId].map((h, idx) => (
+                      <li key={idx}>
+                        {h.decision} at {formatFirestoreDate(h.decidedAt)}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
               {myDecision === "pending" && (
                 <div className="flex gap-2 mt-2">
                   <button
@@ -320,8 +384,8 @@ export default function ReviewManuscript() {
                 </div>
               )}
 
-              {/* Review button only if reviewer accepted */}
               {myDecision === "accept" &&
+                !hasSubmittedReview &&
                 (activeReview !== m.id ? (
                   <button
                     onClick={() => setActiveReview(m.id)}
@@ -359,15 +423,9 @@ export default function ReviewManuscript() {
                   </div>
                 ))}
 
-              {myDecision === "reject" && (
-                <p className="mt-2 text-red-600 font-semibold">
-                  You have rejected this manuscript.
-                </p>
-              )}
-
-              {myDecision === "backedOut" && (
-                <p className="mt-2 text-yellow-600 font-semibold">
-                  You have backed out from this manuscript.
+              {myDecision === "accept" && hasSubmittedReview && (
+                <p className="mt-2 text-green-600 font-semibold">
+                  You have already submitted your review.
                 </p>
               )}
             </li>
@@ -377,4 +435,3 @@ export default function ReviewManuscript() {
     </div>
   );
 }
-// File: src/pages/PeerReviewer/ReviewManuscript.jsx

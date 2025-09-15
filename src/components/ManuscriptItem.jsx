@@ -14,6 +14,13 @@ const STATUS_COLORS = {
   Rejected: "bg-red-100 text-red-800",
 };
 
+const IN_PROGRESS_STATUSES = [
+  "Peer Reviewer Assigned",
+  "Peer Reviewer Reviewing",
+  "Back to Admin",
+  "For Revision",
+];
+
 const ManuscriptItem = ({
   manuscript = {},
   role,
@@ -55,6 +62,9 @@ const ManuscriptItem = ({
     (status === "Assigning Peer Reviewer" ||
       status === "Peer Reviewer Assigned");
 
+  const canPeerReviewerAct =
+    role === "Peer Reviewer" && IN_PROGRESS_STATUSES.includes(status);
+
   const formatDate = (ts) => {
     if (!ts) return "—";
     if (ts.toDate) return ts.toDate().toLocaleString();
@@ -63,7 +73,6 @@ const ManuscriptItem = ({
     return ts;
   };
 
-  // --- New: handle admin status changes ---
   const handleStatusChange = async (manuscriptId, newStatus) => {
     try {
       const msRef = doc(db, "manuscripts", manuscriptId);
@@ -172,12 +181,15 @@ const ManuscriptItem = ({
 
         {/* Actions */}
         <div className="mt-3 flex flex-col sm:flex-row sm:items-center gap-2">
-          <button
-            onClick={() => setShowModal(true)}
-            className="px-4 py-2 bg-yellow-400 text-[#211B17] rounded-lg hover:bg-yellow-500 transition font-medium text-sm sm:text-base"
-          >
-            View Response
-          </button>
+          {/* Hide this button for Peer Reviewer unless in progress */}
+          {role !== "Peer Reviewer" && (
+            <button
+              onClick={() => setShowModal(true)}
+              className="px-4 py-2 bg-yellow-400 text-[#211B17] rounded-lg hover:bg-yellow-500 transition font-medium text-sm sm:text-base"
+            >
+              View Response
+            </button>
+          )}
 
           {showAssignButton &&
             (!hasReviewer ? (
@@ -224,10 +236,9 @@ const ManuscriptItem = ({
           )}
         </div>
 
-        {/* --- New: Back to Admin Section --- */}
-        {status === "Back to Admin" && (
+        {/* --- Back to Admin Section --- */}
+        {status === "Back to Admin" && role === "Admin" && (
           <div className="mt-4 border-t pt-3">
-            {/* Peer Reviewer Feedback */}
             {manuscript.reviewerSubmissions?.length > 0 && (
               <div className="mb-2">
                 <p className="font-medium text-gray-700 mb-1">
@@ -272,7 +283,7 @@ const ManuscriptItem = ({
               </div>
             )}
 
-            {/* Status Buttons */}
+            {/* Status Buttons for Admin only */}
             <div className="flex flex-wrap gap-2 mt-2">
               {[
                 "For Revision",
