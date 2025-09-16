@@ -24,8 +24,6 @@ const Manuscripts = () => {
   const [manuscripts, setManuscripts] = useState([]);
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [expanded, setExpanded] = useState({});
-  const [showAssignList, setShowAssignList] = useState({});
   const [searchQuery, setSearchQuery] = useState("");
   const [filter, setFilter] = useState("all");
   const [currentPage, setCurrentPage] = useState(1);
@@ -39,11 +37,6 @@ const Manuscripts = () => {
       : ts instanceof Date
       ? ts.toLocaleString()
       : "N/A";
-
-  const toggleExpand = (id) =>
-    setExpanded((prev) => ({ ...prev, [id]: !prev[id] }));
-  const toggleAssignList = (id) =>
-    setShowAssignList((prev) => ({ ...prev, [id]: !prev[id] }));
 
   const handleAssign = async (manuscriptId, reviewerId) => {
     try {
@@ -63,22 +56,15 @@ const Manuscripts = () => {
 
         await updateDoc(msRef, {
           assignedReviewers: assigned,
-          // update the meta map
           [`assignedReviewersMeta.${reviewerId}`]: assignedMeta[reviewerId],
           status: "Peer Reviewer Assigned",
         });
       }
-      setShowAssignList((prev) => ({ ...prev, [manuscriptId]: false }));
     } catch (err) {
       console.error("Error assigning reviewer:", err);
     }
   };
 
-  /**
-   * unassignReviewer(manuscriptId, reviewerId?)
-   * - if reviewerId is provided: remove that reviewer and their nested metadata/decision
-   * - if reviewerId is omitted: remove all reviewers and clear the reviewerDecisionMeta field
-   */
   const unassignReviewer = async (manuscriptId, reviewerId = null) => {
     try {
       const msRef = doc(db, "manuscripts", manuscriptId);
@@ -370,11 +356,8 @@ const Manuscripts = () => {
   const filteredManuscripts = manuscripts
     .filter((m) => {
       if (filter === "all") return m.status !== "Pending";
-
-      if (filter === "Rejected") {
+      if (filter === "Rejected")
         return m.status === "Rejected" || m.status === "Peer Reviewer Rejected";
-      }
-
       return m.status === filter;
     })
     .filter((m) => {
@@ -433,17 +416,12 @@ const Manuscripts = () => {
             manuscript={m}
             role={role}
             users={users}
-            expanded={expanded[m.id]}
-            toggleExpand={() => toggleExpand(m.id)}
-            showAssignList={showAssignList[m.id]}
-            toggleAssignList={() => toggleAssignList(m.id)}
             handleAssign={handleAssign}
-            // pass both args if you want to unassign a specific reviewer:
-            // unassignReviewer(manuscriptId, reviewerId)
-            // ManuscriptItem should call unassignReviewer(m.id) or unassignReviewer(m.id, reviewerId)
             unassignReviewer={unassignReviewer}
             showFullName={showFullName}
             setShowFullName={setShowFullName}
+            formatFirestoreDate={formatFirestoreDate} // optional helper prop
+            // expanded & showAssignList are now LOCAL state inside ManuscriptItem
           />
         ))}
       </ul>
