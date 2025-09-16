@@ -1,13 +1,13 @@
 import React, { useContext } from "react";
 import { Navigate, useLocation } from "react-router-dom";
-import { AuthContext } from "../authcontext/AuthContext"; // Adjust path as needed
+import { AuthContext } from "../authcontext/AuthContext";
 
 const AdminRoute = ({ children }) => {
   const { currentUser, role, loading } = useContext(AuthContext);
   const location = useLocation();
 
-  // Show loading while auth context is determining user state
-  if (loading) {
+  // Show loading while auth context is determining user state or role
+  if (loading || role === null) {
     return (
       <div className="flex justify-center items-center min-h-screen">
         <p>Loading...</p>
