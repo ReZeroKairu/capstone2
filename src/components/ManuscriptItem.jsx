@@ -14,20 +14,14 @@ const STATUS_COLORS = {
   Rejected: "bg-red-100 text-red-800",
 };
 
-const IN_PROGRESS_STATUSES = [
-  "Peer Reviewer Assigned",
-  "Peer Reviewer Reviewing",
-  "Back to Admin",
-  "For Revision",
-];
-
 const ManuscriptItem = ({
   manuscript = {},
   role,
-  showAssignList = false,
   users = [],
   handleAssign = () => {},
   unassignReviewer = () => {},
+  showFullName,
+  setShowFullName,
 }) => {
   if (!manuscript || Object.keys(manuscript).length === 0) return null;
 
@@ -48,7 +42,12 @@ const ManuscriptItem = ({
   const navigate = useNavigate();
   const hasReviewer = manuscript.assignedReviewers?.length > 0;
   const [showModal, setShowModal] = useState(false);
-  const [showFullName, setShowFullName] = useState({});
+
+  const hasRejection =
+    manuscript.reviewerDecisionMeta &&
+    Object.values(manuscript.reviewerDecisionMeta).some(
+      (d) => d.decision === "reject"
+    );
 
   const manuscriptTitle =
     title ||
@@ -59,11 +58,7 @@ const ManuscriptItem = ({
 
   const showAssignButton =
     role === "Admin" &&
-    (status === "Assigning Peer Reviewer" ||
-      status === "Peer Reviewer Assigned");
-
-  const canPeerReviewerAct =
-    role === "Peer Reviewer" && IN_PROGRESS_STATUSES.includes(status);
+    ["Assigning Peer Reviewer", "Peer Reviewer Assigned"].includes(status);
 
   const formatDate = (ts) => {
     if (!ts) return "—";
@@ -90,13 +85,20 @@ const ManuscriptItem = ({
           <p className="font-bold text-lg sm:text-xl break-words">
             {manuscriptTitle}
           </p>
-          <span
-            className={`px-3 py-1 rounded-full text-xs sm:text-sm font-semibold shadow-sm ${
-              STATUS_COLORS[status] || "bg-gray-100 text-gray-800"
-            }`}
-          >
-            {status}
-          </span>
+          <div className="flex items-center gap-2">
+            {hasRejection && (
+              <span className="px-3 py-1 rounded-full text-xs sm:text-sm font-semibold shadow-sm bg-red-100 text-red-800">
+                Rejected by Peer Reviewer
+              </span>
+            )}
+            <span
+              className={`px-3 py-1 rounded-full text-xs sm:text-sm font-semibold shadow-sm ${
+                STATUS_COLORS[status] || "bg-gray-100 text-gray-800"
+              }`}
+            >
+              {status}
+            </span>
+          </div>
         </div>
 
         {/* Author & meta */}
@@ -117,14 +119,19 @@ const ManuscriptItem = ({
         {/* Assigned reviewers */}
         {hasReviewer && manuscript.assignedReviewersData?.length > 0 && (
           <div className="mt-2">
-            {status === "Peer Reviewer Assigned" && (
+            {["Peer Reviewer Assigned", "Peer Reviewer Reviewing"].includes(
+              status
+            ) && (
               <p className="text-sm font-medium text-gray-700 mb-1">
-                Peer Reviewer Assigned:
+                Peer Reviewer
+                {manuscript.assignedReviewersData.length > 1 ? "s" : ""}{" "}
+                Assigned:
               </p>
             )}
             <div className="flex flex-col gap-2">
               {manuscript.assignedReviewersData.map((r) => {
-                const displayName = showFullName[r.id]
+                const key = `${manuscript.id}_${r.id}`; // Unique per manuscript + reviewer
+                const displayName = showFullName[key]
                   ? `${r.firstName} ${r.middleName} ${r.lastName}`.trim()
                   : `${r.firstName} ${
                       r.middleName ? r.middleName.charAt(0) + "." : ""
@@ -149,7 +156,7 @@ const ManuscriptItem = ({
                       onClick={() =>
                         setShowFullName((prev) => ({
                           ...prev,
-                          [r.id]: !prev[r.id],
+                          [key]: !prev[key],
                         }))
                       }
                       title="Click to toggle full name"
@@ -162,13 +169,24 @@ const ManuscriptItem = ({
                       Assigned By: {assignedByName}
                       {decisionMeta && (
                         <>
-                          <br />
-                          {decisionMeta.decision === "accept"
-                            ? "Accepted by reviewer at: "
-                            : decisionMeta.decision === "reject"
-                            ? "Rejected by reviewer at: "
-                            : ""}
-                          {formatDate(decisionMeta.decidedAt)}
+                          {decisionMeta.decision === "accept" && (
+                            <>
+                              <br />
+                              <span className="text-green-600">
+                                Accepted by reviewer at:{" "}
+                                {formatDate(decisionMeta.decidedAt)}
+                              </span>
+                            </>
+                          )}
+                          {decisionMeta.decision === "reject" && (
+                            <>
+                              <br />
+                              <span className="text-red-600">
+                                Rejected by reviewer at:{" "}
+                                {formatDate(decisionMeta.decidedAt)}
+                              </span>
+                            </>
+                          )}
                         </>
                       )}
                     </div>
@@ -181,7 +199,6 @@ const ManuscriptItem = ({
 
         {/* Actions */}
         <div className="mt-3 flex flex-col sm:flex-row sm:items-center gap-2">
-          {/* Hide this button for Peer Reviewer unless in progress */}
           {role !== "Peer Reviewer" && (
             <button
               onClick={() => setShowModal(true)}
@@ -209,31 +226,6 @@ const ManuscriptItem = ({
                 Unassign Reviewer
               </button>
             ))}
-
-          {showAssignList && (
-            <ul className="mt-2 border rounded-lg p-3 bg-gray-50 max-h-60 overflow-y-auto space-y-2 shadow-inner">
-              {users
-                .filter((u) => u.role === "Peer Reviewer")
-                .map((r) => (
-                  <li
-                    key={r.id}
-                    className="flex justify-between items-center px-2 py-1 bg-white rounded hover:bg-gray-100 transition"
-                  >
-                    <span className="font-medium">
-                      {r.firstName}{" "}
-                      {r.middleName ? r.middleName.charAt(0) + "." : ""}{" "}
-                      {r.lastName}
-                    </span>
-                    <button
-                      onClick={() => handleAssign(id, r.id)}
-                      className="px-3 py-1 bg-green-500 text-white rounded hover:bg-green-600 text-xs sm:text-sm transition"
-                    >
-                      Assign
-                    </button>
-                  </li>
-                ))}
-            </ul>
-          )}
         </div>
 
         {/* --- Back to Admin Section --- */}
@@ -280,25 +272,24 @@ const ManuscriptItem = ({
                     );
                   })}
                 </ul>
+
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {[
+                    "For Revision",
+                    "For Publication",
+                    "Peer Reviewer Rejected",
+                  ].map((s) => (
+                    <button
+                      key={s}
+                      onClick={() => handleStatusChange(id, s)}
+                      className="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 text-sm"
+                    >
+                      {s}
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
-
-            {/* Status Buttons for Admin only */}
-            <div className="flex flex-wrap gap-2 mt-2">
-              {[
-                "For Revision",
-                "For Publication",
-                "Peer Reviewer Rejected",
-              ].map((s) => (
-                <button
-                  key={s}
-                  onClick={() => handleStatusChange(id, s)}
-                  className="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 text-sm"
-                >
-                  {s}
-                </button>
-              ))}
-            </div>
           </div>
         )}
       </li>
