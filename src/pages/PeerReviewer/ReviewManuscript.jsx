@@ -98,7 +98,6 @@ export default function ReviewManuscript() {
       }),
     });
   };
-
   const updateManuscriptStatus = async (
     manuscriptId,
     updatedDecisions,
@@ -116,12 +115,15 @@ export default function ReviewManuscript() {
 
     let newStatus;
 
+    // 🔹 If the current reviewer rejected, immediately go Back to Admin
+    const hasRejected = Object.values(updatedDecisions).some(
+      (d) => d.decision === "reject"
+    );
+
     if (activeDecisions.length === 0) {
       newStatus = "Assigning Peer Reviewer";
-    } else if (activeAcceptedReviewers.length === 0) {
-      newStatus = activeDecisions.some(([, d]) => d.decision === "reject")
-        ? "Peer Reviewer Rejected"
-        : "Peer Reviewer Assigned";
+    } else if (hasRejected) {
+      newStatus = "Back to Admin"; // <-- changed from "Peer Reviewer Rejected"
     } else if (
       activeAcceptedReviewers.every((id) => completedReviewers.includes(id))
     ) {
@@ -144,6 +146,7 @@ export default function ReviewManuscript() {
   const handleDecision = async (manuscriptId, decision) => {
     setDecisions((prev) => ({ ...prev, [manuscriptId]: decision }));
     const selected = manuscripts.find((m) => m.id === manuscriptId);
+
     const updatedDecisions = {
       ...(selected.reviewerDecisionMeta || {}),
       [reviewerId]: { decision, decidedAt: new Date() },
@@ -160,6 +163,7 @@ export default function ReviewManuscript() {
 
     await logReviewerHistory(msRef, reviewerId, decision);
 
+    // 🔹 Always calculate new status after any decision
     await updateManuscriptStatus(manuscriptId, updatedDecisions);
   };
 
