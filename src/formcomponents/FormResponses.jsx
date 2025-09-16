@@ -549,50 +549,63 @@ export default function FormResponses() {
         </div>
 
         <div className="bg-[#f3f2ee] rounded-md overflow-hidden">
-          {responses.length === 0 && !loading && (
-            <div className="p-6 text-center text-gray-600">
-              No responses found.
-            </div>
-          )}
-
-          {responses.map((res, idx) => {
-            const fullName = `${res.firstName || ""} ${
-              res.lastName || ""
-            }`.trim();
-            const submittedAtText =
-              res.submittedAt?.toDate?.()?.toLocaleString() ||
-              (res.submittedAt?.seconds
-                ? new Date(res.submittedAt.seconds * 1000).toLocaleString()
-                : "");
-
-            return (
-              <div
-                key={res.id}
-                className={`flex items-center gap-4 px-4 py-3 text-[#211B17] ${
-                  idx === responses.length - 1 ? "" : "border-b"
-                } border-[#7B2E19]/30`}
-              >
-                <div className="flex-1 truncate text-sm">
-                  {highlightText(res.email || "")}
-                </div>
-                <div className="flex-1 truncate text-sm">
-                  {highlightText(fullName)}
-                </div>
-                <div className="flex-none text-xs text-gray-600">
-                  {submittedAtText}
-                </div>
-                <div className="flex-none ml-2">
-                  <button
-                    onClick={() => setSelectedResponse(res)}
-                    className="text-[#7B2E19] underline font-medium text-sm"
+          <table className="min-w-full bg-[#f3f2ee] rounded-md overflow-hidden">
+            <thead className="bg-yellow-400 text-[#211B17]">
+              <tr>
+                <th className="px-4 py-2 text-left">Email</th>
+                <th className="px-4 py-2 text-left">Name</th>
+                <th className="px-4 py-2 text-left">Submitted At</th>
+                <th className="px-4 py-2 text-left">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {responses.length === 0 && !loading ? (
+                <tr>
+                  <td
+                    colSpan={4} // span all columns
+                    className="text-center text-gray-600 py-6"
                   >
-                    View Response
-                  </button>
-                </div>
-              </div>
-            );
-          })}
+                    No responses found.
+                  </td>
+                </tr>
+              ) : (
+                responses.map((res) => {
+                  const fullName = `${res.firstName || ""} ${
+                    res.middleName || ""
+                  } ${res.lastName || ""}`.trim();
+                  const submittedAtText =
+                    res.submittedAt?.toDate?.()?.toLocaleString() ||
+                    (res.submittedAt?.seconds
+                      ? new Date(
+                          res.submittedAt.seconds * 1000
+                        ).toLocaleString()
+                      : "");
+
+                  return (
+                    <tr key={res.id} className="border-b border-[#7B2E19]/30">
+                      <td className="px-4 py-2">
+                        {highlightText(res.email || "")}
+                      </td>
+                      <td className="px-4 py-2">{highlightText(fullName)}</td>
+                      <td className="px-4 py-2 text-gray-600 text-sm">
+                        {submittedAtText}
+                      </td>
+                      <td className="px-4 py-2">
+                        <button
+                          onClick={() => setSelectedResponse(res)}
+                          className="text-[#7B2E19] underline font-medium text-sm"
+                        >
+                          View Response
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
         </div>
+
         {loading && (
           <div className="mt-3 text-sm text-gray-500">Loading...</div>
         )}

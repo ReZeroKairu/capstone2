@@ -5,8 +5,10 @@ import { useAuth } from "../authcontext/AuthContext";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faUser, faEdit } from "@fortawesome/free-solid-svg-icons";
 import { logProfileUpdate } from "../utils/logger"; // updated logger
+import { useParams } from "react-router-dom";
 
 function Profile() {
+  const { userId } = useParams(); // <- dynamic user ID
   const { currentUser } = useAuth();
   const [profile, setProfile] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
@@ -68,8 +70,12 @@ function Profile() {
   };
 
   useEffect(() => {
-    if (currentUser) fetchProfile(currentUser.uid);
-  }, [currentUser]);
+    if (userId) {
+      fetchProfile(userId); // fetch the profile of the clicked reviewer
+    } else if (currentUser) {
+      fetchProfile(currentUser.uid); // fallback: your own profile
+    }
+  }, [userId, currentUser]);
 
   const fetchProfile = async (userId) => {
     try {
@@ -79,12 +85,14 @@ function Profile() {
         setProfile({
           id: userDoc.id,
           ...userData,
-          photoURL: userData.photoURL || currentUser.photoURL,
+          photoURL: userData.photoURL || null, // don’t fallback to currentUser.photoURL
         });
-        originalPhotoRef.current = userData.photoURL || currentUser.photoURL;
+        originalPhotoRef.current = userData.photoURL || null;
+
         setOriginalFirstName(userData.firstName);
         setOriginalMiddleName(userData.middleName || "");
         setOriginalLastName(userData.lastName);
+
         if (userData.role === "Peer Reviewer") {
           setPeerReviewerInfo({
             affiliation: userData.affiliation || "",
@@ -92,7 +100,10 @@ function Profile() {
             interests: userData.interests || "",
           });
         }
-      } else showMessage("Profile not found.", "error");
+      } else {
+        showMessage("Profile not found.", "error");
+        setProfile(null);
+      }
     } catch (error) {
       console.error("Error fetching profile:", error);
       showMessage("Failed to fetch profile.", "error");
@@ -298,9 +309,12 @@ function Profile() {
               <div className="relative">
                 {profile.photoURL ? (
                   <img
-                    src={profile.photoURL}
+                    src={
+                      profile.photoURL ||
+                      `https://ui-avatars.com/api/?name=${profile.firstName}+${profile.lastName}`
+                    }
                     alt="Profile"
-                    className="w-32 h-32 rounded-full object-cover shadow-md mb-4"
+                    className="rounded-full"
                   />
                 ) : (
                   <div className="w-32 h-32 rounded-full bg-yellow-400 flex justify-center items-center text-white text-5xl font-bold shadow-lg mb-4">
@@ -351,8 +365,11 @@ function Profile() {
               <label className="font-semibold text-white text-sm mb-2">
                 Email:
               </label>
-              <p className="text-white mb-4 text-lg">{currentUser.email}</p>
+              <p className="text-white mb-4 text-lg">
+                {profile.email || "No email"}
+              </p>
             </div>
+
             <div className="border-b-2 border-white pb-3 mb-6">
               <label className="font-semibold text-white text-sm mb-2">
                 First Name:
