@@ -13,22 +13,39 @@ import {
   signOut,
   sendEmailVerification,
 } from "firebase/auth";
-import { auth } from "../firebase/firebase"; // adjust path to your Firebase config
+import { doc, getDoc } from "firebase/firestore";
+import { auth, db } from "../firebase/firebase"; // adjust path
 
-// Create AuthContext
 export const AuthContext = createContext();
 
-// AuthProvider component
 export const AuthProvider = ({ children }) => {
   const [currentUser, setCurrentUser] = useState(null);
+  const [role, setRole] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // Monitor auth state
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(
       auth,
-      (user) => {
+      async (user) => {
         setCurrentUser(user);
+
+        if (user) {
+          // Fetch role from Firestore
+          try {
+            const userDoc = await getDoc(doc(db, "Users", user.uid));
+            if (userDoc.exists()) {
+              setRole(userDoc.data().role);
+            } else {
+              setRole("Researcher"); // default role
+            }
+          } catch (err) {
+            console.error("Error fetching user role:", err);
+            setRole("Researcher");
+          }
+        } else {
+          setRole(null);
+        }
+
         setLoading(false);
       },
       (error) => {
@@ -40,7 +57,6 @@ export const AuthProvider = ({ children }) => {
     return () => unsubscribe();
   }, []);
 
-  // Helper: Sign in with email & password
   const login = async (email, password) => {
     const userCredential = await signInWithEmailAndPassword(
       auth,
@@ -50,7 +66,6 @@ export const AuthProvider = ({ children }) => {
     return userCredential.user;
   };
 
-  // Helper: Sign up with email & password and send verification email
   const register = async (email, password) => {
     const userCredential = await createUserWithEmailAndPassword(
       auth,
@@ -58,27 +73,27 @@ export const AuthProvider = ({ children }) => {
       password
     );
     await sendEmailVerification(userCredential.user);
-    await signOut(auth); // optional: prevent auto-login until email verified
+    await signOut(auth); // prevent auto-login until email verified
     return userCredential.user;
   };
 
-  // Helper: Sign out
   const logout = async () => {
     await signOut(auth);
     setCurrentUser(null);
+    setRole(null);
   };
 
-  // Memoize context value to prevent unnecessary re-renders
   const value = useMemo(
     () => ({
       currentUser,
+      role,
       loading,
       emailVerified: currentUser?.emailVerified || false,
       login,
       register,
       logout,
     }),
-    [currentUser, loading]
+    [currentUser, role, loading]
   );
 
   if (loading) {
@@ -92,5 +107,4 @@ export const AuthProvider = ({ children }) => {
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
-// Custom hook to use AuthContext
 export const useAuth = () => useContext(AuthContext);

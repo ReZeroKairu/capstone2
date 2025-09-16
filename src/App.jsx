@@ -129,8 +129,13 @@ function App() {
                 />
                 <Route
                   path="/submit-manuscript"
-                  element={<SubmitManuscript />}
+                  element={
+                    <ProtectedRoute allowedRoles={["Admin", "Researcher"]}>
+                      <SubmitManuscript />
+                    </ProtectedRoute>
+                  }
                 />
+
                 <Route path="*" element={<NotFound />} />
 
                 {/* Protected Routes */}
