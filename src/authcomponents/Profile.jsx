@@ -82,12 +82,22 @@ function Profile() {
       const userDoc = await getDoc(doc(db, "Users", userId));
       if (userDoc.exists()) {
         const userData = userDoc.data();
+
+        // Unified photo selection logic
+        // Priority: local Base64 (photoURL) > externalPhotoURL > Google photo > null
+        const profilePhoto =
+          userData.photoURL ||
+          userData.externalPhotoURL ||
+          userData.photo ||
+          null;
+
         setProfile({
           id: userDoc.id,
           ...userData,
-          photoURL: userData.photoURL || null, // don’t fallback to currentUser.photoURL
+          photoURL: profilePhoto, // unified field for JSX
         });
-        originalPhotoRef.current = userData.photoURL || null;
+
+        originalPhotoRef.current = profilePhoto;
 
         setOriginalFirstName(userData.firstName);
         setOriginalMiddleName(userData.middleName || "");
@@ -271,6 +281,11 @@ function Profile() {
       photoURL: originalPhotoRef.current,
     }));
   };
+  const initialsFallback = getInitials(
+    profile?.firstName,
+    profile?.middleName,
+    profile?.lastName
+  );
 
   return (
     <div className="flex justify-center items-start min-h-screen pt-28 px-4 pb-10 bg-gray-100">
@@ -306,23 +321,18 @@ function Profile() {
           <div className="space-y-6 pr-2">
             {/* ===== Profile Picture Section ===== */}
             <div className="flex flex-col items-center mb-8 relative">
-              <div className="relative">
+              <div className="relative w-32 h-32">
                 {profile.photoURL ? (
                   <img
-                    src={
-                      profile.photoURL ||
-                      `https://ui-avatars.com/api/?name=${profile.firstName}+${profile.lastName}`
-                    }
+                    src={profile.photoURL}
                     alt="Profile"
-                    className="rounded-full"
+                    className="rounded-full w-full h-full object-cover"
                   />
                 ) : (
-                  <div className="w-32 h-32 rounded-full bg-yellow-400 flex justify-center items-center text-white text-5xl font-bold shadow-lg mb-4">
-                    {getInitials(
-                      profile.firstName,
-                      profile.middleName,
-                      profile.lastName
-                    ) || <FontAwesomeIcon icon={faUser} className="text-3xl" />}
+                  <div className="w-full h-full rounded-full bg-yellow-400 flex justify-center items-center text-white text-5xl font-bold shadow-lg">
+                    {initialsFallback || (
+                      <FontAwesomeIcon icon={faUser} className="text-3xl" />
+                    )}
                   </div>
                 )}
 
@@ -347,7 +357,7 @@ function Profile() {
               </div>
 
               <p
-                className="text-white text-3xl font-bold text-center mb-1 cursor-pointer"
+                className="text-white text-3xl font-bold text-center mt-2 cursor-pointer"
                 onClick={() => setShowFullMiddle(!showFullMiddle)}
               >
                 {profile.firstName}{" "}
@@ -360,6 +370,7 @@ function Profile() {
               </p>
               <p className="text-white text-xl text-center">{profile.role}</p>
             </div>
+
             {/* ===== Profile Fields ===== */}
             <div className="border-b-2 border-white pb-3 mb-6">
               <label className="font-semibold text-white text-sm mb-2">
