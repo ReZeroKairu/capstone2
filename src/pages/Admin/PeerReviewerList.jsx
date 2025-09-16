@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { getAuth } from "firebase/auth";
 import { serverTimestamp } from "firebase/firestore";
 import { db } from "../../firebase/firebase";
@@ -21,10 +21,10 @@ export default function PeerReviewerList() {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(5);
   const location = useLocation();
+  const navigate = useNavigate();
   const params = new URLSearchParams(location.search);
   const manuscriptId = params.get("manuscriptId");
 
-  // Pagination utility
   const getPageNumbers = (current, total) => {
     const delta = 2;
     const range = [];
@@ -123,7 +123,6 @@ export default function PeerReviewerList() {
     }
   };
 
-  // Filter reviewers
   const filteredReviewers = reviewers.filter((r) => {
     if (!searchQuery) return true;
     const q = searchQuery.toLowerCase();
@@ -138,7 +137,10 @@ export default function PeerReviewerList() {
   const indexOfLast = currentPage * itemsPerPage;
   const indexOfFirst = indexOfLast - itemsPerPage;
   const currentReviewers = filteredReviewers.slice(indexOfFirst, indexOfLast);
-  const totalPages = Math.ceil(filteredReviewers.length / itemsPerPage);
+
+  const handleNavigateProfile = (userId) => {
+    navigate(`/profile/${userId}`);
+  };
 
   return (
     <div className="p-4 pb-28 sm:p-8 bg-gray-50 min-h-screen pt-28 md:pt-24 relative mb-11">
@@ -176,7 +178,7 @@ export default function PeerReviewerList() {
           </div>
 
           <div className="border-2 border-red-800 rounded-b-md overflow-hidden mt-0">
-            {currentReviewers.map((r, idx) => (
+            {currentReviewers.map((r) => (
               <div
                 key={r.id}
                 className="bg-white hover:bg-gray-100 border-b border-red-800 sm:border-none p-3"
@@ -185,13 +187,28 @@ export default function PeerReviewerList() {
                 <div className="flex flex-col sm:hidden gap-1">
                   <span>
                     <strong>Name:</strong>{" "}
-                    {r.name || `${r.firstName} ${r.lastName}`}
+                    <button
+                      className="text-red-800"
+                      onClick={() => handleNavigateProfile(r.id)}
+                    >
+                      {r.name || `${r.firstName} ${r.lastName}`}
+                    </button>
                   </span>
                   <span>
-                    <strong>Email:</strong> {r.email}
+                    <strong>Email:</strong>{" "}
+                    <button
+                      className="text-red-800"
+                      onClick={() => handleNavigateProfile(r.id)}
+                    >
+                      {r.email}
+                    </button>
                   </span>
                   <span>
                     <strong>Assigned:</strong> {r.assignedCount}
+                  </span>
+                  <span>
+                    <strong>Status:</strong>{" "}
+                    {r.assignedCount > 0 ? "Busy" : "Available"}
                   </span>
                   <button
                     className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 text-sm mt-2"
@@ -204,9 +221,21 @@ export default function PeerReviewerList() {
                 {/* Desktop */}
                 <div className="hidden sm:grid grid-cols-5 items-center text-center">
                   <span className="text-red-800">
-                    {r.name || `${r.firstName} ${r.lastName}`}
+                    <button
+                      className="hover:underline"
+                      onClick={() => handleNavigateProfile(r.id)}
+                    >
+                      {r.name || `${r.firstName} ${r.lastName}`}
+                    </button>
                   </span>
-                  <span className="text-red-800">{r.email}</span>
+                  <span className="text-red-800">
+                    <button
+                      className="hover:underline"
+                      onClick={() => handleNavigateProfile(r.id)}
+                    >
+                      {r.email}
+                    </button>
+                  </span>
                   <span className="text-red-800">{r.assignedCount}</span>
                   <span className="text-red-800">
                     {r.assignedCount > 0 ? "Busy" : "Available"}

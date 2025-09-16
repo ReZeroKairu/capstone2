@@ -80,7 +80,7 @@ function UserManagement() {
     }
   };
 
-  // Fetch all users (or search users)
+  // Fetch all users
   const fetchUsers = async () => {
     setLoading(true);
     try {
@@ -89,8 +89,6 @@ function UserManagement() {
         id: doc.id,
         ...doc.data(),
       }));
-
-      // Sort users by firstName ascending automatically
       usersList.sort((a, b) => a.firstName.localeCompare(b.firstName));
       setUsers(usersList);
     } catch (error) {
@@ -189,7 +187,6 @@ function UserManagement() {
     }
   };
 
-  // Filter users locally (multi-word search on firstName, lastName, email, role)
   const filteredUsers = users.filter((user) => {
     if (!searchQuery) return true;
     const queryWords = searchQuery.toLowerCase().split(" ");
@@ -270,16 +267,34 @@ function UserManagement() {
                 {/* Mobile view */}
                 <div className="flex flex-col sm:hidden p-3 gap-1 text-base">
                   <span>
-                    <strong>Email:</strong> {user.email}
+                    <strong>Email:</strong>{" "}
+                    <span
+                      className="text-blue-600 cursor-pointer hover:underline"
+                      onClick={() => navigate(`/profile/${user.id}`)}
+                    >
+                      {user.email}
+                    </span>
                   </span>
                   <span>
-                    <strong>First:</strong> {user.firstName}
+                    <strong>First:</strong>{" "}
+                    <span
+                      className="text-blue-600 cursor-pointer hover:underline"
+                      onClick={() => navigate(`/profile/${user.id}`)}
+                    >
+                      {user.firstName}
+                    </span>
                   </span>
                   <span>
                     <strong>Middle:</strong> {user.middleName || "N/A"}
                   </span>
                   <span>
-                    <strong>Last:</strong> {user.lastName}
+                    <strong>Last:</strong>{" "}
+                    <span
+                      className="text-blue-600 cursor-pointer hover:underline"
+                      onClick={() => navigate(`/profile/${user.id}`)}
+                    >
+                      {user.lastName}
+                    </span>
                   </span>
                   <span>
                     <strong>Role:</strong> {user.role}
@@ -308,12 +323,27 @@ function UserManagement() {
                       : ""
                   }`}
                 >
-                  <span className="text-red-800">{user.email}</span>
-                  <span className="text-red-800">{user.firstName}</span>
+                  <span
+                    className="text-red-800 cursor-pointer hover:underline"
+                    onClick={() => navigate(`/profile/${user.id}`)}
+                  >
+                    {user.email}
+                  </span>
+                  <span
+                    className="text-red-800 cursor-pointer hover:underline"
+                    onClick={() => navigate(`/profile/${user.id}`)}
+                  >
+                    {user.firstName}
+                  </span>
                   <span className="text-red-800">
                     {user.middleName || "N/A"}
                   </span>
-                  <span className="text-red-800">{user.lastName}</span>
+                  <span
+                    className="text-red-800 cursor-pointer hover:underline"
+                    onClick={() => navigate(`/profile/${user.id}`)}
+                  >
+                    {user.lastName}
+                  </span>
                   <span className="text-red-800">{user.role}</span>
                   <div className="flex flex-col sm:flex-row justify-center items-center gap-2">
                     <button
