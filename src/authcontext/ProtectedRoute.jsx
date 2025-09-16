@@ -1,30 +1,35 @@
 import React from "react";
 import { Navigate } from "react-router-dom";
-import { useAuth } from "../authcontext/AuthContext"; // Adjust the path based on your project structure
+import { useAuth } from "../authcontext/AuthContext";
 
-const ProtectedRoute = ({ children, requireVerification = true }) => {
-  const { currentUser, loading } = useAuth();
+const ProtectedRoute = ({
+  children,
+  requireVerification = true,
+  allowedRoles = [], // Array of allowed roles
+}) => {
+  const { currentUser, role, loading } = useAuth();
 
-  // Show loading state while determining authentication status
   if (loading) {
     return (
       <div className="flex justify-center items-center min-h-screen">
-        <p>Loading...</p> {/* Replace with a spinner or loading indicator */}
+        <p>Loading...</p>
       </div>
     );
   }
 
-  // Redirect to sign-in if not authenticated
   if (!currentUser) {
     return <Navigate to="/signin" replace />;
   }
 
-  // Check email verification only if required
   if (requireVerification && !currentUser.emailVerified) {
-    return <Navigate to="/unauthorized" replace />; // Redirect to unauthorized if email is not verified
+    return <Navigate to="/unauthorized" replace />;
   }
 
-  return children; // Render the protected children if authenticated (and email verified if required)
+  if (allowedRoles.length > 0 && !allowedRoles.includes(role)) {
+    return <Navigate to="/unauthorized" replace />;
+  }
+
+  return children;
 };
 
 export default ProtectedRoute;

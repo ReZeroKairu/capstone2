@@ -13,6 +13,7 @@ import {
 import { db } from "../firebase/firebase";
 import Progressbar from "./Progressbar.jsx";
 import { useNavigate } from "react-router-dom";
+import PaginationControls from "./PaginationControls";
 
 const IN_PROGRESS_STATUSES = [
   "Pending",
@@ -39,8 +40,12 @@ const Dashboard = ({ sidebarOpen }) => {
   const [role, setRole] = useState(null);
   const [manuscripts, setManuscripts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [filterStatus, setFilterStatus] = useState("All");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [manuscriptsPerPage, setManuscriptsPerPage] = useState(5);
   const navigate = useNavigate();
 
+  // --- Fetch manuscripts ---
   useEffect(() => {
     const auth = getAuth();
     let unsubscribes = [];
@@ -64,6 +69,7 @@ const Dashboard = ({ sidebarOpen }) => {
 
         const manuscriptsRef = collection(db, "manuscripts");
 
+        // Admin
         if (userRole === "Admin") {
           const q = query(manuscriptsRef, orderBy("submittedAt", "desc"));
           const unsub = onSnapshot(q, (snapshot) => {
@@ -72,9 +78,11 @@ const Dashboard = ({ sidebarOpen }) => {
             );
           });
           unsubscribes.push(unsub);
+          setLoading(false);
           return;
         }
 
+        // Peer Reviewer
         if (userRole === "Peer Reviewer") {
           const q = query(
             manuscriptsRef,
@@ -87,6 +95,7 @@ const Dashboard = ({ sidebarOpen }) => {
             );
           });
           unsubscribes.push(unsub);
+          setLoading(false);
           return;
         }
 
@@ -147,7 +156,6 @@ const Dashboard = ({ sidebarOpen }) => {
               data.coAuthors?.some?.((c) => c.id === currentUser.uid) ||
               data.answeredQuestions?.some((q) => {
                 if (q.type !== "coauthors") return false;
-
                 if (Array.isArray(q.answer)) {
                   return q.answer.some(
                     (a) =>
@@ -183,19 +191,16 @@ const Dashboard = ({ sidebarOpen }) => {
     };
   }, []);
 
-  // Memoized counts including role-specific totals
+  // --- Summary Counts ---
   const summaryCounts = useMemo(() => {
     if (!user || !manuscripts) return [];
 
     const rejectedStatuses = ["Rejected", "Peer Reviewer Rejected"];
     const counts = [];
 
-    // Role-specific total
+    // Role-specific total merged into summary
     if (role === "Admin") {
-      counts.push({
-        label: "Total Manuscripts",
-        count: manuscripts.length,
-      });
+      counts.push({ label: "Total Manuscripts", count: manuscripts.length });
     } else if (role === "Peer Reviewer") {
       const reviewedCount = manuscripts.filter((m) =>
         m.assignedReviewers?.includes(user.uid)
@@ -217,7 +222,7 @@ const Dashboard = ({ sidebarOpen }) => {
       });
     }
 
-    // Existing counts
+    // Other counts
     counts.push(
       {
         label: "In Progress",
@@ -239,6 +244,50 @@ const Dashboard = ({ sidebarOpen }) => {
     return counts;
   }, [manuscripts, user, role]);
 
+  // --- Filtered manuscripts ---
+  const displayedManuscripts = useMemo(() => {
+    // Role-specific total clicks should show all manuscripts
+    const totalLabels = [
+      "Total Manuscripts",
+      "Total Manuscripts Submitted",
+      "Total Manuscripts Reviewed",
+    ];
+
+    if (filterStatus === "All" || totalLabels.includes(filterStatus))
+      return manuscripts;
+
+    if (filterStatus === "In Progress") {
+      return manuscripts.filter((m) => IN_PROGRESS_STATUSES.includes(m.status));
+    }
+
+    if (filterStatus === "Rejected") {
+      return manuscripts.filter((m) =>
+        ["Rejected", "Peer Reviewer Rejected"].includes(m.status)
+      );
+    }
+
+    if (filterStatus === "For Publication") {
+      return manuscripts.filter((m) => m.status === "For Publication");
+    }
+
+    // Exact status match
+    return manuscripts.filter((m) => m.status === filterStatus);
+  }, [manuscripts, filterStatus]);
+
+  // --- Reset page to 1 when filter changes ---
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filterStatus, manuscriptsPerPage, displayedManuscripts.length]);
+
+  const indexOfLast = currentPage * manuscriptsPerPage;
+  const indexOfFirst = indexOfLast - manuscriptsPerPage;
+  const currentManuscripts = displayedManuscripts.slice(
+    indexOfFirst,
+    indexOfLast
+  );
+  const totalPages =
+    Math.ceil(displayedManuscripts.length / manuscriptsPerPage) || 1;
+
   if (loading)
     return <div className="p-28 text-gray-700">Loading dashboard...</div>;
   if (!user)
@@ -248,100 +297,141 @@ const Dashboard = ({ sidebarOpen }) => {
       </div>
     );
 
-  const handleStatusClick = (status) => {
+  const handleStatusClick = (status) =>
     navigate(`/manuscripts?status=${encodeURIComponent(status)}`);
-  };
 
   return (
     <div
-      className={`flex flex-col min-h-screen pb-36 pt-40 px-4 sm:px-6 lg:px-24 ${
+      className={`flex flex-col min-h-screen py-32 px-4 sm:px-6 lg:px-20 ${
         sidebarOpen ? "lg:pl-64" : ""
       }`}
     >
-      <h1 className="text-3xl font-bold mb-6 text-center sm:text-left">
-        Welcome, {user.displayName || "User"}!
-      </h1>
-
-      {/* Summary Counts */}
-      <div className="grid grid-cols-1 sm:grid-cols-5 gap-4 mb-6">
-        {summaryCounts.map(({ label, count }) => (
-          <div
-            key={label}
-            className="bg-gray-100 p-4 rounded shadow-sm cursor-pointer hover:shadow-md text-center"
-            onClick={() => handleStatusClick(label)}
-          >
-            <p className="text-lg font-semibold">{label}</p>
-            <p className="text-2xl font-bold">{count}</p>
-          </div>
-        ))}
+      {/* Welcome Header */}
+      <div className="mb-10 flex flex-col sm:flex-row justify-between items-center">
+        <h1 className="text-4xl font-bold text-gray-800">
+          Hello, {user.displayName || "User"}!
+        </h1>
+        <span className="text-gray-500 font-medium mt-2 sm:mt-0">
+          Role: {role}
+        </span>
       </div>
 
-      {/* Manuscript List */}
-      {manuscripts.map((m) => {
-        const manuscriptTitle =
-          m.manuscriptTitle ||
-          m.title ||
-          m.answeredQuestions
-            ?.find((q) =>
-              q.question?.toLowerCase().trim().startsWith("manuscript title")
-            )
-            ?.answer?.toString() ||
-          m.formTitle ||
-          "Untitled";
-
-        const submittedAtText = m.submittedAt?.toDate
-          ? m.submittedAt.toDate().toLocaleString()
-          : m.submittedAt?.seconds
-          ? new Date(m.submittedAt.seconds * 1000).toLocaleString()
-          : "";
-
-        const statusForProgress =
-          m.status === "Peer Reviewer Rejected" ? "Rejected" : m.status;
-
-        const stepIndex = Math.max(
-          0,
-          STATUS_STEPS.indexOf(
-            typeof statusForProgress === "string"
-              ? statusForProgress
-              : "Pending"
-          )
-        );
-
-        const isRejected =
-          m.status === "Rejected" || m.status === "Peer Reviewer Rejected";
-        const isCompleted = m.status === "For Publication";
-
-        return (
+      <div className="flex flex-col lg:flex-row gap-8">
+        {/* Sidebar Summary Panel */}
+        {role && (
           <div
-            key={m.id}
-            className="mb-4 border p-4 rounded bg-gray-50 shadow-sm relative"
+            className="lg:w-1/4 bg-gradient-to-b from-indigo-50 to-white rounded-2xl p-6 shadow-lg overflow-y-auto"
+            style={{ maxHeight: "400px" }}
           >
-            <p className="font-semibold">{manuscriptTitle}</p>
-            <p className="text-sm text-gray-500 mb-2">
-              Submitted on: {submittedAtText}
-            </p>
+            <h2 className="text-xl font-semibold mb-4 text-gray-700">
+              Dashboard
+            </h2>
+            <ul className="space-y-4">
+              {summaryCounts.map(({ label, count }) => (
+                <li
+                  key={label}
+                  className={`flex justify-between items-center cursor-pointer hover:bg-indigo-100 p-2 rounded-lg transition ${
+                    filterStatus === label ? "bg-indigo-100 font-semibold" : ""
+                  }`}
+                  onClick={() => setFilterStatus(label)}
+                >
+                  <span className="text-gray-600 font-medium">{label}</span>
+                  <span className="text-indigo-600 font-bold text-lg">
+                    {count}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
-            {isRejected && (
-              <span className="absolute top-2 right-2 bg-red-500 text-white px-2 py-1 text-xs rounded">
-                Rejected
-              </span>
-            )}
+        {/* Manuscripts Panel */}
+        {role && (
+          <div className="flex-1 flex flex-col gap-6">
+            {currentManuscripts.map((m) => {
+              const manuscriptTitle =
+                m.manuscriptTitle ||
+                m.title ||
+                m.answeredQuestions
+                  ?.find((q) =>
+                    q.question
+                      ?.toLowerCase()
+                      .trim()
+                      .startsWith("manuscript title")
+                  )
+                  ?.answer?.toString() ||
+                m.formTitle ||
+                "Untitled";
 
-            {isCompleted && (
-              <span className="absolute top-2 right-2 bg-green-500 text-white px-2 py-1 text-xs rounded">
-                Completed
-              </span>
-            )}
+              const submittedAtText = m.submittedAt?.toDate
+                ? m.submittedAt.toDate().toLocaleString()
+                : m.submittedAt?.seconds
+                ? new Date(m.submittedAt.seconds * 1000).toLocaleString()
+                : "";
 
-            <Progressbar
-              currentStep={stepIndex}
-              steps={STATUS_STEPS}
-              currentStatus={statusForProgress}
-              forceComplete={isCompleted}
+              const statusForProgress =
+                m.status === "Peer Reviewer Rejected" ? "Rejected" : m.status;
+              const stepIndex = Math.max(
+                0,
+                STATUS_STEPS.indexOf(statusForProgress || "Pending")
+              );
+              const isRejected = [
+                "Rejected",
+                "Peer Reviewer Rejected",
+              ].includes(m.status);
+              const isCompleted = m.status === "For Publication";
+              const statusColor = isCompleted
+                ? "green"
+                : isRejected
+                ? "red"
+                : "yellow";
+
+              return (
+                <div
+                  key={m.id}
+                  onClick={() => navigate("/manuscripts")}
+                  className="bg-white rounded-2xl p-5 shadow-md border border-gray-100 hover:shadow-xl transition relative cursor-pointer"
+                >
+                  <div className="flex justify-between items-center mb-2">
+                    <h3 className="font-semibold text-gray-800">
+                      {manuscriptTitle}
+                    </h3>
+                    <span
+                      className={`px-3 py-1 rounded-full text-white text-xs font-medium ${
+                        statusColor === "green"
+                          ? "bg-green-500"
+                          : statusColor === "red"
+                          ? "bg-red-500"
+                          : "bg-yellow-400 text-gray-800"
+                      }`}
+                    >
+                      {statusForProgress}
+                    </span>
+                  </div>
+                  <p className="text-gray-400 text-sm mb-3">
+                    Submitted: {submittedAtText}
+                  </p>
+                  <Progressbar
+                    currentStep={stepIndex}
+                    steps={STATUS_STEPS}
+                    currentStatus={statusForProgress}
+                    forceComplete={isCompleted}
+                  />
+                </div>
+              );
+            })}
+
+            {/* Pagination Controls */}
+            <PaginationControls
+              currentPage={currentPage}
+              totalPages={totalPages}
+              setCurrentPage={setCurrentPage}
+              manuscriptsPerPage={manuscriptsPerPage}
+              setManuscriptsPerPage={setManuscriptsPerPage}
             />
           </div>
-        );
-      })}
+        )}
+      </div>
     </div>
   );
 };
