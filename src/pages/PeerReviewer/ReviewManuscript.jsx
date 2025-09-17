@@ -26,6 +26,14 @@ export default function ReviewManuscript() {
       ? ts.toLocaleString()
       : "N/A";
 
+  // 🔹 Labels for display
+  const decisionLabels = {
+    accept: "Accepted",
+    reject: "Rejected",
+    backedOut: "Backed Out",
+    pending: "Pending",
+  };
+
   useEffect(() => {
     const auth = getAuth();
     const user = auth.currentUser;
@@ -98,6 +106,7 @@ export default function ReviewManuscript() {
       }),
     });
   };
+
   const updateManuscriptStatus = async (
     manuscriptId,
     updatedDecisions,
@@ -115,7 +124,6 @@ export default function ReviewManuscript() {
 
     let newStatus;
 
-    // 🔹 If the current reviewer rejected, immediately go Back to Admin
     const hasRejected = Object.values(updatedDecisions).some(
       (d) => d.decision === "reject"
     );
@@ -123,7 +131,7 @@ export default function ReviewManuscript() {
     if (activeDecisions.length === 0) {
       newStatus = "Assigning Peer Reviewer";
     } else if (hasRejected) {
-      newStatus = "Back to Admin"; // <-- changed from "Peer Reviewer Rejected"
+      newStatus = "Back to Admin";
     } else if (
       activeAcceptedReviewers.every((id) => completedReviewers.includes(id))
     ) {
@@ -162,8 +170,6 @@ export default function ReviewManuscript() {
     });
 
     await logReviewerHistory(msRef, reviewerId, decision);
-
-    // 🔹 Always calculate new status after any decision
     await updateManuscriptStatus(manuscriptId, updatedDecisions);
   };
 
@@ -221,7 +227,6 @@ export default function ReviewManuscript() {
     if (!review) return;
 
     const selected = manuscripts.find((m) => m.id === manuscriptId);
-
     const hasSubmittedReview = selected.reviewerSubmissions?.some(
       (r) => r.reviewerId === reviewerId
     );
@@ -274,7 +279,6 @@ export default function ReviewManuscript() {
 
   if (loading) return <p className="pt-28 px-6">Loading manuscripts...</p>;
 
-  // 🔹 Filter only in-progress manuscripts
   const inProgressStatuses = [
     "Peer Reviewer Assigned",
     "Peer Reviewer Reviewing",
@@ -288,6 +292,21 @@ export default function ReviewManuscript() {
 
   if (!inProgressManuscripts.length)
     return <p className="pt-28 px-6">No in-progress manuscripts found.</p>;
+
+  const getReviewerStatusLabel = (status) => {
+    switch (status) {
+      case "Back to Admin":
+        return "Review completed";
+      case "Peer Reviewer Assigned":
+        return "Awaiting your response";
+      case "Peer Reviewer Reviewing":
+        return "Review in progress";
+      case "For Revision":
+        return "Author revising";
+      default:
+        return status;
+    }
+  };
 
   return (
     <div className="px-24 py-40">
@@ -306,7 +325,7 @@ export default function ReviewManuscript() {
               className="p-4 border rounded bg-white shadow-sm flex flex-col gap-3"
             >
               <p className="font-semibold">{getManuscriptDisplayTitle(m)}</p>
-              <p>Status: {m.status}</p>
+              <p>Status: {getReviewerStatusLabel(m.status)}</p>
               <p>
                 Submitted:{" "}
                 {m.submittedAt ? formatFirestoreDate(m.submittedAt) : "N/A"}
@@ -323,14 +342,15 @@ export default function ReviewManuscript() {
                 </p>
               )}
 
-              {m.reviewerDecisionMeta && (
+              {/* 🔹 Only show current reviewer's decision */}
+              {m.reviewerDecisionMeta?.[reviewerId] && (
                 <div className="flex flex-wrap gap-2 mt-1">
-                  {Object.entries(m.reviewerDecisionMeta).map(([id, meta]) => {
+                  {(() => {
+                    const meta = m.reviewerDecisionMeta[reviewerId];
                     const decisionTime =
                       meta.decidedAt || meta.timestamp || null;
                     return (
                       <span
-                        key={id}
                         className={`px-2 py-1 rounded text-white text-xs ${
                           meta.decision === "accept"
                             ? "bg-green-500"
@@ -341,43 +361,45 @@ export default function ReviewManuscript() {
                             : "bg-gray-400"
                         }`}
                       >
-                        {users[id]?.firstName || "Unknown User"}:{" "}
-                        {meta.decision || "Pending"}
+                        You: {decisionLabels[meta.decision] || "Pending"}
                         {decisionTime && (
                           <> | {formatFirestoreDate(decisionTime)}</>
                         )}
                       </span>
                     );
-                  })}
+                  })()}
                 </div>
               )}
 
+              {/* 🔹 Only this reviewer's history */}
               {m.reviewerHistory?.[reviewerId] && (
                 <div className="mt-2 text-xs text-gray-600">
                   <p className="font-medium">History:</p>
                   <ul className="list-disc ml-4">
                     {m.reviewerHistory[reviewerId].map((h, idx) => (
                       <li key={idx}>
-                        {h.decision} at {formatFirestoreDate(h.decidedAt)}
+                        {decisionLabels[h.decision] || h.decision} at{" "}
+                        {formatFirestoreDate(h.decidedAt)}
                       </li>
                     ))}
                   </ul>
                 </div>
               )}
 
+              {/* 🔹 Buttons stay lowercase internally (logic), only labels change */}
               {myDecision === "pending" && (
                 <div className="flex gap-2 mt-2">
                   <button
                     onClick={() => handleDecision(m.id, "accept")}
                     className="px-3 py-1 bg-green-500 text-white rounded hover:bg-green-600 text-sm"
                   >
-                    Accept
+                    Accept Manuscript
                   </button>
                   <button
                     onClick={() => handleDecision(m.id, "reject")}
                     className="px-3 py-1 bg-red-500 text-white rounded hover:bg-red-600 text-sm"
                   >
-                    Reject
+                    Reject Manuscript
                   </button>
                   <button
                     onClick={() => handleBackOut(m.id)}
