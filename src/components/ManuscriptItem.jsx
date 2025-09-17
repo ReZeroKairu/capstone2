@@ -1,7 +1,12 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { doc, updateDoc } from "firebase/firestore";
+import { doc, updateDoc, getDoc } from "firebase/firestore";
 import { db } from "../firebase/firebase";
+import {
+  computeManuscriptStatus,
+  filterAcceptedReviewers,
+  filterRejectedReviewers,
+} from "../utils/manuscriptHelpers";
 
 const STATUS_COLORS = {
   "Assigning Peer Reviewer": "bg-yellow-100 text-yellow-800",
@@ -12,6 +17,12 @@ const STATUS_COLORS = {
   "For Publication": "bg-green-100 text-green-800",
   "Peer Reviewer Rejected": "bg-red-100 text-red-800",
   Rejected: "bg-red-100 text-red-800",
+};
+const decisionLabels = {
+  accept: "Accepted",
+  reject: "Rejected",
+  backedOut: "Backed Out",
+  pending: "Pending",
 };
 
 const ManuscriptItem = ({
@@ -71,7 +82,111 @@ const ManuscriptItem = ({
   const handleStatusChange = async (manuscriptId, newStatus) => {
     try {
       const msRef = doc(db, "manuscripts", manuscriptId);
-      await updateDoc(msRef, { status: newStatus });
+      const snapshot = await getDoc(msRef);
+      if (!snapshot.exists()) return;
+
+      const ms = snapshot.data();
+      let updatedAssignedReviewers = ms.assignedReviewersData || [];
+      let updatedAssignedMeta = ms.assignedReviewersMeta || {};
+
+      if (newStatus === "For Publication") {
+        // Keep only reviewers who accepted
+        // Convert assignedReviewers IDs to the format expected by filter function
+        const reviewerObjects = (ms.assignedReviewers || []).map(id => ({ id }));
+        const acceptedReviewerObjects = filterAcceptedReviewers(
+          ms.reviewerDecisionMeta,
+          reviewerObjects
+        );
+        
+        // Build reviewer data from accepted reviewer IDs and users array
+        const acceptedReviewerIds = acceptedReviewerObjects.map(r => r.id);
+        updatedAssignedReviewers = acceptedReviewerIds.map(id => {
+          const user = users.find(u => u.id === id);
+          const meta = ms.assignedReviewersMeta?.[id] || {};
+          return {
+            id,
+            firstName: user?.firstName || "",
+            middleName: user?.middleName || "",
+            lastName: user?.lastName || "",
+            email: user?.email || "",
+            assignedAt: meta.assignedAt || null,
+            assignedBy: meta.assignedBy || "—",
+          };
+        });
+
+        // Build new assignedReviewersMeta
+        const newMeta = {};
+        updatedAssignedReviewers.forEach((r) => {
+          newMeta[r.id] = ms.assignedReviewersMeta?.[r.id] || {
+            assignedAt: r.assignedAt,
+            assignedBy: r.assignedBy,
+          };
+        });
+        updatedAssignedMeta = newMeta;
+
+        // Update reviewer stats for accepted reviewers
+        updatedAssignedReviewers.forEach(async (r) => {
+          const reviewerRef = doc(db, "Users", r.id);
+          await updateDoc(reviewerRef, {
+            acceptedManuscripts: (r.acceptedManuscripts || 0) + 1,
+          });
+        });
+      } else if (newStatus === "Peer Reviewer Rejected") {
+        // Keep only reviewers who rejected
+        // Convert assignedReviewers IDs to the format expected by filter function
+        const reviewerObjects = (ms.assignedReviewers || []).map(id => ({ id }));
+        const rejectedReviewerObjects = filterRejectedReviewers(
+          ms.reviewerDecisionMeta,
+          reviewerObjects
+        );
+        
+        // Build reviewer data from rejected reviewer IDs and users array
+        const rejectedReviewerIds = rejectedReviewerObjects.map(r => r.id);
+        updatedAssignedReviewers = rejectedReviewerIds.map(id => {
+          const user = users.find(u => u.id === id);
+          const meta = ms.assignedReviewersMeta?.[id] || {};
+          return {
+            id,
+            firstName: user?.firstName || "",
+            middleName: user?.middleName || "",
+            lastName: user?.lastName || "",
+            email: user?.email || "",
+            assignedAt: meta.assignedAt || null,
+            assignedBy: meta.assignedBy || "—",
+          };
+        });
+
+        // Build new assignedReviewersMeta
+        const newMeta = {};
+        updatedAssignedReviewers.forEach((r) => {
+          newMeta[r.id] = ms.assignedReviewersMeta?.[r.id] || {
+            assignedAt: r.assignedAt,
+            assignedBy: r.assignedBy,
+          };
+        });
+        updatedAssignedMeta = newMeta;
+
+        // Update reviewer stats for rejected reviewers
+        updatedAssignedReviewers.forEach(async (r) => {
+          const reviewerRef = doc(db, "Users", r.id);
+          await updateDoc(reviewerRef, {
+            rejectedManuscripts: (r.rejectedManuscripts || 0) + 1,
+          });
+        });
+      }
+
+      // When admin makes a decision, use that status directly (don't compute)
+      await updateDoc(msRef, {
+        status: newStatus, // Use the admin's chosen status directly
+        assignedReviewers: updatedAssignedReviewers.map((r) => r.id),
+        assignedReviewersMeta: updatedAssignedMeta,
+        // Keep original reviewer history for peer reviewer access and admin info
+        originalAssignedReviewers: ms.assignedReviewers || [],
+        originalAssignedReviewersMeta: ms.assignedReviewersMeta || {},
+        // Add decision timestamp
+        finalDecisionAt: new Date(),
+        finalDecisionBy: "Admin", // You might want to pass the actual admin ID
+      });
     } catch (err) {
       console.error("Error updating status:", err);
     }
@@ -86,11 +201,12 @@ const ManuscriptItem = ({
             {manuscriptTitle}
           </p>
           <div className="flex items-center gap-2">
-            {hasRejection && (
-              <span className="px-3 py-1 rounded-full text-xs sm:text-sm font-semibold shadow-sm bg-red-100 text-red-800">
-                Rejected by Peer Reviewer
-              </span>
-            )}
+            {hasRejection &&
+              (status === "Back to Admin" || status === "Rejected") && (
+                <span className="px-3 py-1 rounded-full text-xs sm:text-sm font-semibold shadow-sm bg-red-100 text-red-800">
+                  Rejected by Peer Reviewer
+                </span>
+              )}
             <span
               className={`px-3 py-1 rounded-full text-xs sm:text-sm font-semibold shadow-sm ${
                 STATUS_COLORS[status] || "bg-gray-100 text-gray-800"
@@ -130,7 +246,7 @@ const ManuscriptItem = ({
             )}
             <div className="flex flex-col gap-2">
               {manuscript.assignedReviewersData.map((r) => {
-                const key = `${manuscript.id}_${r.id}`; // Unique per manuscript + reviewer
+                const key = `${manuscript.id}_${r.id}`;
                 const displayName = showFullName[key]
                   ? `${r.firstName} ${r.middleName} ${r.lastName}`.trim()
                   : `${r.firstName} ${
@@ -167,29 +283,124 @@ const ManuscriptItem = ({
                       Assigned At: {formatDate(r.assignedAt)}
                       <br />
                       Assigned By: {assignedByName}
-                      {decisionMeta && (
+                      {decisionMeta?.decision && (
                         <>
-                          {decisionMeta.decision === "accept" && (
-                            <>
-                              <br />
-                              <span className="text-green-600">
-                                Accepted by reviewer at:{" "}
-                                {formatDate(decisionMeta.decidedAt)}
-                              </span>
-                            </>
-                          )}
-                          {decisionMeta.decision === "reject" && (
-                            <>
-                              <br />
-                              <span className="text-red-600">
-                                Rejected by reviewer at:{" "}
-                                {formatDate(decisionMeta.decidedAt)}
-                              </span>
-                            </>
+                          <br />
+                          {decisionMeta.decision === "reject" &&
+                          [
+                            "Back to Admin",
+                            "Rejected",
+                            "Peer Reviewer Rejected",
+                          ].includes(manuscript.status) ? (
+                            <span className="text-red-600">
+                              Rejected by reviewer at:{" "}
+                              {formatDate(decisionMeta.decidedAt)}
+                            </span>
+                          ) : decisionMeta.decision === "accept" ? (
+                            <span className="text-green-600">
+                              Accepted by reviewer at:{" "}
+                              {formatDate(decisionMeta.decidedAt)}
+                            </span>
+                          ) : (
+                            <span className="text-gray-600">
+                              {decisionLabels[decisionMeta.decision] ||
+                                decisionMeta.decision}{" "}
+                              at: {formatDate(decisionMeta.decidedAt)}
+                            </span>
                           )}
                         </>
                       )}
                     </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Detailed Peer Reviewer Info for Final Status Manuscripts */}
+        {role === "Admin" && 
+         ["For Publication", "For Revision", "Peer Reviewer Rejected"].includes(status) && (
+          <div className="mt-3 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-200">
+            <h4 className="text-base font-semibold text-gray-800 mb-3 flex items-center">
+              <span className="w-2 h-2 bg-blue-500 rounded-full mr-2"></span>
+              Peer Review Details
+            </h4>
+            
+            {manuscript.finalDecisionAt && (
+              <div className="mb-3 p-2 bg-white rounded border-l-4 border-blue-500">
+                <p className="text-sm">
+                  <span className="font-medium text-gray-700">Final Admin Decision:</span>{" "}
+                  <span className="text-blue-600 font-medium">{status}</span> on{" "}
+                  <span className="font-medium">{formatDate(manuscript.finalDecisionAt)}</span>
+                </p>
+              </div>
+            )}
+
+            <div className="space-y-3">
+              {(manuscript.originalAssignedReviewers || manuscript.assignedReviewers || []).map((reviewerId) => {
+                const reviewerMeta = manuscript.originalAssignedReviewersMeta?.[reviewerId] || 
+                                   manuscript.assignedReviewersMeta?.[reviewerId];
+                const reviewer = users.find(u => u.id === reviewerId);
+                const assignedByUser = users.find(u => u.id === reviewerMeta?.assignedBy);
+                const decision = manuscript.reviewerDecisionMeta?.[reviewerId];
+                const submission = manuscript.reviewerSubmissions?.find(s => s.reviewerId === reviewerId);
+                
+                if (!reviewer && !decision && !submission) return null;
+                
+                return (
+                  <div key={reviewerId} className="bg-white p-3 rounded-lg border shadow-sm">
+                    {/* Reviewer Header */}
+                    <div className="flex items-center justify-between mb-2">
+                      <h5 className="font-medium text-gray-800">
+                        {reviewer ? `${reviewer.firstName} ${reviewer.middleName ? reviewer.middleName + ' ' : ''}${reviewer.lastName}` : 'Unknown Reviewer'}
+                        {reviewer?.role && <span className="text-gray-500 text-sm ml-1">({reviewer.role})</span>}
+                      </h5>
+                      {decision && (
+                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                          decision.decision === 'accept' 
+                            ? 'bg-green-100 text-green-700' 
+                            : 'bg-red-100 text-red-700'
+                        }`}>
+                          {decision.decision === 'accept' ? 'Accepted' : 'Rejected'}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Reviewer Details */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm text-gray-600 mb-2">
+                      {reviewer?.email && (
+                        <p><span className="font-medium">Email:</span> {reviewer.email}</p>
+                      )}
+                      {reviewerMeta?.assignedAt && (
+                        <p><span className="font-medium">Assigned:</span> {formatDate(reviewerMeta.assignedAt)}</p>
+                      )}
+                      {assignedByUser && (
+                        <p><span className="font-medium">Assigned by:</span> {assignedByUser.firstName} {assignedByUser.lastName}</p>
+                      )}
+                      {decision?.decidedAt && (
+                        <p><span className="font-medium">Decision made:</span> {formatDate(decision.decidedAt)}</p>
+                      )}
+                    </div>
+
+                    {/* Review Submission Details */}
+                    {submission && (
+                      <div className="mt-2 p-2 bg-gray-50 rounded border-l-4 border-gray-400">
+                        <p className="text-sm font-medium text-gray-700 mb-1">Review Submission:</p>
+                        <div className="text-sm text-gray-600 space-y-1">
+                          <p><span className="font-medium">Rating:</span> {submission.rating || 'Not provided'}/5</p>
+                          <p><span className="font-medium">Submitted:</span> {formatDate(submission.completedAt)}</p>
+                          {submission.comment && (
+                            <div>
+                              <p className="font-medium">Comments:</p>
+                              <p className="mt-1 p-2 bg-white rounded border text-xs italic">
+                                "{submission.comment}"
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -231,7 +442,7 @@ const ManuscriptItem = ({
         {/* --- Back to Admin Section --- */}
         {status === "Back to Admin" && role === "Admin" && (
           <div className="mt-4 border-t pt-3">
-            {manuscript.reviewerSubmissions?.length > 0 && (
+            {manuscript.reviewerSubmissions?.length > 0 ? (
               <div className="mb-2">
                 <p className="font-medium text-gray-700 mb-1">
                   Peer Reviewer Feedback:
@@ -272,24 +483,58 @@ const ManuscriptItem = ({
                     );
                   })}
                 </ul>
-
-                <div className="flex flex-wrap gap-2 mt-2">
-                  {[
-                    "For Revision",
-                    "For Publication",
-                    "Peer Reviewer Rejected",
-                  ].map((s) => (
-                    <button
-                      key={s}
-                      onClick={() => handleStatusChange(id, s)}
-                      className="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 text-sm"
-                    >
-                      {s}
-                    </button>
-                  ))}
-                </div>
               </div>
+            ) : manuscript.reviewerDecisionMeta ? (
+              <div className="mb-2">
+                <p className="font-medium text-gray-700 mb-1">
+                  Reviewer Decisions:
+                </p>
+                <ul className="list-disc ml-4 text-sm text-gray-700">
+                  {Object.entries(manuscript.reviewerDecisionMeta).map(
+                    ([revId, meta]) => {
+                      const reviewer = manuscript.assignedReviewersData?.find(
+                        (u) => u.id === revId
+                      );
+                      return (
+                        <li key={revId}>
+                          {reviewer
+                            ? `${reviewer.firstName} ${
+                                reviewer.middleName
+                                  ? reviewer.middleName.charAt(0) + "."
+                                  : ""
+                              } ${reviewer.lastName}`
+                            : revId}
+                          : {decisionLabels[meta.decision] || meta.decision}{" "}
+                          {meta.decidedAt
+                            ? `at ${formatDate(meta.decidedAt)}`
+                            : ""}
+                        </li>
+                      );
+                    }
+                  )}
+                </ul>
+              </div>
+            ) : (
+              <p className="text-sm text-gray-500">
+                No reviewer feedback or decisions yet.
+              </p>
             )}
+
+            <div className="flex flex-wrap gap-2 mt-2">
+              {[
+                "For Revision",
+                "For Publication",
+                "Peer Reviewer Rejected",
+              ].map((s) => (
+                <button
+                  key={s}
+                  onClick={() => handleStatusChange(id, s)}
+                  className="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 text-sm"
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
           </div>
         )}
       </li>

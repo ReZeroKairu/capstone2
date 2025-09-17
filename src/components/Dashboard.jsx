@@ -82,17 +82,30 @@ const Dashboard = ({ sidebarOpen }) => {
           return;
         }
 
-        // Peer Reviewer
+        // Peer Reviewer - need to fetch all manuscripts and filter client-side
         if (userRole === "Peer Reviewer") {
-          const q = query(
-            manuscriptsRef,
-            where("assignedReviewers", "array-contains", currentUser.uid),
-            orderBy("submittedAt", "desc")
-          );
+          const q = query(manuscriptsRef, orderBy("submittedAt", "desc"));
           const unsub = onSnapshot(q, (snapshot) => {
-            setManuscripts(
-              snapshot.docs.map((d) => ({ id: d.id, ...d.data() }))
-            );
+            const allManuscripts = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+            
+            // Filter manuscripts where peer reviewer is involved
+            const filteredManuscripts = allManuscripts.filter((m) => {
+              // For final status manuscripts, only show if reviewer is in current assignedReviewers
+              // This respects admin's decision about who gets credit
+              if (["For Publication", "Peer Reviewer Rejected"].includes(m.status)) {
+                return (m.assignedReviewers || []).includes(currentUser.uid);
+              }
+              
+              // For other statuses, show if they are involved in any way
+              const currentlyAssigned = (m.assignedReviewers || []).includes(currentUser.uid);
+              const originallyAssigned = (m.originalAssignedReviewers || []).includes(currentUser.uid);
+              const hasDecision = m.reviewerDecisionMeta && m.reviewerDecisionMeta[currentUser.uid];
+              const hasSubmission = m.reviewerSubmissions && m.reviewerSubmissions.some(s => s.reviewerId === currentUser.uid);
+              
+              return currentlyAssigned || originallyAssigned || hasDecision || hasSubmission;
+            });
+            
+            setManuscripts(filteredManuscripts);
           });
           unsubscribes.push(unsub);
           setLoading(false);
@@ -202,9 +215,21 @@ const Dashboard = ({ sidebarOpen }) => {
     if (role === "Admin") {
       counts.push({ label: "Total Manuscripts", count: manuscripts.length });
     } else if (role === "Peer Reviewer") {
-      const reviewedCount = manuscripts.filter((m) =>
-        m.assignedReviewers?.includes(user.uid)
-      ).length;
+      // Count manuscripts using same logic as filtering
+      const reviewedCount = manuscripts.filter((m) => {
+        // For final status manuscripts, only count if reviewer is in current assignedReviewers
+        if (["For Publication", "Peer Reviewer Rejected"].includes(m.status)) {
+          return (m.assignedReviewers || []).includes(user.uid);
+        }
+        
+        // For other statuses, count if they are involved in any way
+        const currentlyAssigned = (m.assignedReviewers || []).includes(user.uid);
+        const originallyAssigned = (m.originalAssignedReviewers || []).includes(user.uid);
+        const hasDecision = m.reviewerDecisionMeta && m.reviewerDecisionMeta[user.uid];
+        const hasSubmission = m.reviewerSubmissions && m.reviewerSubmissions.some(s => s.reviewerId === user.uid);
+        
+        return currentlyAssigned || originallyAssigned || hasDecision || hasSubmission;
+      }).length;
       counts.push({
         label: "Total Manuscripts Reviewed",
         count: reviewedCount,
