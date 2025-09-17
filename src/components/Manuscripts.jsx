@@ -503,11 +503,9 @@ const Manuscripts = () => {
       </h1>
 
       <Searchbar
-        value={searchQuery}
-        onChange={(val) => {
-          setSearchQuery(val);
-          setCurrentPage(1);
-        }}
+        searchQuery={searchQuery}
+        setSearchQuery={setSearchQuery}
+        setCurrentPage={setCurrentPage}
       />
 
       <FilterButtons
