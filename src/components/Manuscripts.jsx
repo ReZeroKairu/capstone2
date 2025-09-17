@@ -255,30 +255,6 @@ const Manuscripts = () => {
     }
   };
 
-  // --- Pagination helpers ---
-  const getPageNumbers = (current, total) => {
-    const delta = 2;
-    const range = [];
-    const rangeWithDots = [];
-    for (let i = 1; i <= total; i++) {
-      if (
-        i === 1 ||
-        i === total ||
-        (i >= current - delta && i <= current + delta)
-      )
-        range.push(i);
-    }
-    let prev = null;
-    for (let num of range) {
-      if (prev) {
-        if (num - prev === 2) rangeWithDots.push(prev + 1);
-        else if (num - prev > 2) rangeWithDots.push("...");
-      }
-      rangeWithDots.push(num);
-      prev = num;
-    }
-    return rangeWithDots;
-  };
 
   // --- Fetch data ---
   useEffect(() => {
@@ -540,7 +516,6 @@ const Manuscripts = () => {
         setCurrentPage={setCurrentPage}
         manuscriptsPerPage={manuscriptsPerPage}
         setManuscriptsPerPage={setManuscriptsPerPage}
-        getPageNumbers={getPageNumbers}
       />
     </div>
   );

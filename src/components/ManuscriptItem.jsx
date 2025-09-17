@@ -33,6 +33,8 @@ const ManuscriptItem = ({
   unassignReviewer = () => {},
   showFullName,
   setShowFullName,
+  formatFirestoreDate, // Not used but passed from parent
+  handleStatusChange: externalHandleStatusChange, // Not used but passed from parent
 }) => {
   if (!manuscript || Object.keys(manuscript).length === 0) return null;
 
