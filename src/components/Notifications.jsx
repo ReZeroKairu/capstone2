@@ -2,10 +2,11 @@ import React, { useState, useEffect, useRef } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faBell } from "@fortawesome/free-solid-svg-icons";
 import {
-  getFirestore,
   collection,
   query,
   orderBy,
+  limit,
+  startAfter,
   getDocs,
   doc,
   updateDoc,
@@ -16,43 +17,82 @@ import { useNavigate } from "react-router-dom";
 import { db } from "../firebase/firebase"; // Ensure your Firebase config is correct
 import { getAuth } from "firebase/auth";
 import { UserLogService } from "../utils/userLogService";
+import { onSnapshot } from "firebase/firestore";
+import { formatDistanceToNow } from 'date-fns';
 
 const Notifications = ({ user }) => {
   const [notifications, setNotifications] = useState([]);
   const [activeTab, setActiveTab] = useState("unread");
-  const [notificationDropdownOpen, setNotificationDropdownOpen] =
-    useState(false);
+  const [notificationDropdownOpen, setNotificationDropdownOpen] = useState(false);
   const [loading, setLoading] = useState(true);
-  const dropdownRef = useRef(null); // Create a ref for the dropdown
+  const [unsubscribe, setUnsubscribe] = useState(null);
+  const dropdownRef = useRef(null);
   const navigate = useNavigate();
   const auth = getAuth();
-  const buttonRef = useRef(null); // Ref for the button to prevent closing when the button is clicked
-  // Fetch notifications from Firestore
+  const buttonRef = useRef(null);
+  
+  const NOTIFICATIONS_LIMIT = 20; // Limit the number of notifications to fetch initially
+  const [lastVisible, setLastVisible] = useState(null);
+  const [hasMore, setHasMore] = useState(true);
 
-  const fetchNotifications = async (userId) => {
+  // Set up real-time notifications listener with pagination
+  useEffect(() => {
+    const userId = user?.uid;
+    if (!userId) return;
+
     setLoading(true);
+    
     try {
       const notificationsRef = collection(db, "Users", userId, "Notifications");
-      const q = query(notificationsRef, orderBy("timestamp", "desc"));
-      const querySnapshot = await getDocs(q);
-
-      const fetchedNotifications = querySnapshot.docs.map((doc) => {
-        const data = doc.data();
-        const timestamp = data.timestamp ? data.timestamp.toDate() : null; // Convert Firestore timestamp to JavaScript Date
-        return {
-          id: doc.id,
-          ...data,
-          timestamp: timestamp, // Add timestamp to the notification object
-        };
-      });
-
-      setNotifications(fetchedNotifications);
+      let q = query(
+        notificationsRef, 
+        orderBy("timestamp", "desc"),
+        limit(NOTIFICATIONS_LIMIT)
+      );
+      
+      // Set up real-time listener with error handling
+      const unsubscribeListener = onSnapshot(
+        q, 
+        (querySnapshot) => {
+          const fetchedNotifications = [];
+          querySnapshot.forEach((doc) => {
+            const data = doc.data();
+            const timestamp = data.timestamp ? data.timestamp.toDate() : null;
+            fetchedNotifications.push({
+              id: doc.id,
+              ...data,
+              timestamp,
+            });
+          });
+          
+          // Update the last visible document for pagination
+          const lastVisibleDoc = querySnapshot.docs[querySnapshot.docs.length - 1];
+          setLastVisible(lastVisibleDoc);
+          setHasMore(querySnapshot.docs.length >= NOTIFICATIONS_LIMIT);
+          
+          setNotifications(fetchedNotifications);
+          setLoading(false);
+        }, 
+        (error) => {
+          console.error("Error in notifications listener:", error);
+          setLoading(false);
+        }
+      );
+      
+      // Save the unsubscribe function
+      setUnsubscribe(() => unsubscribeListener);
+      
+      // Cleanup function
+      return () => {
+        if (unsubscribeListener) {
+          unsubscribeListener();
+        }
+      };
     } catch (error) {
-      console.error("Error fetching Notifications:", error);
-    } finally {
+      console.error("Error setting up notifications listener:", error);
       setLoading(false);
     }
-  };
+  }, [user?.uid]); // Re-run effect when user changes
 
   const markNotificationAsUnread = async (notificationId) => {
     try {
@@ -404,12 +444,55 @@ const Notifications = ({ user }) => {
     }
   };
 
-  // Fetch notifications when the component mounts (only when user is logged in)
-  useEffect(() => {
-    if (user && user.uid) {
-      fetchNotifications(user.uid);
+  // Load more notifications for pagination
+  const loadMoreNotifications = async () => {
+    if (!hasMore || loading) return;
+    
+    setLoading(true);
+    try {
+      const userId = user?.uid;
+      if (!userId) return;
+
+      const notificationsRef = collection(db, "Users", userId, "Notifications");
+      let q = query(
+        notificationsRef,
+        orderBy("timestamp", "desc"),
+        startAfter(lastVisible),
+        limit(NOTIFICATIONS_LIMIT)
+      );
+
+      const querySnapshot = await getDocs(q);
+      const newNotifications = [];
+      
+      querySnapshot.forEach((doc) => {
+        const data = doc.data();
+        const timestamp = data.timestamp?.toDate() || null;
+        newNotifications.push({
+          id: doc.id,
+          ...data,
+          timestamp,
+        });
+      });
+
+      setNotifications(prev => [...prev, ...newNotifications]);
+      setLastVisible(querySnapshot.docs[querySnapshot.docs.length - 1]);
+      setHasMore(querySnapshot.docs.length >= NOTIFICATIONS_LIMIT);
+    } catch (error) {
+      console.error("Error loading more notifications:", error);
+    } finally {
+      setLoading(false);
     }
-  }, [user]);
+  };
+
+  // Clean up the real-time listener when component unmounts or user changes
+  useEffect(() => {
+    return () => {
+      if (unsubscribe) {
+        unsubscribe();
+        setUnsubscribe(null);
+      }
+    };
+  }, [unsubscribe, user?.uid]);
 
   // Toggle dropdown visibility when icon is clicked
   const toggleNotificationDropdown = (event) => {
@@ -535,92 +618,92 @@ const Notifications = ({ user }) => {
           </div>
 
           {/* Notifications Content */}
-          <div
-            className="max-h-72 overflow-y-auto divide-y"
-            style={{ WebkitOverflowScrolling: "touch" }}
-          >
-            {loading ? (
-              <p className="p-4 text-center text-gray-600">Loading...</p>
+          <div className="max-h-96 overflow-y-auto">
+            {loading && notifications.length === 0 ? (
+              <div className="p-4 text-center text-gray-500">Loading notifications...</div>
             ) : filteredNotifications.length === 0 ? (
-              <p className="p-4 text-center text-gray-600">No notifications</p>
+              <div className="p-4 text-center text-gray-500">
+                No {activeTab} notifications
+              </div>
             ) : (
-              filteredNotifications.map((notification) => (
-                <div
-                  key={notification.id}
-                  className="flex items-start p-4 cursor-pointer hover:bg-gray-50 transition-colors"
-                  onClick={() => handleNotificationClick(notification)}
-                >
-                  <div className="flex-shrink-0 mr-3 text-lg">
-                    {getNotificationIcon(notification.type)}
-                  </div>
-                  <div className="flex-grow">
-                    {notification.title && (
-                      <h4 className={`text-sm font-medium mb-1 ${
-                        notification.seen ? "text-gray-700" : "text-gray-900"
-                      }`}>
-                        {notification.title}
-                      </h4>
-                    )}
-                    <p
-                      className={`text-sm ${
-                        notification.seen ? "text-gray-600" : "font-medium text-gray-800"
-                      }`}
-                    >
-                      {notification.message}
-                    </p>
-                    {/* Timestamp Display */}
-                    {notification.timestamp && (
-                      <div className="text-xs text-gray-500 mt-1">
-                        {new Date(
-                          notification.timestamp.toMillis
-                            ? notification.timestamp.toMillis()
-                            : Date.parse(notification.timestamp)
-                        ).toLocaleString()}
+              <div>
+                <ul className="divide-y divide-gray-200">
+                {filteredNotifications.map((notification) => (
+                  <li
+                    key={notification.id}
+                    className={`p-3 hover:bg-gray-50 cursor-pointer ${
+                      !notification.seen ? "bg-blue-50" : ""
+                    }`}
+                    onClick={() => handleNotificationClick(notification)}
+                  >
+                    <div className="flex items-start">
+                      <div className="flex-shrink-0 pt-0.5">
+                        <span className={`text-lg ${getNotificationColor(notification.type)}`}>
+                          {getNotificationIcon(notification.type)}
+                        </span>
                       </div>
-                    )}
-                  </div>
-                  <div className="flex-shrink-0 ml-2">
-                    <div className="flex flex-col space-y-1">
-                      {!notification.seen && (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            markAsRead(notification.id);
-                          }}
-                          className="text-xs text-blue-600 hover:text-blue-800"
-                        >
-                          Mark as read
-                        </button>
-                      )}
-                      {notification.seen && (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            markAsUnread(notification.id);
-                          }}
-                          className="text-xs text-blue-600 hover:text-blue-800"
-                        >
-                          Mark as unread
-                        </button>
-                      )}
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          deleteNotification(notification.id);
-                        }}
-                        className="text-xs text-red-600 hover:text-red-800"
-                      >
-                        Delete
-                      </button>
+                      <div className="ml-3 flex-1">
+                        <div className="flex items-center justify-between">
+                          <p className="text-sm font-medium text-gray-900">
+                            {notification.title}
+                          </p>
+                          <div className="flex space-x-2">
+                            <span className="text-xs text-gray-500">
+                              {notification.timestamp
+                                ? formatDistanceToNow(notification.timestamp, {
+                                    addSuffix: true,
+                                  })
+                                : ""}
+                            </span>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                notification.seen
+                                  ? markAsUnread(notification.id)
+                                  : markAsRead(notification.id, user.uid);
+                              }}
+                              className="text-xs text-blue-600 hover:text-blue-800"
+                            >
+                              {notification.seen ? "Mark as unread" : "Mark as read"}
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                deleteNotification(notification.id);
+                              }}
+                              className="text-xs text-red-600 hover:text-red-800"
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </div>
+                        <p className="mt-1 text-sm text-gray-600">
+                          {notification.message}
+                        </p>
+                      </div>
                     </div>
+                  </li>
+                ))}
+                </ul>
+
+                {/* Load More Button */}
+                {hasMore && (
+                  <div className="p-3 text-center border-t border-gray-200">
+                    <button
+                      onClick={loadMoreNotifications}
+                      disabled={loading}
+                      className="text-sm text-blue-600 hover:text-blue-800 disabled:opacity-50 px-4 py-2 bg-gray-50 hover:bg-gray-100 rounded-md w-full transition-colors"
+                    >
+                      {loading ? 'Loading...' : 'Load More Notifications'}
+                    </button>
                   </div>
-                </div>
-              ))
-            )}
-          </div>
+                )}
+              </div>
+          )}
         </div>
-      )}
-    </div>
+      </div>
+    )}
+  </div>
   );
 };
 
