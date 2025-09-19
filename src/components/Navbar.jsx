@@ -351,10 +351,10 @@ const Navbar = ({ onLogout }) => {
               {/* Left Side Contact Information */}
               <div className="flex flex-col mb-4 md:mb-0 flex-grow">
                 <p className="text-yellow-200 ml-2 md:ml-20 font-bold">
-                  Ms. Leilani G. Pimentel
+                Publication Officer 
                 </p>
                 <p className="text-gray-200 ml-2 md:ml-20">
-                  Publication Officer
+                Ms. Leilani G. Pimentel
                 </p>
                 <br />
                 <p className="text-yellow-200 ml-2 md:ml-20 mt-3 font-bold">

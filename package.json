@@ -28,7 +28,7 @@
     "firebase-admin": "^12.7.0",
     "firebase-functions": "^6.1.0",
     "framer-motion": "^12.23.12",
-    "lucide-react": "^0.525.0",
+    "lucide-react": "^0.544.0",
     "react": "^18.3.1",
     "react-beautiful-dnd": "^13.1.1",
     "react-dom": "^18.3.1",

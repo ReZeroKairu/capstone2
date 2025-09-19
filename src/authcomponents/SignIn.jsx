@@ -12,6 +12,7 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 import SignInwithGoogle from "./SignInWithGoogle";
 import { logUserAction } from "../utils/logger";
+import { UserLogService } from "../utils/userLogService";
 
 function SignIn() {
   const [email, setEmail] = useState("");
@@ -135,6 +136,9 @@ function SignIn() {
         action: "Sign In",
       });
 
+      // Enhanced logging
+      await UserLogService.logLogin(user.uid, "email");
+
       setAlert({ message: "User logged in successfully!", type: "success" });
       navigate("/home");
     } catch (error) {
@@ -169,6 +173,9 @@ function SignIn() {
         action: "Sign In Failed",
         metadata: { errorCode: error.code, errorMessage },
       });
+
+      // Enhanced logging for failed login
+      await UserLogService.logFailedLogin(email, errorMessage, null);
     } finally {
       setLoading(false);
     }
