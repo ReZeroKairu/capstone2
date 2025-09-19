@@ -11,6 +11,8 @@ import {
   query,
   orderBy,
 } from "firebase/firestore";
+import { useNotifications } from "../../hooks/useNotifications";
+import { useUserLogs } from "../../hooks/useUserLogs";
 
 export default function SubmitManuscript() {
   const [forms, setForms] = useState([]);
@@ -20,6 +22,10 @@ export default function SubmitManuscript() {
   const [loading, setLoading] = useState(true);
   const [cooldown, setCooldown] = useState(0);
   const [message, setMessage] = useState("");
+  
+  // Notification and logging hooks
+  const { notifyManuscriptSubmission } = useNotifications();
+  const { logManuscriptSubmission } = useUserLogs();
 
   // Co-author state
   const [allResearchers, setAllResearchers] = useState([]);
@@ -284,7 +290,7 @@ export default function SubmitManuscript() {
         submittedAt: serverTimestamp(),
       });
 
-      await addDoc(collection(db, "manuscripts"), {
+      const manuscriptRef = await addDoc(collection(db, "manuscripts"), {
         responseId: responseRef.id,
         formId: form.id,
         formTitle: form.title || "",
@@ -309,6 +315,19 @@ export default function SubmitManuscript() {
       await updateDoc(doc(db, "Users", currentUser.uid), {
         lastSubmittedAt: serverTimestamp(),
       });
+
+      // Send notification to admins about new manuscript submission
+      await notifyManuscriptSubmission(
+        manuscriptRef.id,
+        manuscriptTitleAnswer || form.title || "Untitled Manuscript",
+        currentUser.uid
+      );
+
+      // Log the manuscript submission
+      await logManuscriptSubmission(
+        manuscriptRef.id,
+        manuscriptTitleAnswer || form.title || "Untitled Manuscript"
+      );
 
       setAnswers({});
       setSelectedUsers([]);

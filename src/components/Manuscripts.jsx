@@ -15,7 +15,10 @@ import {
   computeManuscriptStatus,
   filterAcceptedReviewers,
   filterRejectedReviewers,
+  handleManuscriptStatusChange,
+  handlePeerReviewerAssignment,
 } from "../utils/manuscriptHelpers";
+import { UserLogService } from "../utils/userLogService";
 
 import Searchbar from "./Searchbar";
 import FilterButtons from "./FilterButtons";
@@ -65,6 +68,14 @@ const Manuscripts = () => {
           [`assignedReviewersMeta.${reviewerId}`]: assignedMeta[reviewerId],
           status: "Peer Reviewer Assigned",
         });
+
+        // Send notification to the assigned reviewer
+        const manuscript = msSnap.data();
+        const manuscriptTitle = manuscript.manuscriptTitle || manuscript.title || "Untitled Manuscript";
+        await handlePeerReviewerAssignment(manuscriptId, manuscriptTitle, [reviewerId], userId);
+        
+        // Log the reviewer assignment
+        await UserLogService.logReviewerAssignment(userId, manuscriptId, manuscriptTitle, [reviewerId]);
       }
     } catch (err) {
       console.error("Error assigning reviewer:", err);
@@ -233,6 +244,54 @@ const Manuscripts = () => {
         finalDecisionBy: userId, // Use the actual admin ID
       });
 
+      // Send notification about status change
+      const manuscriptTitle = ms.manuscriptTitle || ms.title || "Untitled Manuscript";
+      const authorId = ms.submitterId || ms.userId;
+      
+      if (authorId) {
+        try {
+          // Send notification to the author about the status change
+          await handleManuscriptStatusChange(
+            manuscriptId, 
+            manuscriptTitle, 
+            ms.status, // oldStatus
+            newStatus, 
+            authorId,  // authorId
+            userId     // adminId (who made the change)
+          );
+          
+          console.log(`Status change notification sent for manuscript ${manuscriptId} to author ${authorId}`);
+          
+          // Log the status change for the author
+          await UserLogService.logManuscriptStatusChange(
+            userId, // Admin who made the change
+            manuscriptId, 
+            manuscriptTitle, 
+            ms.status, 
+            newStatus, 
+            authorId  // The affected user (author)
+          );
+          
+          console.log(`Status change logged for author ${authorId}`);
+          
+          // If the status is being changed by someone other than the author,
+          // log it for the admin as well
+          if (userId !== authorId) {
+            await UserLogService.logManuscriptStatusChange(
+              userId, // Admin who made the change
+              manuscriptId, 
+              manuscriptTitle, 
+              ms.status, 
+              newStatus, 
+              userId  // The admin themselves
+            );
+            console.log(`Status change logged for admin ${userId}`);
+          }
+        } catch (error) {
+          console.error('Error handling status change notification:', error);
+        }
+      }
+
       // Update local state
       setManuscripts((prev) =>
         prev.map((m) =>
@@ -359,8 +418,17 @@ const Manuscripts = () => {
                 
                 return currentlyAssigned || originallyAssigned || hasDecision || hasSubmission;
               }
+              if (userRole === "Researcher") {
+                return (
+                  m.userId === currentUser.uid ||
+                  m.submitterId === currentUser.uid ||
+                  (m.coAuthorsIds || []).includes(currentUser.uid) ||
+                  (m.assignedReviewers || []).includes(currentUser.uid)
+                );
+              }
               return (
                 m.userId === currentUser.uid ||
+                m.submitterId === currentUser.uid ||
                 (m.coAuthorsIds || []).includes(currentUser.uid)
               );
             });

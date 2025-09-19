@@ -9,6 +9,7 @@ import {
   Timestamp,
   doc,
   deleteDoc,
+  where,
 } from "firebase/firestore";
 import { db } from "../../firebase/firebase";
 import { userCache, getUserInfo } from "../../utils/userCache";
@@ -26,6 +27,8 @@ const UserLog = ({ onLogsUpdated }) => {
   const [searchTerm, setSearchTerm] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
+  const [actionFilter, setActionFilter] = useState("all");
+  const [roleFilter, setRoleFilter] = useState("all");
 
   const fetchFullName = async (log) => {
     let first = log.previousFirstName || log.newFirstName || "";

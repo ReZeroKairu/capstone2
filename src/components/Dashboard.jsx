@@ -123,16 +123,28 @@ const Dashboard = ({ sidebarOpen }) => {
           setManuscripts(merged);
         };
 
+        // Query for manuscripts where user is the owner (userId matches)
         const qOwn = query(
           manuscriptsRef,
           where("userId", "==", currentUser.uid),
           orderBy("submittedAt", "desc")
         );
+        
+        // Query for manuscripts where user is the submitter (submitterId matches)
+        const qSubmitter = query(
+          manuscriptsRef,
+          where("submitterId", "==", currentUser.uid),
+          orderBy("submittedAt", "desc")
+        );
+        
+        // Query for manuscripts where user is an assigned reviewer
         const qAssigned = query(
           manuscriptsRef,
           where("assignedReviewers", "array-contains", currentUser.uid),
           orderBy("submittedAt", "desc")
         );
+        
+        // Query for recent manuscripts (used for co-author detection)
         const qRecent = query(
           manuscriptsRef,
           orderBy("submittedAt", "desc"),
@@ -140,6 +152,13 @@ const Dashboard = ({ sidebarOpen }) => {
         );
 
         const unsubOwn = onSnapshot(qOwn, (snap) => {
+          snap.docs.forEach((d) =>
+            localMap.set(d.id, { id: d.id, ...d.data() })
+          );
+          mergeAndSet();
+        });
+
+        const unsubSubmitter = onSnapshot(qSubmitter, (snap) => {
           snap.docs.forEach((d) =>
             localMap.set(d.id, { id: d.id, ...d.data() })
           );
@@ -190,7 +209,7 @@ const Dashboard = ({ sidebarOpen }) => {
           mergeAndSet();
         });
 
-        unsubscribes.push(unsubOwn, unsubAssigned, unsubRecent);
+        unsubscribes.push(unsubOwn, unsubSubmitter, unsubAssigned, unsubRecent);
       } catch (err) {
         console.error("Error fetching manuscripts:", err);
       } finally {

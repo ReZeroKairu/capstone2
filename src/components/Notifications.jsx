@@ -10,10 +10,12 @@ import {
   doc,
   updateDoc,
   deleteDoc,
+  getDoc,
 } from "firebase/firestore";
 import { useNavigate } from "react-router-dom";
 import { db } from "../firebase/firebase"; // Ensure your Firebase config is correct
 import { getAuth } from "firebase/auth";
+import { UserLogService } from "../utils/userLogService";
 
 const Notifications = ({ user }) => {
   const [notifications, setNotifications] = useState([]);
@@ -156,15 +158,249 @@ const Notifications = ({ user }) => {
     }
   };
 
+  // Delete all read notifications
+  const deleteAllReadNotifications = async () => {
+    const readNotifications = notifications.filter((notif) => notif.seen);
+    
+    if (readNotifications.length === 0) {
+      alert("No read notifications to delete.");
+      return;
+    }
+
+    const isConfirmed = window.confirm(
+      `Are you sure you want to delete all ${readNotifications.length} read notifications? This action cannot be undone.`
+    );
+    
+    if (!isConfirmed) {
+      return;
+    }
+
+    try {
+      // Delete all read notifications from Firestore
+      const deletePromises = readNotifications.map(async (notification) => {
+        const notificationRef = doc(
+          db,
+          "Users",
+          user.uid,
+          "Notifications",
+          notification.id
+        );
+        return deleteDoc(notificationRef);
+      });
+
+      await Promise.all(deletePromises);
+      
+      // Update local state to remove deleted notifications
+      setNotifications((prev) =>
+        prev.filter((notification) => !notification.seen)
+      );
+      
+      console.log(`${readNotifications.length} read notifications deleted`);
+    } catch (error) {
+      console.error("Error deleting read notifications:", error);
+      alert("Failed to delete some notifications. Please try again.");
+    }
+  };
+
+  // Mark all notifications as read
+  const markAllAsRead = async () => {
+    const unreadNotifications = notifications.filter((notif) => !notif.seen);
+    
+    if (unreadNotifications.length === 0) {
+      alert("All notifications are already read.");
+      return;
+    }
+
+    try {
+      // Mark all unread notifications as read in Firestore
+      const updatePromises = unreadNotifications.map(async (notification) => {
+        const notificationRef = doc(
+          db,
+          "Users",
+          user.uid,
+          "Notifications",
+          notification.id
+        );
+        return updateDoc(notificationRef, { seen: true });
+      });
+
+      await Promise.all(updatePromises);
+      
+      // Update local state
+      setNotifications((prev) =>
+        prev.map((notification) => ({ ...notification, seen: true }))
+      );
+      
+      console.log(`${unreadNotifications.length} notifications marked as read`);
+    } catch (error) {
+      console.error("Error marking notifications as read:", error);
+      alert("Failed to mark some notifications as read. Please try again.");
+    }
+  };
+
+  // Get user role for role-based navigation
+  const getUserRole = async () => {
+    try {
+      const auth = getAuth();
+      const currentUser = auth.currentUser;
+      if (currentUser) {
+        const userDoc = await getDoc(doc(db, "Users", currentUser.uid));
+        return userDoc.exists() ? userDoc.data().role : "Researcher";
+      }
+    } catch (error) {
+      console.error("Error fetching user role:", error);
+    }
+    return "Researcher";
+  };
+
   // Handle notification click (navigate to relevant page)
-  const handleNotificationClick = (notification) => {
+  const handleNotificationClick = async (notification) => {
     markAsRead(notification.id);
-    if (notification.message.includes("Admin")) {
-      navigate("/profile");
-    } else if (notification.message.includes("Peer Reviewer")) {
-      navigate("/profile");
-    } else if (notification.message.includes("Researcher")) {
-      navigate("/profile");
+    
+    // Get current user role for role-based navigation
+    const userRole = await getUserRole();
+    
+    // Navigate based on notification type and metadata
+    const actionUrl = notification.metadata?.actionUrl;
+    if (actionUrl) {
+      navigate(actionUrl);
+      return;
+    }
+
+    // Enhanced role-based navigation logic
+    switch (notification.type) {
+      case "manuscript_status":
+        // Authors go to manuscripts to see their submissions
+        if (userRole === "Researcher") {
+          navigate("/manuscripts");
+        } else if (userRole === "Admin") {
+          navigate("/manuscripts");
+        } else {
+          navigate("/dashboard");
+        }
+        break;
+
+      case "manuscript_final":
+        // Final decisions - admins go to manuscripts, others to dashboard
+        if (userRole === "Admin") {
+          navigate("/manuscripts");
+        } else {
+          navigate("/dashboard");
+        }
+        break;
+
+      case "new_submission":
+        // New submissions - admins go to form responses to review submissions
+        if (userRole === "Admin") {
+          navigate("/formresponses");
+        } else {
+          navigate("/dashboard");
+        }
+        break;
+
+      case "reviewer_assignment":
+        // Reviewers go to review page
+        if (userRole === "Peer Reviewer") {
+          navigate("/review-manuscript");
+        } else {
+          navigate("/dashboard");
+        }
+        break;
+
+      case "reviewer_decision":
+      case "review_completed":
+        // Reviewer actions - admins go to manuscripts to see updates
+        if (userRole === "Admin") {
+          navigate("/manuscripts");
+        } else if (userRole === "Peer Reviewer") {
+          navigate("/review-manuscript");
+        } else {
+          navigate("/dashboard");
+        }
+        break;
+
+      case "deadline_reminder":
+        // Deadline reminders based on role
+        if (userRole === "Admin") {
+          navigate("/admin/deadlines");
+        } else if (userRole === "Peer Reviewer") {
+          navigate("/review-manuscript");
+        } else {
+          navigate("/manuscripts");
+        }
+        break;
+
+      case "user_management":
+        // User management notifications
+        if (userRole === "Admin") {
+          navigate("/user-management");
+        } else {
+          navigate("/profile");
+        }
+        break;
+
+      case "peer_reviewer_list":
+        // Peer reviewer related notifications
+        if (userRole === "Admin") {
+          navigate("/peer-reviewers");
+        } else {
+          navigate("/profile");
+        }
+        break;
+
+      default:
+        // Default fallback based on role
+        if (userRole === "Admin") {
+          navigate("/dashboard");
+        } else if (userRole === "Peer Reviewer") {
+          navigate("/review-manuscript");
+        } else {
+          navigate("/manuscripts");
+        }
+    }
+  };
+
+  // Get notification icon based on type
+  const getNotificationIcon = (type) => {
+    switch (type) {
+      case "manuscript_status":
+        return "📄";
+      case "manuscript_final":
+        return "✅";
+      case "new_submission":
+        return "📝";
+      case "reviewer_assignment":
+        return "👥";
+      case "reviewer_decision":
+        return "⚖️";
+      case "review_completed":
+        return "✔️";
+      case "deadline_reminder":
+        return "⏰";
+      default:
+        return "🔔";
+    }
+  };
+
+  // Get notification color based on type
+  const getNotificationColor = (type) => {
+    switch (type) {
+      case "manuscript_status":
+        return "text-blue-600";
+      case "manuscript_final":
+        return "text-green-600";
+      case "new_submission":
+        return "text-purple-600";
+      case "reviewer_assignment":
+        return "text-orange-600";
+      case "reviewer_decision":
+        return "text-indigo-600";
+      case "review_completed":
+        return "text-green-600";
+      case "deadline_reminder":
+        return "text-red-600";
+      default:
+        return "text-gray-600";
     }
   };
 
@@ -239,35 +475,62 @@ const Notifications = ({ user }) => {
           className="absolute right-0 mt-2 w-72 bg-white border border-gray-300 rounded-lg shadow-lg overflow-hidden"
         >
           {/* Header */}
-          <div className="p-3 bg-gray-100 flex justify-between items-center">
-            <h3 className="text-sm font-semibold text-gray-800">
-              Notifications
-            </h3>
-            <div className="flex space-x-2">
-              <button
-                onClick={() => setActiveTab("all")}
-                className={`text-xs font-medium ${
-                  activeTab === "all" ? "text-blue-600" : "text-gray-600"
-                }`}
-              >
-                All
-              </button>
-              <button
-                onClick={() => setActiveTab("unread")}
-                className={`text-xs font-medium ${
-                  activeTab === "unread" ? "text-blue-600" : "text-gray-600"
-                }`}
-              >
-                Unread
-              </button>
-              <button
-                onClick={() => setActiveTab("read")}
-                className={`text-xs font-medium ${
-                  activeTab === "read" ? "text-blue-600" : "text-gray-600"
-                }`}
-              >
-                Read
-              </button>
+          <div className="p-3 bg-gray-100">
+            <div className="flex justify-between items-center mb-2">
+              <h3 className="text-sm font-semibold text-gray-800">
+                Notifications
+              </h3>
+              <div className="flex space-x-2">
+                <button
+                  onClick={() => setActiveTab("all")}
+                  className={`text-xs font-medium ${
+                    activeTab === "all" ? "text-blue-600" : "text-gray-600"
+                  }`}
+                >
+                  All
+                </button>
+                <button
+                  onClick={() => setActiveTab("unread")}
+                  className={`text-xs font-medium ${
+                    activeTab === "unread" ? "text-blue-600" : "text-gray-600"
+                  }`}
+                >
+                  Unread
+                </button>
+                <button
+                  onClick={() => setActiveTab("read")}
+                  className={`text-xs font-medium ${
+                    activeTab === "read" ? "text-blue-600" : "text-gray-600"
+                  }`}
+                >
+                  Read
+                </button>
+              </div>
+            </div>
+            
+            {/* Action Buttons */}
+            <div className="flex justify-between items-center">
+              {/* Mark All as Read Button */}
+              {notifications.filter((notif) => !notif.seen).length > 0 && (
+                <button
+                  onClick={markAllAsRead}
+                  className="text-xs text-blue-600 hover:text-blue-800 hover:bg-blue-50 px-2 py-1 rounded transition-colors"
+                  title={`Mark ${notifications.filter((notif) => !notif.seen).length} notifications as read`}
+                >
+                  ✓ Mark All Read ({notifications.filter((notif) => !notif.seen).length})
+                </button>
+              )}
+              
+              {/* Delete All Read Button */}
+              {notifications.filter((notif) => notif.seen).length > 0 && (
+                <button
+                  onClick={deleteAllReadNotifications}
+                  className="text-xs text-red-600 hover:text-red-800 hover:bg-red-50 px-2 py-1 rounded transition-colors"
+                  title={`Delete ${notifications.filter((notif) => notif.seen).length} read notifications`}
+                >
+                  🗑️ Clear Read ({notifications.filter((notif) => notif.seen).length})
+                </button>
+              )}
             </div>
           </div>
 
@@ -284,61 +547,73 @@ const Notifications = ({ user }) => {
               filteredNotifications.map((notification) => (
                 <div
                   key={notification.id}
-                  className="flex flex-col items-start p-4 cursor-pointer hover:bg-gray-50 transition-colors"
+                  className="flex items-start p-4 cursor-pointer hover:bg-gray-50 transition-colors"
                   onClick={() => handleNotificationClick(notification)}
                 >
-                  <div className="w-full">
+                  <div className="flex-shrink-0 mr-3 text-lg">
+                    {getNotificationIcon(notification.type)}
+                  </div>
+                  <div className="flex-grow">
+                    {notification.title && (
+                      <h4 className={`text-sm font-medium mb-1 ${
+                        notification.seen ? "text-gray-700" : "text-gray-900"
+                      }`}>
+                        {notification.title}
+                      </h4>
+                    )}
                     <p
                       className={`text-sm ${
-                        notification.seen ? "text-gray-600" : "font-semibold"
+                        notification.seen ? "text-gray-600" : "font-medium text-gray-800"
                       }`}
                     >
                       {notification.message}
                     </p>
+                    {/* Timestamp Display */}
+                    {notification.timestamp && (
+                      <div className="text-xs text-gray-500 mt-1">
+                        {new Date(
+                          notification.timestamp.toMillis
+                            ? notification.timestamp.toMillis()
+                            : Date.parse(notification.timestamp)
+                        ).toLocaleString()}
+                      </div>
+                    )}
                   </div>
-                  <div className="flex items-center justify-between mt-2 space-x-2">
-                    {!notification.seen && (
+                  <div className="flex-shrink-0 ml-2">
+                    <div className="flex flex-col space-y-1">
+                      {!notification.seen && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            markAsRead(notification.id);
+                          }}
+                          className="text-xs text-blue-600 hover:text-blue-800"
+                        >
+                          Mark as read
+                        </button>
+                      )}
+                      {notification.seen && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            markAsUnread(notification.id);
+                          }}
+                          className="text-xs text-blue-600 hover:text-blue-800"
+                        >
+                          Mark as unread
+                        </button>
+                      )}
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          markAsRead(notification.id);
+                          deleteNotification(notification.id);
                         }}
-                        className="text-xs text-blue-600 hover:text-blue-800"
+                        className="text-xs text-red-600 hover:text-red-800"
                       >
-                        Mark as read
+                        Delete
                       </button>
-                    )}
-                    {notification.seen && (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          markAsUnread(notification.id);
-                        }}
-                        className="text-xs text-blue-600 hover:text-blue-800"
-                      >
-                        Mark as unread
-                      </button>
-                    )}
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        deleteNotification(notification.id);
-                      }}
-                      className="text-xs text-red-600 hover:text-red-800"
-                    >
-                      Delete
-                    </button>
-                  </div>
-                  {/* Timestamp Display */}
-                  {notification.timestamp && (
-                    <div className="text-xs text-gray-500 mt-1">
-                      {new Date(
-                        notification.timestamp.toMillis
-                          ? notification.timestamp.toMillis()
-                          : Date.parse(notification.timestamp)
-                      ).toLocaleString()}
                     </div>
-                  )}
+                  </div>
                 </div>
               ))
             )}

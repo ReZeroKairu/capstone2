@@ -1,4 +1,5 @@
 // manuscriptHelpers.js
+import { NotificationService } from "./notificationService";
 
 /**
  * Compute final manuscript status based on reviewer decisions and submissions.
@@ -66,5 +67,93 @@ export function filterRejectedReviewers(
 ) {
   return assignedReviewersData.filter(
     (r) => reviewerDecisionMeta?.[r.id]?.decision === "reject"
+  );
+}
+
+/**
+ * Handle manuscript status change with notifications
+ * @param {string} manuscriptId - Manuscript ID
+ * @param {string} manuscriptTitle - Manuscript title
+ * @param {string} oldStatus - Previous status
+ * @param {string} newStatus - New status
+ * @param {string} authorId - Author user ID
+ * @param {string} adminId - Admin user ID (optional)
+ */
+export async function handleManuscriptStatusChange(manuscriptId, manuscriptTitle, oldStatus, newStatus, authorId, adminId) {
+  if (oldStatus !== newStatus) {
+    await NotificationService.notifyManuscriptStatusChange(
+      manuscriptId, 
+      manuscriptTitle, 
+      oldStatus, 
+      newStatus, 
+      authorId, 
+      adminId
+    );
+  }
+}
+
+/**
+ * Handle peer reviewer assignment with notifications
+ * @param {string} manuscriptId - Manuscript ID
+ * @param {string} manuscriptTitle - Manuscript title
+ * @param {Array} reviewerIds - Array of reviewer IDs
+ * @param {string} assignedByAdminId - Admin who assigned reviewers
+ */
+export async function handlePeerReviewerAssignment(manuscriptId, manuscriptTitle, reviewerIds, assignedByAdminId) {
+  await NotificationService.notifyPeerReviewerAssignment(
+    manuscriptId, 
+    manuscriptTitle, 
+    reviewerIds, 
+    assignedByAdminId
+  );
+}
+
+/**
+ * Handle peer reviewer decision with notifications
+ * @param {string} manuscriptId - Manuscript ID
+ * @param {string} manuscriptTitle - Manuscript title
+ * @param {string} reviewerId - Reviewer ID
+ * @param {string} decision - Decision (accept/reject/backedOut)
+ */
+export async function handlePeerReviewerDecision(manuscriptId, manuscriptTitle, reviewerId, decision) {
+  const adminIds = await NotificationService.getAdminUserIds();
+  await NotificationService.notifyPeerReviewerDecision(
+    manuscriptId, 
+    manuscriptTitle, 
+    reviewerId, 
+    decision, 
+    adminIds
+  );
+}
+
+/**
+ * Handle review completion with notifications
+ * @param {string} manuscriptId - Manuscript ID
+ * @param {string} manuscriptTitle - Manuscript title
+ * @param {string} reviewerId - Reviewer ID
+ */
+export async function handleReviewCompletion(manuscriptId, manuscriptTitle, reviewerId) {
+  const adminIds = await NotificationService.getAdminUserIds();
+  await NotificationService.notifyReviewCompleted(
+    manuscriptId, 
+    manuscriptTitle, 
+    reviewerId, 
+    adminIds
+  );
+}
+
+/**
+ * Handle new manuscript submission with notifications
+ * @param {string} manuscriptId - Manuscript ID
+ * @param {string} manuscriptTitle - Manuscript title
+ * @param {string} authorId - Author ID
+ */
+export async function handleManuscriptSubmission(manuscriptId, manuscriptTitle, authorId) {
+  const adminIds = await NotificationService.getAdminUserIds();
+  await NotificationService.notifyManuscriptSubmission(
+    manuscriptId, 
+    manuscriptTitle, 
+    authorId, 
+    adminIds
   );
 }

@@ -12,7 +12,10 @@ import {
 import {
   computeManuscriptStatus,
   filterAcceptedReviewers,
+  handlePeerReviewerDecision,
+  handleReviewCompletion,
 } from "../../utils/manuscriptHelpers";
+import { useUserLogs } from "../../hooks/useUserLogs";
 
 export default function ReviewManuscript() {
   const [reviewerId, setReviewerId] = useState(null);
@@ -22,6 +25,9 @@ export default function ReviewManuscript() {
   const [users, setUsers] = useState({});
   const [activeReview, setActiveReview] = useState(null);
   const [userRole, setUserRole] = useState(null);
+  
+  // Logging hook
+  const { logManuscriptReview } = useUserLogs();
 
   const formatFirestoreDate = (ts) =>
     ts?.toDate?.()
@@ -181,6 +187,13 @@ export default function ReviewManuscript() {
     await logReviewerHistory(msRef, reviewerId, decision);
     await updateManuscriptStatus(manuscriptId, updatedDecisions);
 
+    // Send notification about reviewer decision
+    const manuscriptTitle = getManuscriptDisplayTitle(selected);
+    await handlePeerReviewerDecision(manuscriptId, manuscriptTitle, reviewerId, decision);
+    
+    // Log the reviewer decision
+    await logManuscriptReview(manuscriptId, manuscriptTitle, decision);
+
     // Update local state immediately
     setManuscripts((prev) =>
       prev.map((m) =>
@@ -273,6 +286,13 @@ export default function ReviewManuscript() {
       updatedDecisions,
       completedReviewers
     );
+
+    // Send notification about review completion
+    const manuscriptTitle = getManuscriptDisplayTitle(selected);
+    await handleReviewCompletion(manuscriptId, manuscriptTitle, reviewerId);
+    
+    // Log the review completion
+    await logManuscriptReview(manuscriptId, manuscriptTitle, "completed");
 
     setManuscripts((prev) =>
       prev.map((m) =>
