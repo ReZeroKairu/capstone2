@@ -124,20 +124,28 @@ const FileUpload = ({
       setPreviewUrl(null);
     }
   };
-
-  const handleRemoveFile = async () => {
-    if (fileInfo?.storagePath) {
-      try {
-        const storageRef = ref(storage, fileInfo.storagePath);
-        await deleteObject(storageRef);
-      } catch (err) {
-        console.warn('Error removing file from storage:', err);
-      }
+const handleRemoveFile = async () => {
+  if (fileInfo?.storagePath) {
+    try {
+      const storageRef = ref(storage, fileInfo.storagePath);
+      await deleteObject(storageRef);
+    } catch (err) {
+      console.warn("Error removing file from storage:", err);
     }
-    setFileInfo(null);
-    setPreviewUrl(null);
-    onUploadSuccess?.(null);
-  };
+  }
+
+  // 🔹 Reset local state
+  setFileInfo(null);
+  setPreviewUrl(null);
+
+  // 🔹 Tell parent to clear the answer
+  onUploadSuccess?.(null);
+
+  // 🔹 Reset file input so user can upload again
+  const input = document.getElementById(id);
+  if (input) input.value = "";
+};
+
 
   const handleViewFile = (e) => {
     e.preventDefault();
