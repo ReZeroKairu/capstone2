@@ -10,7 +10,7 @@ const firebaseConfig = {
   apiKey: "AIzaSyBdeb3W_0Ung6bFvzjN0KVJaPMYa6Tw_b0",
   authDomain: "pubtrack2.firebaseapp.com",
   projectId: "pubtrack2",
-  storageBucket: "pubtrack2.appspot.com",
+  storageBucket: "pubtrack2.firebasestorage.app",
   messagingSenderId: "1084019185709",
   appId: "1:1084019185709:web:0f257862cba3141eb340a4",
   measurementId: "G-V63NEVL8P8",
