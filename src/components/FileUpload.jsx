@@ -7,7 +7,8 @@ import { getFileTypeIcon, formatFileSize, isImage } from '../utils/fileUtils';
 const FileUpload = ({ 
     onUploadSuccess, 
     onUploadError, 
-    accept = '*', 
+   accept = ".doc,.docx",
+
     className = '',
     buttonText = 'Choose File',
     uploadingText = 'Uploading...',
@@ -32,98 +33,110 @@ const FileUpload = ({
   }, [initialFile]);
 
   const handleFileChange = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
+  const file = e.target.files[0];
+  if (!file) return;
 
-    try {
-      setIsUploading(true);
-      setUploadProgress(0);
-      setError(null);
+  try {
+    setIsUploading(true);
+    setUploadProgress(0);
+    setError(null);
 
-      // Validate file size (10MB max)
-      const maxSize = 10 * 1024 * 1024; // 10MB
-      if (file.size > maxSize) throw new Error('File size should be less than 10MB');
+    // ✅ Validate file type (.doc, .docx only)
+ // Validate allowed file types
+const allowedTypes = [
+  "application/msword", // .doc
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document" // .docx
+];
+const allowedExtensions = [".doc", ".docx"];
+const ext = file.name.slice(file.name.lastIndexOf(".")).toLowerCase();
 
-      // Generate preview for images
-      if (isImage(file.name)) {
-        const reader = new FileReader();
-        reader.onload = (e) => setPreviewUrl(e.target.result);
-        reader.readAsDataURL(file);
-      } else {
+if (!allowedTypes.includes(file.type) && !allowedExtensions.includes(ext)) {
+  throw new Error("Only .doc and .docx files are allowed");
+}
+
+    // ✅ Validate file size (10MB max)
+    const maxSize = 10 * 1024 * 1024; // 10MB
+    if (file.size > maxSize) throw new Error("File size should be less than 10MB");
+
+    // ❌ Block previews since only Word docs are allowed
+    setPreviewUrl(null);
+
+    // --- Unique timestamped storage path ---
+    const timestamp = Date.now();
+    const safeFileName = file.name.replace(/[^\w\d.-]/g, "_");
+    const storagePath = `manuscripts/${timestamp}_${safeFileName}`;
+    const storageRef = ref(storage, storagePath);
+    const uploadTask = uploadBytesResumable(storageRef, file);
+
+    uploadTask.on(
+      "state_changed",
+      (snapshot) => {
+        const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+        setUploadProgress(progress);
+      },
+      (uploadError) => {
+        console.error("Upload failed:", uploadError);
+        const errorMsg = uploadError.message || "Failed to upload file";
+        setError(errorMsg);
+        onUploadError?.({ message: errorMsg });
+        setIsUploading(false);
         setPreviewUrl(null);
-      }
+      },
+      async () => {
+        try {
+          const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
+          const fileData = {
+            url: downloadURL,
+            name: file.name,
+            type: file.type,
+            size: file.size,
+            storagePath,
+            lastModified: new Date().toISOString(),
+          };
 
-      // --- Unique timestamped storage path ---
-      const timestamp = Date.now();
-      const safeFileName = file.name.replace(/[^\w\d.-]/g, '_');
-      const storagePath = `manuscripts/${timestamp}_${safeFileName}`;
-      const storageRef = ref(storage, storagePath);
-      const uploadTask = uploadBytesResumable(storageRef, file);
+          // --- Virus scan check ---
+          if (scanFunctionUrl) {
+            const response = await fetch(scanFunctionUrl, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ storagePath }),
+            });
+            const scanResult = await response.json();
+            if (scanResult.infected) {
+              // Remove infected file
+              await deleteObject(storageRef);
+              throw new Error(
+                `Upload rejected: file contains virus${
+                  scanResult.viruses?.length ? ` (${scanResult.viruses.join(", ")})` : ""
+                }`
+              );
+            }
+          }
 
-      uploadTask.on(
-        'state_changed',
-        (snapshot) => {
-          const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-          setUploadProgress(progress);
-        },
-        (uploadError) => {
-          console.error('Upload failed:', uploadError);
-          const errorMsg = uploadError.message || 'Failed to upload file';
+          // ✅ File is clean
+          setFileInfo(fileData);
+          onUploadSuccess?.(fileData);
+        } catch (err) {
+          console.error("Error after upload:", err);
+          const errorMsg = err.message || "Failed to process file";
           setError(errorMsg);
           onUploadError?.({ message: errorMsg });
-          setIsUploading(false);
           setPreviewUrl(null);
-        },
-        async () => {
-          try {
-            const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
-            const fileData = {
-              url: downloadURL,
-              name: file.name,
-              type: file.type,
-              size: file.size,
-              storagePath,
-              lastModified: new Date().toISOString()
-            };
-
-            // --- Virus scan check ---
-            if (scanFunctionUrl) {
-              const response = await fetch(scanFunctionUrl, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ storagePath })
-              });
-              const scanResult = await response.json();
-              if (scanResult.infected) {
-                // Remove infected file
-                await deleteObject(storageRef);
-                throw new Error(`Upload rejected: file contains virus${scanResult.viruses?.length ? ` (${scanResult.viruses.join(', ')})` : ''}`);
-              }
-            }
-
-            // ✅ File is clean
-            setFileInfo(fileData);
-            onUploadSuccess?.(fileData);
-          } catch (err) {
-            console.error('Error after upload:', err);
-            const errorMsg = err.message || 'Failed to process file';
-            setError(errorMsg);
-            onUploadError?.({ message: errorMsg });
-            setPreviewUrl(null);
-          } finally {
-            setIsUploading(false);
-          }
+        } finally {
+          setIsUploading(false);
         }
-      );
-    } catch (error) {
-      console.error('Error uploading file:', error);
-      const errorMsg = error.message || 'Failed to upload file';
-      setError(errorMsg);
-      onUploadError?.({ message: errorMsg });
-      setIsUploading(false);
-      setPreviewUrl(null);
-    }
-  };
+      }
+    );
+  } catch (error) {
+    console.error("Error uploading file:", error);
+    const errorMsg = error.message || "Failed to upload file";
+    setError(errorMsg);
+    onUploadError?.({ message: errorMsg });
+    setIsUploading(false);
+    setPreviewUrl(null);
+  }
+};
+
 const handleRemoveFile = async () => {
   if (fileInfo?.storagePath) {
     try {
