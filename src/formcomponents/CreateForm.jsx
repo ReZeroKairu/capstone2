@@ -61,11 +61,36 @@ export default function CreateForm() {
     setTitle(formData.title);
 
     let loadedQuestions = formData.questions || [];
+
+    // Ensure Manuscript Title and Manuscript File exist
+    if (!loadedQuestions.some((q) => q.isManuscriptTitle)) {
+      loadedQuestions.unshift({
+        id: "manuscript-title",
+        text: "Manuscript Title",
+        type: "text",
+        isManuscriptTitle: true,
+        required: true,
+        options: [],
+      });
+    }
+
+    if (!loadedQuestions.some((q) => q.isManuscriptFile)) {
+      loadedQuestions.push({
+        id: "manuscript-file",
+        text: "Upload Manuscript",
+        type: "file",
+        isManuscriptFile: true,
+        required: true,
+        options: [],
+      });
+    }
+
     if (!loadedQuestions.some((q) => q.type === "coauthors")) {
       loadedQuestions.push({
         id: "coauthors",
         text: "Co-Authors / Tag Researchers",
         type: "coauthors",
+        options: [],
       });
     }
 
@@ -82,33 +107,53 @@ export default function CreateForm() {
   };
 
   // Questions CRUD
-  const addQuestion = () =>
-    setQuestions([
-      ...questions,
-      {
-        id: Date.now().toString() + Math.random(),
-        text: "",
-        type: "text",
-        required: false,
-        options: [],
-      },
-    ]);
+  const addQuestion = () => {
+    // Prevent adding another file type if it exists
+    if (!questions.some((q) => q.isManuscriptFile)) {
+      setQuestions([
+        ...questions,
+        {
+          id: Date.now().toString() + Math.random(),
+          text: "",
+          type: "text",
+          required: false,
+          options: [],
+        },
+      ]);
+    } else {
+      setQuestions([
+        ...questions,
+        {
+          id: Date.now().toString() + Math.random(),
+          text: "",
+          type: "text", // Cannot add another file
+          required: false,
+          options: [],
+        },
+      ]);
+    }
+  };
 
   const removeQuestion = (index) => {
-    if (questions[index].isManuscriptTitle) return;
+    if (questions[index].isManuscriptTitle || questions[index].isManuscriptFile)
+      return;
     setQuestions(questions.filter((_, i) => i !== index));
   };
 
   const updateQuestion = (index, field, value) => {
     const updated = [...questions];
     updated[index][field] = value;
+
     if (updated[index].isManuscriptTitle && field === "text") {
       if (/manuscript title/i.test(value.trim())) setMtError(false);
     }
+
+    // Reset options if type changes and is not choice type
     if (
       !["multiple", "radio", "checkbox", "select", "coauthors"].includes(value)
     )
       updated[index].options = [];
+
     setQuestions(updated);
   };
 
@@ -201,7 +246,6 @@ export default function CreateForm() {
     await deleteDoc(doc(db, "forms", formId));
     alert("Form deleted successfully!");
 
-    // Remove from local list and reset editor
     setForms(forms.filter((f) => f.id !== formId));
     setFormId(null);
     setTitle("");
@@ -211,6 +255,14 @@ export default function CreateForm() {
         text: "Manuscript Title",
         type: "text",
         isManuscriptTitle: true,
+        required: true,
+        options: [],
+      },
+      {
+        id: "manuscript-file",
+        text: "Upload Manuscript",
+        type: "file",
+        isManuscriptFile: true,
         required: true,
         options: [],
       },
@@ -252,6 +304,14 @@ export default function CreateForm() {
                     text: "Manuscript Title",
                     type: "text",
                     isManuscriptTitle: true,
+                    required: true,
+                    options: [],
+                  },
+                  {
+                    id: "manuscript-file",
+                    text: "Upload Manuscript",
+                    type: "file",
+                    isManuscriptFile: true,
                     required: true,
                     options: [],
                   },
@@ -337,11 +397,18 @@ export default function CreateForm() {
 
                           <select
                             value={q.type}
-                            onChange={(e) =>
-                              updateQuestion(index, "type", e.target.value)
-                            }
+                            onChange={(e) => {
+                              const newType = e.target.value;
+                              if (newType === "file" && !q.isManuscriptFile) {
+                                alert(
+                                  "Only the Manuscript File question can be of type 'file'."
+                                );
+                                return;
+                              }
+                              updateQuestion(index, "type", newType);
+                            }}
                             className="bg-[#f3f2ee] rounded-lg px-3 py-1 w-fit text-base font-medium border-none shadow-sm"
-                            disabled={q.isManuscriptTitle}
+                            disabled={q.isManuscriptTitle || q.isManuscriptFile}
                           >
                             <option value="text">Short Answer</option>
                             <option value="textarea">Paragraph</option>
@@ -351,6 +418,7 @@ export default function CreateForm() {
                             <option value="select">Dropdown</option>
                             <option value="number">Number</option>
                             <option value="date">Date</option>
+                            {q.isManuscriptFile && <option value="file">File</option>}
                           </select>
 
                           <label className="flex items-center gap-2 text-base">
@@ -396,6 +464,7 @@ export default function CreateForm() {
                                   </button>
                                 </div>
                               ))}
+                              
                               <button
                                 onClick={() => addOption(index)}
                                 className="bg-[#6B6B6B] text-white rounded-md px-4 py-1 font-bold mt-1 w-fit"
@@ -405,7 +474,7 @@ export default function CreateForm() {
                             </div>
                           )}
 
-                          {!q.isManuscriptTitle && (
+                          {!q.isManuscriptTitle && !q.isManuscriptFile && (
                             <button
                               onClick={() => removeQuestion(index)}
                               className="bg-[#7B2E19] text-white rounded-md px-4 py-2 font-bold mt-2 w-fit"

@@ -15,6 +15,8 @@ import {
   serverTimestamp,
 } from "firebase/firestore";
 import { MagnifyingGlassIcon } from "@heroicons/react/24/outline";
+import { getDownloadURL, ref } from "firebase/storage";
+import { storage } from "../firebase/firebase"; // ✅ make sure you export storage in firebase.js
 
 export default function FormResponses() {
   const [responses, setResponses] = useState([]);
@@ -34,6 +36,7 @@ export default function FormResponses() {
   // Pagination: pageCursors[i] = lastDoc of page (i+1)
   const [pageCursors, setPageCursors] = useState([]);
   const [currentPage, setCurrentPage] = useState(1);
+
 
   // modal
   const [selectedResponse, setSelectedResponse] = useState(null);
@@ -170,90 +173,212 @@ export default function FormResponses() {
   };
 
   // main page loader
-  const loadPage = async (page = 1) => {
-    if (!currentUser) return;
 
-    const isSearching = searchTerm.trim() !== "";
-    setLoading(true);
+    const loadPage = async (page = 1) => {
+  if (!currentUser) return;
 
-    try {
-      const constraints = buildConstraints();
+  const isSearching = searchTerm.trim() !== "";
+  setLoading(true);
 
-      if (isSearching) {
-        const q = query(
-          collection(db, "form_responses"),
-          ...constraints,
-          orderBy("submittedAt", "desc"),
-          limit(1000)
-        );
-        const snap = await getDocs(q);
-        const data = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-        const term = searchTerm.toLowerCase();
+  try {
+    const constraints = buildConstraints();
 
-        const filtered = data.filter((res) => {
-          const fullName = `${res.firstName || ""} ${
-            res.lastName || ""
-          }`.trim();
-          const manuscriptTitle =
-            res.manuscriptTitle ||
-            res.answeredQuestions?.find((q) =>
-              q.question?.toLowerCase().trim().startsWith("manuscript title")
-            )?.answer ||
-            res.formTitle ||
-            "Untitled";
-
-          const fieldsToSearch = [
-            res.email,
-            fullName,
-            manuscriptTitle,
-            res.formTitle,
-            ...(res.searchIndex || []),
-          ];
-
-          return fieldsToSearch.some((f) => f?.toLowerCase().includes(term));
-        });
-
-        setResponses(filtered);
-        setCurrentPage(1);
-        setPageCursors([]);
-        return;
-      }
-
-      const totalPages = Math.max(1, Math.ceil(totalResponses / pageSize));
-      const targetPage = Math.min(Math.max(1, page), totalPages);
-
-      await ensureCursorsUpTo(targetPage);
-
-      const startAfterDoc =
-        targetPage > 1 ? pageCursors[targetPage - 2] || null : null;
-
+    // 🔹 SEARCH MODE with client-side pagination
+    if (isSearching) {
       const q = query(
         collection(db, "form_responses"),
         ...constraints,
         orderBy("submittedAt", "desc"),
-        limit(pageSize),
-        ...(startAfterDoc ? [startAfter(startAfterDoc)] : [])
+        limit(1000) // cap search results
       );
       const snap = await getDocs(q);
-      const data = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-      setResponses(data);
 
-      if (snap.docs.length > 0) {
-        const lastDoc = snap.docs[snap.docs.length - 1];
-        setPageCursors((prev) => {
-          const copy = [...prev];
-          copy[targetPage - 1] = lastDoc;
-          return copy;
-        });
+      const data = await Promise.all(
+        snap.docs.map(async (d) => {
+          const docData = { id: d.id, ...d.data() };
+
+          // resolve file answers
+          if (docData.answeredQuestions) {
+            docData.answeredQuestions = await Promise.all(
+              docData.answeredQuestions.map(async (q) => {
+               if (q.type === "file" && q.answer) {
+  const answersArray = Array.isArray(q.answer) ? q.answer : [q.answer];
+  const filesWithUrls = await Promise.all(
+    answersArray.map(async (f) => {
+      try {
+        const filePath =
+          f?.storagePath ||
+          f?.path ||
+          (typeof f === "string" ? f : null);
+
+        if (!filePath) return f;
+
+        const url = await getDownloadURL(ref(storage, filePath));
+
+        if (typeof f === "string") {
+          return {
+            name: filePath.split("/").pop(),
+            url,
+            path: filePath,
+          };
+        }
+        return { ...f, url };
+      } catch (err) {
+        console.warn("⚠️ File missing in storage:", f);
+        // fallback so UI doesn't break
+        return {
+          name: (typeof f === "string" ? f : f?.name) || "Unavailable file",
+          url: null,
+          path: f?.path || f?.storagePath || null,
+          missing: true,
+        };
       }
+    })
+  );
 
-      setCurrentPage(targetPage);
-    } catch (err) {
-      console.error("Error loading page:", err);
-    } finally {
-      setLoading(false);
-    }
+  return {
+    ...q,
+    answer:
+      filesWithUrls.length === 1 && !Array.isArray(q.answer)
+        ? filesWithUrls[0]
+        : filesWithUrls,
   };
+}
+
+                return q;
+              })
+            );
+          }
+
+          return docData;
+        })
+      );
+
+      // filter search results
+      const term = searchTerm.toLowerCase();
+      const filtered = data.filter((res) => {
+        const fullName = `${res.firstName || ""} ${res.lastName || ""}`.trim();
+        const manuscriptTitle =
+          res.manuscriptTitle ||
+          res.answeredQuestions?.find((q) =>
+            q.question?.toLowerCase().trim().startsWith("manuscript title")
+          )?.answer ||
+          res.formTitle ||
+          "Untitled";
+
+        const fieldsToSearch = [
+          res.email,
+          fullName,
+          manuscriptTitle,
+          res.formTitle,
+          ...(res.searchIndex || []),
+        ];
+
+        return fieldsToSearch.some((f) => f?.toLowerCase().includes(term));
+      });
+
+      // 🔹 client-side pagination
+      const total = filtered.length;
+      const totalPages = Math.max(1, Math.ceil(total / pageSize));
+      const targetPage = Math.min(Math.max(1, page), totalPages);
+
+      const startIndex = (targetPage - 1) * pageSize;
+      const paginated = filtered.slice(startIndex, startIndex + pageSize);
+
+      setResponses(paginated);
+      setTotalResponses(total);
+      setCurrentPage(targetPage);
+      setPageCursors([]); // no cursors needed for search
+      return;
+    }
+
+    // 🔹 NORMAL MODE with Firestore cursor-based pagination
+    const totalPages = Math.max(1, Math.ceil(totalResponses / pageSize));
+    const targetPage = Math.min(Math.max(1, page), totalPages);
+
+    await ensureCursorsUpTo(targetPage);
+
+    const startAfterDoc =
+      targetPage > 1 ? pageCursors[targetPage - 2] || null : null;
+
+    const q = query(
+      collection(db, "form_responses"),
+      ...constraints,
+      orderBy("submittedAt", "desc"),
+      limit(pageSize),
+      ...(startAfterDoc ? [startAfter(startAfterDoc)] : [])
+    );
+    const snap = await getDocs(q);
+
+    const data = await Promise.all(
+      snap.docs.map(async (d) => {
+        const docData = { id: d.id, ...d.data() };
+
+        if (docData.answeredQuestions) {
+          docData.answeredQuestions = await Promise.all(
+            docData.answeredQuestions.map(async (q) => {
+              if (q.type === "file" && q.answer) {
+                const answersArray = Array.isArray(q.answer)
+                  ? q.answer
+                  : [q.answer];
+                const filesWithUrls = await Promise.all(
+                  answersArray.map(async (f) => {
+                    try {
+                      const filePath =
+                        f?.storagePath ||
+                        f?.path ||
+                        (typeof f === "string" ? f : null);
+                      if (!filePath) return f;
+                      const url = await getDownloadURL(ref(storage, filePath));
+                      if (typeof f === "string") {
+                        return {
+                          name: filePath.split("/").pop(),
+                          url,
+                          path: filePath,
+                        };
+                      }
+                      return { ...f, url };
+                    } catch (err) {
+                      console.error("Error fetching file URL:", err, f);
+                      return f;
+                    }
+                  })
+                );
+                return {
+                  ...q,
+                  answer:
+                    filesWithUrls.length === 1 && !Array.isArray(q.answer)
+                      ? filesWithUrls[0]
+                      : filesWithUrls,
+                };
+              }
+              return q;
+            })
+          );
+        }
+
+        return docData;
+      })
+    );
+
+    setResponses(data);
+
+    if (snap.docs.length > 0) {
+      const lastDoc = snap.docs[snap.docs.length - 1];
+      setPageCursors((prev) => {
+        const copy = [...prev];
+        copy[targetPage - 1] = lastDoc;
+        return copy;
+      });
+    }
+
+    setCurrentPage(targetPage);
+  } catch (err) {
+    console.error("Error loading page:", err);
+  } finally {
+    setLoading(false);
+  }
+};
 
   // reset and fetch when filters or selection change
   useEffect(() => {
