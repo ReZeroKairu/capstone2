@@ -7,6 +7,8 @@ import {
   filterAcceptedReviewers,
   filterRejectedReviewers,
 } from "../utils/manuscriptHelpers";
+import { getDownloadURL, ref } from "firebase/storage";
+import { storage } from "../firebase/firebase";
 
 const STATUS_COLORS = {
   "Assigning Peer Reviewer": "bg-yellow-100 text-yellow-800",
@@ -559,34 +561,160 @@ const ManuscriptItem = ({
             </div>
 
             <div className="space-y-4 mb-4">
-              {answeredQuestions
-                .filter(
-                  (q) =>
-                    !q.question
-                      ?.toLowerCase()
-                      .trim()
-                      .startsWith("manuscript title")
-                )
-                .map((q, idx) => (
-                  <div
-                    key={idx}
-                    className="bg-gray-50 p-3 rounded-md border border-gray-200"
-                  >
-                    <div className="font-semibold mb-1">{q.question}</div>
-                    <div className="text-gray-800 text-sm">
-                      {Array.isArray(q.answer)
-                        ? q.answer
-                            .map((a) =>
-                              a?.name
-                                ? `${a.name}${a.email ? ` (${a.email})` : ""}`
-                                : a
-                            )
-                            .join(", ")
-                        : q.answer || "—"}
-                    </div>
-                  </div>
-                ))}
+  {answeredQuestions
+    .filter(
+      (q) =>
+        !q.question
+          ?.toLowerCase()
+          .trim()
+          .startsWith("manuscript title")
+    )
+    .map((q, idx) => {
+      // Handle file downloads
+      if (q.type === "file" && q.answer) {
+        const files = Array.isArray(q.answer) ? q.answer : [q.answer];
+        return (
+          <div
+            key={idx}
+            className="bg-gray-50 p-3 rounded-md border border-gray-200"
+          >
+            <div className="font-semibold mb-1">{q.question}</div>
+            <div className="space-y-2">
+              {files.map((file, fileIdx) => {
+                // If it's already a file object with URL
+                if (file.url) {
+                  return (
+                    <a
+                      key={fileIdx}
+                      href={file.url}
+                      download={file.name || `file-${fileIdx + 1}`}
+                      className="text-blue-600 hover:text-blue-800 underline flex items-center"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      <svg
+                        className="w-4 h-4 mr-1"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+                        />
+                      </svg>
+                      {file.name || `File ${fileIdx + 1}`}
+                    </a>
+                  );
+                }
+                // If it's a storage path
+                else if (file.path || file.storagePath) {
+                  const filePath = file.path || file.storagePath;
+                  return (
+                    <button
+                      key={fileIdx}
+                      onClick={async () => {
+                        try {
+                          const url = await getDownloadURL(ref(storage, filePath));
+                          const a = document.createElement('a');
+                          a.href = url;
+                          a.download = file.name || filePath.split('/').pop() || 'download';
+                          document.body.appendChild(a);
+                          a.click();
+                          document.body.removeChild(a);
+                        } catch (error) {
+                          console.error('Error downloading file:', error);
+                          alert('Error downloading file. Please try again.');
+                        }
+                      }}
+                      className="text-blue-600 hover:text-blue-800 underline flex items-center"
+                    >
+                      <svg
+                        className="w-4 h-4 mr-1"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+                        />
+                      </svg>
+                      {file.name || filePath.split('/').pop() || `File ${fileIdx + 1}`}
+                    </button>
+                  );
+                }
+                // Fallback for string paths
+                else if (typeof file === 'string') {
+                  return (
+                    <button
+                      key={fileIdx}
+                      onClick={async () => {
+                        try {
+                          const url = await getDownloadURL(ref(storage, file));
+                          const a = document.createElement('a');
+                          a.href = url;
+                          a.download = file.split('/').pop() || 'download';
+                          document.body.appendChild(a);
+                          a.click();
+                          document.body.removeChild(a);
+                        } catch (error) {
+                          console.error('Error downloading file:', error);
+                          alert('Error downloading file. Please try again.');
+                        }
+                      }}
+                      className="text-blue-600 hover:text-blue-800 underline flex items-center"
+                    >
+                      <svg
+                        className="w-4 h-4 mr-1"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+                        />
+                      </svg>
+                      {file.split('/').pop() || `File ${fileIdx + 1}`}
+                    </button>
+                  );
+                }
+                return null;
+              })}
             </div>
+          </div>
+        );
+      }
+      
+      // Default handling for non-file answers
+      return (
+        <div
+          key={idx}
+          className="bg-gray-50 p-3 rounded-md border border-gray-200"
+        >
+          <div className="font-semibold mb-1">{q.question}</div>
+          <div className="text-gray-800 text-sm">
+            {Array.isArray(q.answer)
+              ? q.answer
+                  .map((a) =>
+                    a?.name
+                      ? `${a.name}${a.email ? ` (${a.email})` : ""}`
+                      : a
+                  )
+                  .join(", ")
+              : q.answer || "—"}
+          </div>
+        </div>
+      );
+    })}
+</div>
 
             <div className="mb-4 text-sm font-semibold">
               Status: <span className="font-normal">{status}</span>
