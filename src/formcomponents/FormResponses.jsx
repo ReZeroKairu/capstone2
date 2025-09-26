@@ -869,29 +869,28 @@ export default function FormResponses() {
                           return Array.isArray(q.answer)
                             ? q.answer.join(", ")
                             : q.answer;
-                        case "file":
-                          return Array.isArray(q.answer) ? (
-                            q.answer.map((f, i) => (
-                              <a
-                                key={i}
-                                href={f.url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-blue-600 underline mr-2"
-                              >
-                                {f.name || `File ${i + 1}`}
-                              </a>
-                            ))
-                          ) : (
-                            <a
-                              href={q.answer.url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-blue-600 underline"
-                            >
-                              {q.answer.name || "File"}
-                            </a>
-                          );
+                       case "file":
+  return Array.isArray(q.answer) ? (
+    q.answer.map((f, i) => (
+      <a
+        key={i}
+        href={f.url}          // the Firebase Storage download URL
+        download={f.name}     // triggers download with the original file name
+        className="text-blue-600 underline mr-2"
+      >
+        {f.name || `File ${i + 1}`}
+      </a>
+    ))
+  ) : (
+    <a
+      href={q.answer.url}    // single file download URL
+      download={q.answer.name} // triggers download
+      className="text-blue-600 underline"
+    >
+      {q.answer.name || "File"}
+    </a>
+  );
+
                         default:
                           return JSON.stringify(q.answer);
                       }
