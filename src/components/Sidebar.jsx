@@ -10,6 +10,7 @@ import {
   FaTimes,
   FaWpforms,
   FaInbox,
+  FaEnvelope,
 } from "react-icons/fa";
 import { Link, useLocation } from "react-router-dom";
 
@@ -90,6 +91,11 @@ const Sidebar = ({ role, isOpen, toggleSidebar }) => {
       name: "Review Manuscript",
       path: "/review-manuscript",
       icon: <FaFileUpload className="text-xl" />,
+    },
+    {
+      name: "Review Invitations",
+      path: "/reviewer-invitations",
+      icon: <FaEnvelope className="text-xl" />,
     },
   ];
   const renderLinks = (linkArray, mobile = false) =>

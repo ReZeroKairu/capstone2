@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { getAuth } from "firebase/auth";
-import { serverTimestamp } from "firebase/firestore";
 import { db } from "../../firebase/firebase";
 import {
   collection,
@@ -11,6 +10,8 @@ import {
   query,
   where,
   getDoc,
+  addDoc,
+  serverTimestamp
 } from "firebase/firestore";
 import { FaSearch } from "react-icons/fa";
 
@@ -82,7 +83,7 @@ export default function PeerReviewerList() {
 
   const handleAssign = async (reviewerId) => {
     if (!manuscriptId) {
-      alert("No manuscript selected for assignment.");
+      alert("No manuscript selected for invitation.");
       return;
     }
 
@@ -98,28 +99,57 @@ export default function PeerReviewerList() {
         return;
       }
 
-      const assigned = msSnap.data().assignedReviewers || [];
-      const assignedMeta = msSnap.data().assignedReviewersMeta || {};
+      const msData = msSnap.data();
+      const assigned = [...(msData.assignedReviewers || [])];
+      const assignedMeta = { ...(msData.assignedReviewersMeta || {}) };
 
       if (!assigned.includes(reviewerId)) {
-        assigned.push(reviewerId);
-        assignedMeta[reviewerId] = {
+        // Store the current timestamp
+        const invitedAt = serverTimestamp();
+        
+        // Create new metadata object
+        const newMeta = {
+          ...(assignedMeta[reviewerId] || {}),
           assignedAt: serverTimestamp(),
           assignedBy: currentUser.uid,
+          invitationStatus: "pending",
+          invitedAt: invitedAt,
+          respondedAt: null,
+          decision: null
         };
 
-        await updateDoc(msRef, {
-          assignedReviewers: assigned,
-          assignedReviewersMeta: assignedMeta,
-          status: "Peer Reviewer Assigned",
-        });
-      }
+        // Update the assigned arrays
+        const updatedAssigned = [...assigned, reviewerId];
+        const updatedMeta = {
+          ...assignedMeta,
+          [reviewerId]: newMeta
+        };
 
-      fetchReviewers();
-      alert("Reviewer successfully assigned!");
+        // Update the document with the new arrays
+        await updateDoc(msRef, {
+          assignedReviewers: updatedAssigned,
+          assignedReviewersMeta: updatedMeta,
+        });
+
+        // Send notification to the reviewer
+        const notificationRef = collection(db, "Users", reviewerId, "Notifications");
+        await addDoc(notificationRef, {
+          type: "reviewer_invitation",
+          manuscriptId: manuscriptId,
+          manuscriptTitle: msData.title || "Untitled Manuscript",
+          status: "pending",
+          createdAt: serverTimestamp(),
+          read: false,
+          invitationLink: `/reviewer/invitation/${manuscriptId}`,
+          invitedAt: invitedAt
+        });
+
+        fetchReviewers();
+        alert("Reviewer successfully invited!");
+      }
     } catch (err) {
-      console.error(err);
-      alert("Failed to assign reviewer.");
+      console.error("Error assigning reviewer:", err);
+      alert("Failed to invite reviewer.");
     }
   };
 
@@ -214,7 +244,7 @@ export default function PeerReviewerList() {
                     className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 text-sm mt-2"
                     onClick={() => handleAssign(r.id)}
                   >
-                    Assign
+                    Invite
                   </button>
                 </div>
 
@@ -244,7 +274,7 @@ export default function PeerReviewerList() {
                     className="bg-blue-500 text-white px-3 py-2 rounded hover:bg-blue-600 text-sm"
                     onClick={() => handleAssign(r.id)}
                   >
-                    Assign
+                    Invite
                   </button>
                 </div>
               </div>
