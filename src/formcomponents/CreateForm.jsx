@@ -84,6 +84,16 @@ export default function CreateForm() {
         options: [],
       });
     }
+    if (!loadedQuestions.some(q => q.isAbstract)) {
+      loadedQuestions.splice(1, 0, { // Add it right after the title
+        id: "abstract",
+        text: "Abstract",
+        type: "textarea",
+        isAbstract: true,
+        required: true,
+        options: [],
+      });
+    }
 
     if (!loadedQuestions.some((q) => q.type === "coauthors")) {
       loadedQuestions.push({
@@ -93,6 +103,7 @@ export default function CreateForm() {
         options: [],
       });
     }
+    
 
     setQuestions(
       loadedQuestions.map((q) => ({
@@ -135,25 +146,52 @@ export default function CreateForm() {
   };
 
   const removeQuestion = (index) => {
-    if (questions[index].isManuscriptTitle || questions[index].isManuscriptFile)
+    if (questions[index].isManuscriptTitle || 
+        questions[index].isManuscriptFile || 
+        questions[index].isAbstract) {
       return;
+    }
     setQuestions(questions.filter((_, i) => i !== index));
   };
 
   const updateQuestion = (index, field, value) => {
     const updated = [...questions];
     updated[index][field] = value;
-
+  
+    // Validate Manuscript Title
     if (updated[index].isManuscriptTitle && field === "text") {
       if (/manuscript title/i.test(value.trim())) setMtError(false);
     }
-
+  
+    // Validate Abstract
+    if (updated[index].isAbstract && field === "text") {
+      if (value.trim() === "") {
+        // You can add error state for empty abstract if needed
+        console.log("Abstract cannot be empty");
+      }
+    }
+  
+    // Prevent changing type for special fields
+    if (field === "type") {
+      if (updated[index].isManuscriptTitle || 
+          updated[index].isManuscriptFile || 
+          updated[index].isAbstract) {
+        // Revert the type change for special fields
+        if (updated[index].isManuscriptTitle) updated[index].type = "text";
+        else if (updated[index].isManuscriptFile) updated[index].type = "file";
+        else if (updated[index].isAbstract) updated[index].type = "textarea";
+        return;
+      }
+    }
+  
     // Reset options if type changes and is not choice type
     if (
+      field === "type" && 
       !["multiple", "radio", "checkbox", "select", "coauthors"].includes(value)
-    )
+    ) {
       updated[index].options = [];
-
+    }
+  
     setQuestions(updated);
   };
 
@@ -192,6 +230,13 @@ export default function CreateForm() {
     if (!title.trim()) return alert("Form title is required!");
     if (questions.some((q) => q.type !== "coauthors" && !q.text.trim()))
       return alert("All questions must have text!");
+
+    const abstractQuestion = questions.find(q => q.isAbstract);
+    if (!abstractQuestion || abstractQuestion.text.trim() === "") {
+      alert("Abstract is required and cannot be empty!");
+      return;
+    }
+  
 
     const mtQuestion = questions.find((q) => q.isManuscriptTitle);
     if (!mtQuestion || !/manuscript title/i.test(mtQuestion.text.trim())) {
@@ -251,7 +296,7 @@ export default function CreateForm() {
     setTitle("");
     setQuestions([
       {
-        id: Date.now().toString(),
+        id: "manuscript-title",
         text: "Manuscript Title",
         type: "text",
         isManuscriptTitle: true,
@@ -263,6 +308,14 @@ export default function CreateForm() {
         text: "Upload Manuscript",
         type: "file",
         isManuscriptFile: true,
+        required: true,
+        options: [],
+      },
+      {
+        id: "abstract",
+        text: "Abstract",
+        type: "textarea",
+        isAbstract: true,
         required: true,
         options: [],
       },
@@ -474,7 +527,7 @@ export default function CreateForm() {
                             </div>
                           )}
 
-                          {!q.isManuscriptTitle && !q.isManuscriptFile && (
+                          {!q.isManuscriptTitle && !q.isManuscriptFile && !q.isAbstract &&(
                             <button
                               onClick={() => removeQuestion(index)}
                               className="bg-[#7B2E19] text-white rounded-md px-4 py-2 font-bold mt-2 w-fit"

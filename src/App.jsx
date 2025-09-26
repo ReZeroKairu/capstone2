@@ -37,6 +37,7 @@ import CreateForm from "./formcomponents/CreateForm";
 import FormResponses from "./formcomponents/FormResponses";
 import Dashboard from "./components/Dashboard";
 import ReviewManuscript from "./pages/PeerReviewer/ReviewManuscript";
+import ReviewerInvitations from './pages/PeerReviewer/ReviewerInvitations';
 
 // ⬇️ New admin pages
 import Deadlines from "./pages/Admin/Deadlines";
@@ -124,9 +125,21 @@ function App() {
                 <Route path="/profile/:userId" element={<Profile />} />
                 <Route path="/peer-reviewers" element={<PeerReviewerList />} />
                 <Route
-                  path="/review-manuscript"
-                  element={<ReviewManuscript />}
-                />
+  path="review-manuscript"
+  element={
+    <ProtectedRoute allowedRoles={["Peer Reviewer"]}>
+      <ReviewManuscript />
+    </ProtectedRoute>
+  }
+/>
+                  <Route
+  path="/reviewer-invitations"
+  element={
+    <ProtectedRoute allowedRoles={["Peer Reviewer"]}>
+      <ReviewerInvitations />
+    </ProtectedRoute>
+  }
+/>
                 <Route
                   path="/submit-manuscript"
                   element={
@@ -135,6 +148,7 @@ function App() {
                     </ProtectedRoute>
                   }
                 />
+  
 
                 <Route path="*" element={<NotFound />} />
 

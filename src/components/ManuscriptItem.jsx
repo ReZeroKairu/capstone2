@@ -237,91 +237,95 @@ const ManuscriptItem = ({
         </div>
 
         {/* Assigned reviewers */}
-        {hasReviewer && manuscript.assignedReviewersData?.length > 0 && (
-          <div className="mt-2">
-            {["Peer Reviewer Assigned", "Peer Reviewer Reviewing"].includes(
-              status
-            ) && (
-              <p className="text-sm font-medium text-gray-700 mb-1">
-                Peer Reviewer
-                {manuscript.assignedReviewersData.length > 1 ? "s" : ""}{" "}
-                Assigned:
-              </p>
-            )}
-            <div className="flex flex-col gap-2">
-              {manuscript.assignedReviewersData.map((r) => {
-                const key = `${manuscript.id}_${r.id}`;
-                const displayName = showFullName[key]
-                  ? `${r.firstName} ${r.middleName} ${r.lastName}`.trim()
-                  : `${r.firstName} ${
-                      r.middleName ? r.middleName.charAt(0) + "." : ""
-                    } ${r.lastName}`.trim();
+    
+{/* Assigned Reviewers with Invitation Status */}
+{hasReviewer && manuscript.assignedReviewersData?.length > 0 && (
+  <div className="mt-2">
+    <p className="text-sm font-medium text-gray-700 mb-1">
+      Peer Reviewer{manuscript.assignedReviewersData.length > 1 ? "s" : ""}:
+    </p>
+    <div className="space-y-2">
+      {manuscript.assignedReviewersData.map((reviewer) => {
+        const invitationStatus = manuscript.assignedReviewersMeta?.[reviewer.id]?.invitationStatus;
+        const decision = manuscript.assignedReviewersMeta?.[reviewer.id]?.decision;
+        const decisionMeta = manuscript.reviewerDecisionMeta?.[reviewer.id] || null;
+        
+        const key = `${manuscript.id}_${reviewer.id}`;
+        const displayName = showFullName[key]
+          ? `${reviewer.firstName} ${reviewer.middleName} ${reviewer.lastName}`.trim()
+          : `${reviewer.firstName} ${
+              reviewer.middleName ? reviewer.middleName.charAt(0) + "." : ""
+            } ${reviewer.lastName}`.trim();
 
-                const assignedByUser = users.find((u) => u.id === r.assignedBy);
-                const assignedByName = assignedByUser
-                  ? `${assignedByUser.firstName} ${
-                      assignedByUser.middleName
-                        ? assignedByUser.middleName + " "
-                        : ""
-                    }${assignedByUser.lastName}`
-                  : r.assignedBy || "—";
+        const assignedByUser = users.find((u) => u.id === reviewer.assignedBy);
+        const assignedByName = assignedByUser
+          ? `${assignedByUser.firstName} ${
+              assignedByUser.middleName ? assignedByUser.middleName + " " : ""
+            }${assignedByUser.lastName}`
+          : reviewer.assignedBy || "—";
 
-                const decisionMeta =
-                  manuscript.reviewerDecisionMeta?.[r.id] || null;
-
-                return (
-                  <div key={r.id} className="bg-blue-50 px-2 py-1 rounded-md">
-                    <span
-                      className="text-blue-800 text-xs sm:text-sm font-medium cursor-pointer"
-                      onClick={() =>
-                        setShowFullName((prev) => ({
-                          ...prev,
-                          [key]: !prev[key],
-                        }))
-                      }
-                      title="Click to toggle full name"
-                    >
-                      {displayName}
-                    </span>
-                    <div className="text-xs text-gray-500">
-                      Assigned At: {formatDate(r.assignedAt)}
-                      <br />
-                      Assigned By: {assignedByName}
-                      {decisionMeta?.decision && (
-                        <>
-                          <br />
-                          {decisionMeta.decision === "reject" &&
-                          [
-                            "Back to Admin",
-                            "Rejected",
-                            "Peer Reviewer Rejected",
-                          ].includes(manuscript.status) ? (
-                            <span className="text-red-600">
-                              Rejected by reviewer at:{" "}
-                              {formatDate(decisionMeta.decidedAt)}
-                            </span>
-                          ) : decisionMeta.decision === "accept" ? (
-                            <span className="text-green-600">
-                              Accepted by reviewer at:{" "}
-                              {formatDate(decisionMeta.decidedAt)}
-                            </span>
-                          ) : (
-                            <span className="text-gray-600">
-                              {decisionLabels[decisionMeta.decision] ||
-                                decisionMeta.decision}{" "}
-                              at: {formatDate(decisionMeta.decidedAt)}
-                            </span>
-                          )}
-                        </>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
+        return (
+          <div key={reviewer.id} className="bg-blue-50 p-2 rounded-md">
+            <div className="flex justify-between items-start">
+              <div>
+                <span
+                  className="text-blue-800 text-sm font-medium cursor-pointer"
+                  onClick={() =>
+                    setShowFullName((prev) => ({
+                      ...prev,
+                      [key]: !prev[key],
+                    }))
+                  }
+                  title="Click to toggle full name"
+                >
+                  {displayName}
+                </span>
+                <div className="text-xs text-gray-500 mt-1">
+                  Assigned: {formatDate(reviewer.assignedAt)} by {assignedByName}
+                </div>
+              </div>
+              
+              <span className={`text-xs px-2 py-1 rounded ${
+                !invitationStatus || invitationStatus === 'pending' 
+                  ? 'bg-yellow-100 text-yellow-800' 
+                  : decision === 'accepted' 
+                    ? 'bg-green-100 text-green-800' 
+                    : 'bg-red-100 text-red-800'
+              }`}>
+                {!invitationStatus || invitationStatus === 'pending' 
+                  ? 'Invitation Pending' 
+                  : decision === 'accepted' 
+                    ? 'Accepted' 
+                    : 'Declined'}
+              </span>
             </div>
-          </div>
-        )}
 
+            {/* Show decision details if available */}
+            {decisionMeta?.decision && (
+              <div className="mt-2 pt-2 border-t border-blue-100 text-xs">
+                {decisionMeta.decision === "reject" ? (
+                  <span className="text-red-600">
+                    Rejected review at: {formatDate(decisionMeta.decidedAt)}
+                  </span>
+                ) : decisionMeta.decision === "accept" ? (
+                  <span className="text-green-600">
+                    Submitted review at: {formatDate(decisionMeta.decidedAt)}
+                    {decisionMeta.rating && ` | Rating: ${decisionMeta.rating}/5`}
+                  </span>
+                ) : (
+                  <span className="text-gray-600">
+                    {decisionLabels[decisionMeta.decision] || decisionMeta.decision} at:{" "}
+                    {formatDate(decisionMeta.decidedAt)}
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  </div>
+)}
         {/* Detailed Peer Reviewer Info for Final Status Manuscripts */}
         {role === "Admin" && 
          ["For Publication", "For Revision", "Peer Reviewer Rejected"].includes(status) && (

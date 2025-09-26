@@ -52,36 +52,55 @@ const Manuscripts = () => {
       const msRef = doc(db, "manuscripts", manuscriptId);
       const msSnap = await getDoc(msRef);
       if (!msSnap.exists()) return;
-
+  
       const assigned = msSnap.data().assignedReviewers || [];
       const assignedMeta = msSnap.data().assignedReviewersMeta || {};
-
+  
       if (!assigned.includes(reviewerId)) {
+        // Add to assigned reviewers with invitation status
         assigned.push(reviewerId);
         assignedMeta[reviewerId] = {
           assignedAt: serverTimestamp(),
           assignedBy: userId,
+          invitationStatus: "pending",
+          respondedAt: null,
+          decision: null
         };
-
+  
+        // Only update these specific fields
         await updateDoc(msRef, {
           assignedReviewers: assigned,
-          [`assignedReviewersMeta.${reviewerId}`]: assignedMeta[reviewerId],
-          status: "Peer Reviewer Assigned",
+          [`assignedReviewersMeta.${reviewerId}`]: assignedMeta[reviewerId]
+          // No status update here
         });
-
-        // Send notification to the assigned reviewer
+  
+        // Rest of your notification code...
         const manuscript = msSnap.data();
         const manuscriptTitle = manuscript.manuscriptTitle || manuscript.title || "Untitled Manuscript";
-        await handlePeerReviewerAssignment(manuscriptId, manuscriptTitle, [reviewerId], userId);
         
-        // Log the reviewer assignment
-        await UserLogService.logReviewerAssignment(userId, manuscriptId, manuscriptTitle, [reviewerId]);
+        // Send invitation notification
+        await addDoc(collection(db, "Users", reviewerId, "Notifications"), {
+          type: "reviewer_invitation",
+          manuscriptId: manuscriptId,
+          manuscriptTitle: manuscriptTitle,
+          status: "pending",
+          createdAt: serverTimestamp(),
+          read: false,
+          invitationLink: `/reviewer/invitation/${manuscriptId}`
+        });
+        
+        // Log the reviewer invitation
+        await UserLogService.logReviewerInvitation(
+          userId, 
+          manuscriptId, 
+          manuscriptTitle, 
+          reviewerId
+        );
       }
     } catch (err) {
       console.error("Error assigning reviewer:", err);
     }
   };
-
   // --- Unassign reviewer ---
   const unassignReviewer = async (manuscriptId, reviewerId = null) => {
     try {
@@ -162,15 +181,26 @@ const Manuscripts = () => {
       const msRef = doc(db, "manuscripts", manuscriptId);
       const msSnap = await getDoc(msRef);
       if (!msSnap.exists()) return;
-
+  
       const ms = msSnap.data();
-
+      
+      // Prevent status changes if there are pending reviewer invitations
+      if (ms.assignedReviewersMeta) {
+        const hasPendingInvitations = Object.values(ms.assignedReviewersMeta).some(
+          meta => meta.invitationStatus === "pending"
+        );
+        
+        if (hasPendingInvitations) {
+          console.log("Cannot change status - there are pending reviewer invitations");
+          return; // Exit early if there are pending invitations
+        }
+      }
+  
       let updatedAssignedReviewers = ms.assignedReviewersData || [];
       let updatedAssignedMeta = ms.assignedReviewersMeta || {};
-
+  
       if (newStatus === "For Publication") {
         // Keep only reviewers who accepted
-        // Convert assignedReviewers IDs to the format expected by filter function
         const reviewerObjects = (ms.assignedReviewers || []).map(id => ({ id }));
         const acceptedReviewerObjects = filterAcceptedReviewers(
           ms.reviewerDecisionMeta,
@@ -181,8 +211,7 @@ const Manuscripts = () => {
         updatedAssignedReviewers = (ms.assignedReviewersData || []).filter(r => 
           acceptedReviewerObjects.some(accepted => accepted.id === r.id)
         );
-        
-
+  
         const newMeta = {};
         updatedAssignedReviewers.forEach((r) => {
           newMeta[r.id] = ms.assignedReviewersMeta?.[r.id] || {
@@ -191,7 +220,7 @@ const Manuscripts = () => {
           };
         });
         updatedAssignedMeta = newMeta;
-
+  
         // Update accepted reviewer stats
         updatedAssignedReviewers.forEach(async (r) => {
           const reviewerRef = doc(db, "Users", r.id);
@@ -201,7 +230,6 @@ const Manuscripts = () => {
         });
       } else if (newStatus === "Peer Reviewer Rejected") {
         // Keep only reviewers who rejected
-        // Convert assignedReviewers IDs to the format expected by filter function
         const reviewerObjects = (ms.assignedReviewers || []).map(id => ({ id }));
         const rejectedReviewerObjects = filterRejectedReviewers(
           ms.reviewerDecisionMeta,
@@ -212,7 +240,7 @@ const Manuscripts = () => {
         updatedAssignedReviewers = (ms.assignedReviewersData || []).filter(r => 
           rejectedReviewerObjects.some(rejected => rejected.id === r.id)
         );
-
+  
         const newMeta = {};
         updatedAssignedReviewers.forEach((r) => {
           newMeta[r.id] = ms.assignedReviewersMeta?.[r.id] || {
@@ -221,7 +249,7 @@ const Manuscripts = () => {
           };
         });
         updatedAssignedMeta = newMeta;
-
+  
         // Update rejected reviewer stats
         updatedAssignedReviewers.forEach(async (r) => {
           const reviewerRef = doc(db, "Users", r.id);
@@ -230,10 +258,9 @@ const Manuscripts = () => {
           });
         });
       }
-
-      // When admin makes a decision, use that status directly (don't compute)
-      await updateDoc(msRef, {
-        status: newStatus, // Use the admin's chosen status directly
+  
+      // Prepare update data
+      const updateData = {
         assignedReviewers: updatedAssignedReviewers.map((r) => r.id),
         assignedReviewersMeta: updatedAssignedMeta,
         // Keep original reviewer history for peer reviewer access and admin info
@@ -242,8 +269,15 @@ const Manuscripts = () => {
         // Add decision timestamp
         finalDecisionAt: new Date(),
         finalDecisionBy: userId, // Use the actual admin ID
-      });
-
+      };
+  
+      // Only update status if it's not related to reviewer assignment
+      if (!["Reviewer Invited", "Peer Reviewer Assigned"].includes(ms.status)) {
+        updateData.status = newStatus;
+      }
+  
+      await updateDoc(msRef, updateData);
+  
       // Send notification about status change
       const manuscriptTitle = ms.manuscriptTitle || ms.title || "Untitled Manuscript";
       const authorId = ms.submitterId || ms.userId;
@@ -260,7 +294,7 @@ const Manuscripts = () => {
             userId     // adminId (who made the change)
           );
           
-          console.log(`Status change notification sent for manuscript ${manuscriptId} to author ${authorId}`);
+          console.log(`Status change notification sent for manuscript ${manuscriptId} to author ${authorId}` );
           
           // Log the status change for the author
           await UserLogService.logManuscriptStatusChange(
@@ -272,7 +306,7 @@ const Manuscripts = () => {
             authorId  // The affected user (author)
           );
           
-          console.log(`Status change logged for author ${authorId}`);
+          console.log(`Status change logged for author ${authorId}` );
           
           // If the status is being changed by someone other than the author,
           // log it for the admin as well
@@ -285,13 +319,13 @@ const Manuscripts = () => {
               newStatus, 
               userId  // The admin themselves
             );
-            console.log(`Status change logged for admin ${userId}`);
+            console.log(`Status change logged for admin ${userId}` );
           }
         } catch (error) {
           console.error('Error handling status change notification:', error);
         }
       }
-
+  
       // Update local state
       setManuscripts((prev) =>
         prev.map((m) =>
@@ -313,8 +347,6 @@ const Manuscripts = () => {
       console.error("Error updating status:", err);
     }
   };
-
-
   // --- Fetch data ---
   useEffect(() => {
     const auth = getAuth();
