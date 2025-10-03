@@ -226,9 +226,31 @@ export default function CreateForm() {
   };
 
   // Save / Update form
-  const saveForm = async () => {
+  const saveForm = async (e) => {
+    e.preventDefault();
+
+    // Validate form title
     if (!title.trim()) return alert("Form title is required!");
-    if (questions.some((q) => q.type !== "coauthors" && !q.text.trim()))
+
+    // Find the manuscript title question
+    const manuscriptTitleQuestion = questions.find(q => q.isManuscriptTitle);
+    if (!manuscriptTitleQuestion || !manuscriptTitleQuestion.text.trim()) {
+      return alert("Manuscript Title field is required!");
+    }
+
+    // Validate questions
+    if (questions.length === 0) return alert("Please add at least one question!");
+
+    // Check for empty question texts
+    if (
+      questions.some(
+        (q) =>
+          !q.text.trim() &&
+          !q.isManuscriptTitle &&
+          !q.isManuscriptFile &&
+          !q.isAbstract
+      )
+    )
       return alert("All questions must have text!");
 
     const abstractQuestion = questions.find(q => q.isAbstract);
@@ -258,25 +280,44 @@ export default function CreateForm() {
         "All required choice questions must have at least one option!"
       );
 
+    // Ensure manuscript title field has the correct properties
+    const updatedQuestions = questions.map(q => {
+      if (q.isManuscriptTitle) {
+        return {
+          ...q,
+          type: 'text', // Ensure it's a text field
+          required: true, // Make it required
+          text: q.text.trim() || 'Manuscript Title' // Ensure it has a label
+        };
+      }
+      return q;
+    });
+
     const data = {
       title,
-      questions,
-      manuscriptTitle: mtQuestion.text.trim(),
+      questions: updatedQuestions,
+      manuscriptTitle: manuscriptTitleQuestion.text.trim(),
       coAuthors: [],
       updatedAt: new Date(),
+      hasManuscriptTitle: true,
     };
 
-    if (formId) {
-      await updateDoc(doc(db, "forms", formId), data);
-      alert("Form updated successfully!");
-    } else {
-      const docRef = await addDoc(collection(db, "forms"), {
-        ...data,
-        createdAt: new Date(),
-      });
-      setFormId(docRef.id);
-      alert("Form saved successfully!");
-      setForms([{ id: docRef.id, ...data }, ...forms]);
+    try {
+      if (formId) {
+        await updateDoc(doc(db, "forms", formId), data);
+        alert("Form updated successfully!");
+      } else {
+        const docRef = await addDoc(collection(db, "forms"), {
+          ...data,
+          createdAt: new Date(),
+        });
+        setFormId(docRef.id);
+        alert("Form saved successfully!");
+        setForms([{ id: docRef.id, ...data }, ...forms]);
+      }
+    } catch (error) {
+      console.error("Error saving form:", error);
+      alert("Failed to save form. Please try again.");
     }
   };
 

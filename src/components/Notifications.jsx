@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faBell } from "@fortawesome/free-solid-svg-icons";
+import { useLocation } from "react-router-dom";
+
 import {
   collection,
   query,
@@ -30,7 +32,7 @@ const Notifications = ({ user }) => {
   const navigate = useNavigate();
   const auth = getAuth();
   const buttonRef = useRef(null);
-  
+   const location = useLocation(); 
   const NOTIFICATIONS_LIMIT = 20; // Limit the number of notifications to fetch initially
   const [lastVisible, setLastVisible] = useState(null);
   const [hasMore, setHasMore] = useState(true);
@@ -294,12 +296,19 @@ const Notifications = ({ user }) => {
   };
 
   // Handle notification click (navigate to relevant page)
-  const handleNotificationClick = async (notification) => {
-    markAsRead(notification.id);
-    
-    // Get current user role for role-based navigation
-    const userRole = await getUserRole();
-    
+ const handleNotificationClick = async (notification) => {
+  markAsRead(notification.id);
+
+  // If notification has an actionUrl property, navigate directly
+  if (notification.actionUrl) {
+    navigate(notification.actionUrl);
+    return;
+  }
+
+  // Get current user role for role-based navigation
+  const userRole = await getUserRole();
+
+
     // Navigate based on notification type and metadata
     const actionUrl = notification.metadata?.actionUrl;
     if (actionUrl) {
@@ -329,23 +338,30 @@ const Notifications = ({ user }) => {
         }
         break;
 
-      case "new_submission":
-        // New submissions - admins go to form responses to review submissions
-        if (userRole === "Admin") {
-          navigate("/formresponses");
-        } else {
-          navigate("/dashboard");
-        }
-        break;
+case "new_submission":
+  if (userRole === "Admin") {
+    if (location.pathname !== "/formresponses") {
+      navigate("/formresponses");
+    }
+    // Dispatch refresh event
+    window.dispatchEvent(new Event("refreshFormResponses"));
+  } else {
+    navigate("/dashboard");
+  }
+  break;
 
-      case "reviewer_assignment":
-        // Reviewers go to review page
-        if (userRole === "Peer Reviewer") {
-          navigate("/review-manuscript");
-        } else {
-          navigate("/dashboard");
-        }
-        break;
+
+    case "reviewer_assignment":
+  // Navigate to actionUrl if it exists, otherwise fallback
+  if (notification.metadata?.actionUrl) {
+    navigate(notification.metadata.actionUrl);
+  } else if (userRole === "Peer Reviewer") {
+    navigate("/reviewer-invitations"); // <- new target
+  } else {
+    navigate("/dashboard");
+  }
+  break;
+
 
       case "reviewer_decision":
       case "review_completed":
@@ -484,15 +500,53 @@ const Notifications = ({ user }) => {
     }
   };
 
-  // Clean up the real-time listener when component unmounts or user changes
-  useEffect(() => {
-    return () => {
-      if (unsubscribe) {
-        unsubscribe();
-        setUnsubscribe(null);
+   useEffect(() => {
+  const userId = user?.uid;
+  if (!userId) return;
+
+  setLoading(true);
+  
+  try {
+    const notificationsRef = collection(db, "Users", userId, "Notifications");
+    let q = query(
+      notificationsRef, 
+      orderBy("timestamp", "desc"),
+      limit(NOTIFICATIONS_LIMIT)
+    );
+    
+    const unsubscribeListener = onSnapshot(
+      q, 
+      (querySnapshot) => {
+        const fetchedNotifications = [];
+        querySnapshot.forEach((doc) => {
+          const data = doc.data();
+          const timestamp = data.timestamp ? data.timestamp.toDate() : null;
+          fetchedNotifications.push({
+            id: doc.id,
+            ...data,
+            timestamp,
+          });
+        });
+        const lastVisibleDoc = querySnapshot.docs[querySnapshot.docs.length - 1];
+        setLastVisible(lastVisibleDoc);
+        setHasMore(querySnapshot.docs.length >= NOTIFICATIONS_LIMIT);
+        setNotifications(fetchedNotifications);
+        setLoading(false);
+      }, 
+      (error) => {
+        console.error("Error in notifications listener:", error);
+        setLoading(false);
       }
-    };
-  }, [unsubscribe, user?.uid]);
+    );
+    
+    // Cleanup: unsubscribe when component unmounts or user changes
+    return () => unsubscribeListener();
+
+  } catch (error) {
+    console.error("Error setting up notifications listener:", error);
+    setLoading(false);
+  }
+}, [user?.uid]);
 
   // Toggle dropdown visibility when icon is clicked
   const toggleNotificationDropdown = (event) => {

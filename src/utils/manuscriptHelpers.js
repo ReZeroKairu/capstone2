@@ -11,38 +11,37 @@ import { NotificationService } from "./notificationService";
 export function computeManuscriptStatus(
   reviewerDecisionMeta = {},
   assignedReviewers = [],
-  reviewerSubmissions = []
+  reviewerSubmissions = [],
+  originalReviewers = [] // add this parameter
 ) {
-  if (!assignedReviewers.length) return "Assigning Peer Reviewer";
+  // Combine current and original reviewers to account for past decisions
+  const allReviewers = [...new Set([...assignedReviewers, ...originalReviewers])];
 
-  const decisions = assignedReviewers.map(
+  if (!allReviewers.length) return "Assigning Peer Reviewer";
+
+  const decisions = allReviewers.map(
     (id) => reviewerDecisionMeta?.[id]?.decision
   );
 
-  // Check if all reviewers have made decisions
   const allReviewersDecided = decisions.every((d) => d && d !== "pending");
-  
-  // If all reviewers have decided, check if they've all submitted their reviews
+
   if (allReviewersDecided) {
     const submittedReviewerIds = reviewerSubmissions?.map(r => r.reviewerId) || [];
-    const allReviewersSubmitted = assignedReviewers.every(id => 
+    const allReviewersSubmitted = assignedReviewers.every(id =>
       submittedReviewerIds.includes(id)
     );
-    
-    if (allReviewersSubmitted) {
-      return "Back to Admin"; // All decisions made and all reviews submitted
-    } else {
-      return "Peer Reviewer Reviewing"; // Still waiting for review submissions
-    }
+
+    if (allReviewersSubmitted) return "Back to Admin";
+    else return "Peer Reviewer Reviewing";
   }
 
-  // If some have decided but not all
   if (decisions.some((d) => d === "accept" || d === "reject")) {
     return "Peer Reviewer Reviewing";
   }
 
-  return "Peer Reviewer Assigned"; // default if all pending
+  return "Peer Reviewer Assigned";
 }
+
 
 /**
  * Filters assigned reviewers for "For Publication"
@@ -78,8 +77,9 @@ export function filterRejectedReviewers(
  * @param {string} newStatus - New status
  * @param {string} authorId - Author user ID
  * @param {string} adminId - Admin user ID (optional)
+ * @param {Array} reviewerIds - Array of reviewer IDs (optional)
  */
-export async function handleManuscriptStatusChange(manuscriptId, manuscriptTitle, oldStatus, newStatus, authorId, adminId) {
+export async function handleManuscriptStatusChange(manuscriptId, manuscriptTitle, oldStatus, newStatus, authorId, adminId, reviewerIds = []) {
   if (oldStatus !== newStatus) {
     await NotificationService.notifyManuscriptStatusChange(
       manuscriptId, 
@@ -87,7 +87,8 @@ export async function handleManuscriptStatusChange(manuscriptId, manuscriptTitle
       oldStatus, 
       newStatus, 
       authorId, 
-      adminId
+      adminId,
+      reviewerIds
     );
   }
 }

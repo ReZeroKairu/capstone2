@@ -82,76 +82,76 @@ export default function PeerReviewerList() {
   }, []);
 
   const handleAssign = async (reviewerId) => {
-    if (!manuscriptId) {
-      alert("No manuscript selected for invitation.");
+  if (!manuscriptId) {
+    alert("No manuscript selected for invitation.");
+    return;
+  }
+
+  try {
+    const auth = getAuth();
+    const currentUser = auth.currentUser;
+    if (!currentUser) throw new Error("Not signed in");
+
+    const msRef = doc(db, "manuscripts", manuscriptId);
+    const msSnap = await getDoc(msRef);
+    if (!msSnap.exists()) {
+      alert("Manuscript not found.");
       return;
     }
 
-    try {
-      const auth = getAuth();
-      const currentUser = auth.currentUser;
-      if (!currentUser) throw new Error("Not signed in");
+    const msData = msSnap.data();
+    const assigned = [...(msData.assignedReviewers || [])];
+    const assignedMeta = { ...(msData.assignedReviewersMeta || {}) };
 
-      const msRef = doc(db, "manuscripts", manuscriptId);
-      const msSnap = await getDoc(msRef);
-      if (!msSnap.exists()) {
-        alert("Manuscript not found.");
-        return;
-      }
+    if (!assigned.includes(reviewerId)) {
+      const invitedAt = serverTimestamp();
 
-      const msData = msSnap.data();
-      const assigned = [...(msData.assignedReviewers || [])];
-      const assignedMeta = { ...(msData.assignedReviewersMeta || {}) };
+      // Update manuscript metadata
+      const newMeta = {
+        ...(assignedMeta[reviewerId] || {}),
+        assignedAt: serverTimestamp(),
+        assignedBy: currentUser.uid,
+        invitationStatus: "pending",
+        invitedAt: invitedAt,
+        respondedAt: null,
+        decision: null
+      };
 
-      if (!assigned.includes(reviewerId)) {
-        // Store the current timestamp
-        const invitedAt = serverTimestamp();
-        
-        // Create new metadata object
-        const newMeta = {
-          ...(assignedMeta[reviewerId] || {}),
-          assignedAt: serverTimestamp(),
-          assignedBy: currentUser.uid,
-          invitationStatus: "pending",
-          invitedAt: invitedAt,
-          respondedAt: null,
-          decision: null
-        };
+      const updatedAssigned = [...assigned, reviewerId];
+      const updatedMeta = {
+        ...assignedMeta,
+        [reviewerId]: newMeta
+      };
 
-        // Update the assigned arrays
-        const updatedAssigned = [...assigned, reviewerId];
-        const updatedMeta = {
-          ...assignedMeta,
-          [reviewerId]: newMeta
-        };
+      await updateDoc(msRef, {
+        assignedReviewers: updatedAssigned,
+        assignedReviewersMeta: updatedMeta,
+      });
 
-        // Update the document with the new arrays
-        await updateDoc(msRef, {
-          assignedReviewers: updatedAssigned,
-          assignedReviewersMeta: updatedMeta,
-        });
+      // Send notification
+      const notificationRef = collection(db, "Users", reviewerId, "Notifications");
+      await addDoc(notificationRef, {
+        type: "reviewer_invitation",
+        manuscriptId: manuscriptId,
+        manuscriptTitle: msData.title || "Untitled Manuscript",
+        status: "pending",
+        timestamp: serverTimestamp(),
+        seen: false,
+        title: "Invitation to Review Manuscript",
+        message: `You have been invited to review "${msData.title || "Untitled Manuscript"}"`,
+        actionUrl: `/reviewer-invitations`,  // <-- redirect here when clicked
+        invitedAt: invitedAt
+      });
 
-        // Send notification to the reviewer
-        const notificationRef = collection(db, "Users", reviewerId, "Notifications");
-        await addDoc(notificationRef, {
-          type: "reviewer_invitation",
-          manuscriptId: manuscriptId,
-          manuscriptTitle: msData.title || "Untitled Manuscript",
-          status: "pending",
-          createdAt: serverTimestamp(),
-          read: false,
-          invitationLink: `/reviewer/invitation/${manuscriptId}`,
-          invitedAt: invitedAt
-        });
-
-        fetchReviewers();
-        alert("Reviewer successfully invited!");
-      }
-    } catch (err) {
-      console.error("Error assigning reviewer:", err);
-      alert("Failed to invite reviewer.");
+      fetchReviewers();
+      alert("Reviewer successfully invited!");
     }
-  };
+  } catch (err) {
+    console.error("Error assigning reviewer:", err);
+    alert("Failed to invite reviewer.");
+  }
+};
+
 
   const filteredReviewers = reviewers.filter((r) => {
     if (!searchQuery) return true;

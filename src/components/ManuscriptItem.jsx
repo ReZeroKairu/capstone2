@@ -2,28 +2,33 @@ import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { doc, updateDoc, getDoc } from "firebase/firestore";
 import { db } from "../firebase/firebase";
+import { auth } from "../firebase/firebase"; // adjust path as needed
 import {
   computeManuscriptStatus,
   filterAcceptedReviewers,
   filterRejectedReviewers,
 } from "../utils/manuscriptHelpers";
-import { getDownloadURL, ref } from "firebase/storage";
+import { getDownloadURL, ref as storageRef } from "firebase/storage";
 import { storage } from "../firebase/firebase";
 
 const STATUS_COLORS = {
+  Pending: "bg-gray-100 text-gray-800",
   "Assigning Peer Reviewer": "bg-yellow-100 text-yellow-800",
   "Peer Reviewer Assigned": "bg-blue-100 text-blue-800",
   "Peer Reviewer Reviewing": "bg-indigo-100 text-indigo-800",
   "Back to Admin": "bg-purple-100 text-purple-800",
-  "For Revision": "bg-orange-100 text-orange-800",
+  "For Revision (Minor)": "bg-yellow-100 text-yellow-800",
+  "For Revision (Major)": "bg-orange-100 text-orange-800",
   "For Publication": "bg-green-100 text-green-800",
   "Peer Reviewer Rejected": "bg-red-100 text-red-800",
   Rejected: "bg-red-100 text-red-800",
 };
+
 const decisionLabels = {
-  accept: "Accepted",
-  reject: "Rejected",
-  backedOut: "Backed Out",
+  minor: "Accepted with Minor Revision",
+  major: "Accepted with Major Revision",
+  publication: "For Publication",
+  reject: "Rejected Manuscript",
   pending: "Pending",
 };
 
@@ -54,6 +59,37 @@ const ManuscriptItem = ({
     status,
   } = manuscript;
 
+  const currentUserId = auth.currentUser.uid; // or wherever you store the user ID
+  const myDecisionMeta = manuscript.reviewerDecisionMeta?.[currentUserId];
+  const myDecision = myDecisionMeta?.decision;
+  const finalDecision = manuscript.finalDecision;
+
+  // Determine if current user can see this manuscript
+  const canSeeManuscript = (() => {
+    if (role === "Admin") return true; // Admin sees everything
+
+    // Manuscripts with no status are always visible
+    if (!status) return true;
+
+    if (role === "Peer Reviewer") {
+      const myDecisionMeta = manuscript.reviewerDecisionMeta?.[currentUserId];
+      const myDecision = myDecisionMeta?.decision;
+
+      // Always show rejected manuscripts
+      if (status === "Rejected" || status === "Peer Reviewer Rejected") return true;
+
+      // Show if the reviewer hasn't submitted yet (pending)
+      if (!myDecision) return true;
+
+      // Otherwise, show if they accepted or gave revisions
+      return ["minor", "major", "publication"].includes(myDecision);
+    }
+
+    return true; // default for other roles
+  })();
+
+  if (!canSeeManuscript) return null;
+
   const navigate = useNavigate();
   const hasReviewer = manuscript.assignedReviewers?.length > 0;
   const [showModal, setShowModal] = useState(false);
@@ -82,7 +118,6 @@ const ManuscriptItem = ({
     if (ts instanceof Date) return ts.toLocaleString();
     return ts;
   };
-
   const handleStatusChange = async (manuscriptId, newStatus) => {
     try {
       const msRef = doc(db, "manuscripts", manuscriptId);
@@ -90,111 +125,212 @@ const ManuscriptItem = ({
       if (!snapshot.exists()) return;
 
       const ms = snapshot.data();
-      let updatedAssignedReviewers = ms.assignedReviewersData || [];
-      let updatedAssignedMeta = ms.assignedReviewersMeta || {};
+
+      // Helper: build reviewer objects with user info
+      const buildReviewerObjects = (ids) =>
+        ids.map((id) => {
+          const user = users.find((u) => u.id === id);
+          const meta = ms.assignedReviewersMeta?.[id] || {};
+          return {
+            id,
+            firstName: user?.firstName || "",
+            middleName: user?.middleName || "",
+            lastName: user?.lastName || "",
+            email: user?.email || "",
+            assignedAt: meta.assignedAt || null,
+            assignedBy: meta.assignedBy || "—",
+          };
+        });
+
+      // Only update counts for reviewers who actually contributed
+      const updateReviewerStats = async (reviewers, field) => {
+        for (const r of reviewers) {
+          const reviewerRef = doc(db, "Users", r.id);
+          await updateDoc(reviewerRef, {
+            [field]: (r[field] || 0) + 1,
+          });
+        }
+      };
+
+      let updatedAssignedReviewers = [];
+      let updatedAssignedMeta = {};
 
       if (newStatus === "For Publication") {
-        // Keep only reviewers who accepted
-        // Convert assignedReviewers IDs to the format expected by filter function
-        const reviewerObjects = (ms.assignedReviewers || []).map(id => ({ id }));
-        const acceptedReviewerObjects = filterAcceptedReviewers(
+        // Keep only accepted reviewers
+        const acceptedReviewerIds = filterAcceptedReviewers(
           ms.reviewerDecisionMeta,
-          reviewerObjects
-        );
-        
-        // Build reviewer data from accepted reviewer IDs and users array
-        const acceptedReviewerIds = acceptedReviewerObjects.map(r => r.id);
-        updatedAssignedReviewers = acceptedReviewerIds.map(id => {
-          const user = users.find(u => u.id === id);
-          const meta = ms.assignedReviewersMeta?.[id] || {};
-          return {
-            id,
-            firstName: user?.firstName || "",
-            middleName: user?.middleName || "",
-            lastName: user?.lastName || "",
-            email: user?.email || "",
-            assignedAt: meta.assignedAt || null,
-            assignedBy: meta.assignedBy || "—",
-          };
-        });
+          (ms.assignedReviewers || []).map((id) => ({ id }))
+        ).map((r) => r.id);
 
-        // Build new assignedReviewersMeta
-        const newMeta = {};
-        updatedAssignedReviewers.forEach((r) => {
-          newMeta[r.id] = ms.assignedReviewersMeta?.[r.id] || {
-            assignedAt: r.assignedAt,
-            assignedBy: r.assignedBy,
-          };
-        });
-        updatedAssignedMeta = newMeta;
+        updatedAssignedReviewers = buildReviewerObjects(acceptedReviewerIds);
 
-        // Update reviewer stats for accepted reviewers
-        updatedAssignedReviewers.forEach(async (r) => {
-          const reviewerRef = doc(db, "Users", r.id);
-          await updateDoc(reviewerRef, {
-            acceptedManuscripts: (r.acceptedManuscripts || 0) + 1,
-          });
-        });
+        // Merge meta, preserving previous decisions
+        updatedAssignedMeta = {
+          ...ms.assignedReviewersMeta,
+          ...Object.fromEntries(
+            updatedAssignedReviewers.map((r) => [
+              r.id,
+              ms.assignedReviewersMeta?.[r.id] || {
+                assignedAt: r.assignedAt,
+                assignedBy: r.assignedBy,
+              },
+            ])
+          ),
+        };
+
+        // ✅ Increment counts only for accepted reviewers
+        await updateReviewerStats(updatedAssignedReviewers, "acceptedManuscripts");
       } else if (newStatus === "Peer Reviewer Rejected") {
-        // Keep only reviewers who rejected
-        // Convert assignedReviewers IDs to the format expected by filter function
-        const reviewerObjects = (ms.assignedReviewers || []).map(id => ({ id }));
-        const rejectedReviewerObjects = filterRejectedReviewers(
+        // Keep only rejected reviewers
+        const rejectedReviewerIds = filterRejectedReviewers(
           ms.reviewerDecisionMeta,
-          reviewerObjects
+          (ms.assignedReviewers || []).map((id) => ({ id }))
+        ).map((r) => r.id);
+
+        updatedAssignedReviewers = buildReviewerObjects(rejectedReviewerIds);
+
+        updatedAssignedMeta = Object.fromEntries(
+          updatedAssignedReviewers.map((r) => [
+            r.id,
+            ms.assignedReviewersMeta?.[r.id] || {
+              assignedAt: r.assignedAt,
+              assignedBy: r.assignedBy,
+            },
+          ])
         );
-        
-        // Build reviewer data from rejected reviewer IDs and users array
-        const rejectedReviewerIds = rejectedReviewerObjects.map(r => r.id);
-        updatedAssignedReviewers = rejectedReviewerIds.map(id => {
-          const user = users.find(u => u.id === id);
-          const meta = ms.assignedReviewersMeta?.[id] || {};
-          return {
-            id,
-            firstName: user?.firstName || "",
-            middleName: user?.middleName || "",
-            lastName: user?.lastName || "",
-            email: user?.email || "",
-            assignedAt: meta.assignedAt || null,
-            assignedBy: meta.assignedBy || "—",
-          };
-        });
 
-        // Build new assignedReviewersMeta
-        const newMeta = {};
-        updatedAssignedReviewers.forEach((r) => {
-          newMeta[r.id] = ms.assignedReviewersMeta?.[r.id] || {
-            assignedAt: r.assignedAt,
-            assignedBy: r.assignedBy,
-          };
-        });
-        updatedAssignedMeta = newMeta;
-
-        // Update reviewer stats for rejected reviewers
-        updatedAssignedReviewers.forEach(async (r) => {
-          const reviewerRef = doc(db, "Users", r.id);
-          await updateDoc(reviewerRef, {
-            rejectedManuscripts: (r.rejectedManuscripts || 0) + 1,
-          });
-        });
+        // ✅ Increment counts only for rejected reviewers
+        await updateReviewerStats(updatedAssignedReviewers, "rejectedManuscripts");
+      } else if (["For Revision (Minor)", "For Revision (Major)"].includes(newStatus)) {
+        // Keep all assigned reviewers
+        updatedAssignedReviewers = buildReviewerObjects(ms.assignedReviewers || []);
+        updatedAssignedMeta = Object.fromEntries(
+          updatedAssignedReviewers.map((r) => [
+            r.id,
+            ms.assignedReviewersMeta?.[r.id] || { assignedAt: r.assignedAt, assignedBy: r.assignedBy },
+          ])
+        );
       }
 
-      // When admin makes a decision, use that status directly (don't compute)
+      // Update manuscript document
       await updateDoc(msRef, {
-        status: newStatus, // Use the admin's chosen status directly
+        status: newStatus,
         assignedReviewers: updatedAssignedReviewers.map((r) => r.id),
         assignedReviewersMeta: updatedAssignedMeta,
-        // Keep original reviewer history for peer reviewer access and admin info
         originalAssignedReviewers: ms.assignedReviewers || [],
         originalAssignedReviewersMeta: ms.assignedReviewersMeta || {},
-        // Add decision timestamp
         finalDecisionAt: new Date(),
-        finalDecisionBy: "Admin", // You might want to pass the actual admin ID
+        finalDecisionBy: "Admin",
       });
     } catch (err) {
       console.error("Error updating status:", err);
     }
   };
+
+  // Before the return statement
+  const visibleReviewers = manuscript.assignedReviewersData?.filter((r) => {
+    if (role !== "Peer Reviewer") return true;
+    const myDecision = manuscript.reviewerDecisionMeta?.[r.id]?.decision;
+    return myDecision && myDecision !== "reject";
+  }) || [];
+
+  // Helper to download a file candidate (either an http(s) URL or a storage path)
+  const downloadFileCandidate = async (candidate, suggestedName) => {
+    if (!candidate) return;
+    try {
+      // If candidate is already a full URL, open it in new tab (will prompt download if Content-Disposition)
+      if (typeof candidate === "string" && (candidate.startsWith("http://") || candidate.startsWith("https://"))) {
+        const a = document.createElement("a");
+        a.href = candidate;
+        a.target = "_blank";
+        a.rel = "noopener noreferrer";
+        if (suggestedName) a.download = suggestedName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        return;
+      }
+
+      // If candidate is an object that contains a url field, use it
+      if (typeof candidate === "object" && candidate.url) {
+        const a = document.createElement("a");
+        a.href = candidate.url;
+        a.target = "_blank";
+        a.rel = "noopener noreferrer";
+        if (candidate.name) a.download = candidate.name;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        return;
+      }
+
+      // Otherwise treat candidate as a storage path and call getDownloadURL
+      const path = typeof candidate === "string" ? candidate : candidate.path || candidate.storagePath || candidate.filePath;
+      if (!path) return;
+      const url = await getDownloadURL(ref(storage, path));
+      const a = document.createElement("a");
+      a.href = url;
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
+      a.download = suggestedName || (typeof candidate === "string" ? path.split("/").pop() : candidate.name || path.split("/").pop());
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    } catch (err) {
+      console.error("Error downloading review file:", err);
+      // fallback: try building REST URL (may require token/public)
+      try {
+        const bucket = storage?.app?.options?.storageBucket || "pubtrack2.appspot.com";
+        let p = String(typeof candidate === "string" ? candidate : candidate.path || candidate.storagePath || "").trim();
+        p = p.replace(/^\/+/, "").replace(/\/{2,}/g, "/").replace(/\/$/, "");
+        const rest = `https://firebasestorage.googleapis.com/v0/b/${bucket}/o/${encodeURIComponent(p)}?alt=media`;
+        const a = document.createElement("a");
+        a.href = rest;
+        a.target = "_blank";
+        a.rel = "noopener noreferrer";
+        a.download = suggestedName || p.split("/").pop();
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      } catch (err2) {
+        console.error("Fallback download also failed:", err2);
+        alert("Unable to download file. Check permissions or contact admin.");
+      }
+    }
+  };
+
+  // helper: download using blob to preserve filename (falls back to open link)
+  async function downloadWithFilename(urlOrPath, filename) {
+    try {
+      let url = urlOrPath;
+      // if this looks like a storage path, resolve tokened URL via getDownloadURL
+      if (!/^https?:\/\//.test(String(urlOrPath))) {
+        url = await getDownloadURL(storageRef(storage, String(urlOrPath)));
+      }
+      // try to fetch the resource (CORS must allow)
+      const res = await fetch(url);
+      if (!res.ok) throw new Error("Fetch failed: " + res.status);
+      const blob = await res.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = blobUrl;
+      a.download = filename || (url.split("/").pop() || "file");
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      // release
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+      return;
+    } catch (err) {
+      console.warn("downloadWithFilename failed, opening URL instead:", err);
+      // fallback: open link in new tab (browser may handle token & download)
+      const finalUrl = /^https?:\/\//.test(String(urlOrPath)) ? urlOrPath : await (async () => {
+        try { return await getDownloadURL(storageRef(storage, String(urlOrPath))); } catch { return null; }
+      })();
+      if (finalUrl) window.open(finalUrl, "_blank", "noopener");
+      else alert("Unable to download file (permissions or CORS). Contact admin.");
+    }
+  }
 
   return (
     <>
@@ -237,184 +373,277 @@ const ManuscriptItem = ({
         </div>
 
         {/* Assigned reviewers */}
-    
-{/* Assigned Reviewers with Invitation Status */}
-{hasReviewer && manuscript.assignedReviewersData?.length > 0 && (
-  <div className="mt-2">
-    <p className="text-sm font-medium text-gray-700 mb-1">
-      Peer Reviewer{manuscript.assignedReviewersData.length > 1 ? "s" : ""}:
-    </p>
-    <div className="space-y-2">
-      {manuscript.assignedReviewersData.map((reviewer) => {
-        const invitationStatus = manuscript.assignedReviewersMeta?.[reviewer.id]?.invitationStatus;
-        const decision = manuscript.assignedReviewersMeta?.[reviewer.id]?.decision;
-        const decisionMeta = manuscript.reviewerDecisionMeta?.[reviewer.id] || null;
-        
-        const key = `${manuscript.id}_${reviewer.id}`;
-        const displayName = showFullName[key]
-          ? `${reviewer.firstName} ${reviewer.middleName} ${reviewer.lastName}`.trim()
-          : `${reviewer.firstName} ${
-              reviewer.middleName ? reviewer.middleName.charAt(0) + "." : ""
-            } ${reviewer.lastName}`.trim();
+        {/* Assigned Reviewers with Invitation Status */}
+        {hasReviewer &&
+          manuscript.assignedReviewersData?.length > 0 &&
+          (role !== "Peer Reviewer" ||
+            // Peer Reviewer sees only if their decision matches final decision
+            manuscript.assignedReviewersData.some((r) => {
+              if (!manuscript.reviewerDecisionMeta) return false;
+              const myDecision = manuscript.reviewerDecisionMeta[r.id]?.decision;
+              return myDecision && myDecision !== "reject";
+            })
+          ) && (
+            <div className="mt-2">
+              {visibleReviewers.map((reviewer) => {
+                const invitationStatus =
+                  manuscript.assignedReviewersMeta?.[reviewer.id]?.invitationStatus;
+                const decision =
+                  manuscript.assignedReviewersMeta?.[reviewer.id]?.decision;
+                const decisionMeta =
+                  manuscript.reviewerDecisionMeta?.[reviewer.id] || null;
 
-        const assignedByUser = users.find((u) => u.id === reviewer.assignedBy);
-        const assignedByName = assignedByUser
-          ? `${assignedByUser.firstName} ${
-              assignedByUser.middleName ? assignedByUser.middleName + " " : ""
-            }${assignedByUser.lastName}`
-          : reviewer.assignedBy || "—";
+                const key = `${manuscript.id}_${reviewer.id}`;
+                const displayName = showFullName[key]
+                  ? `${reviewer.firstName} ${reviewer.middleName} ${reviewer.lastName}`.trim()
+                  : `${reviewer.firstName} ${
+                      reviewer.middleName ? reviewer.middleName.charAt(0) + "." : ""
+                    } ${reviewer.lastName}`.trim();
 
-        return (
-          <div key={reviewer.id} className="bg-blue-50 p-2 rounded-md">
-            <div className="flex justify-between items-start">
-              <div>
-                <span
-                  className="text-blue-800 text-sm font-medium cursor-pointer"
-                  onClick={() =>
-                    setShowFullName((prev) => ({
-                      ...prev,
-                      [key]: !prev[key],
-                    }))
-                  }
-                  title="Click to toggle full name"
-                >
-                  {displayName}
-                </span>
-                <div className="text-xs text-gray-500 mt-1">
-                  Assigned: {formatDate(reviewer.assignedAt)} by {assignedByName}
-                </div>
-              </div>
-              
-              <span className={`text-xs px-2 py-1 rounded ${
-                !invitationStatus || invitationStatus === 'pending' 
-                  ? 'bg-yellow-100 text-yellow-800' 
-                  : decision === 'accepted' 
-                    ? 'bg-green-100 text-green-800' 
-                    : 'bg-red-100 text-red-800'
-              }`}>
-                {!invitationStatus || invitationStatus === 'pending' 
-                  ? 'Invitation Pending' 
-                  : decision === 'accepted' 
-                    ? 'Accepted' 
-                    : 'Declined'}
-              </span>
-            </div>
+                const assignedByUser = users.find((u) => u.id === reviewer.assignedBy);
+                const assignedByName = assignedByUser
+                  ? `${assignedByUser.firstName} ${
+                      assignedByUser.middleName ? assignedByUser.middleName + " " : ""
+                    }${assignedByUser.lastName}`
+                  : reviewer.assignedBy || "—";
 
-            {/* Show decision details if available */}
-            {decisionMeta?.decision && (
-              <div className="mt-2 pt-2 border-t border-blue-100 text-xs">
-                {decisionMeta.decision === "reject" ? (
-                  <span className="text-red-600">
-                    Rejected review at: {formatDate(decisionMeta.decidedAt)}
-                  </span>
-                ) : decisionMeta.decision === "accept" ? (
-                  <span className="text-green-600">
-                    Submitted review at: {formatDate(decisionMeta.decidedAt)}
-                    {decisionMeta.rating && ` | Rating: ${decisionMeta.rating}/5`}
-                  </span>
-                ) : (
-                  <span className="text-gray-600">
-                    {decisionLabels[decisionMeta.decision] || decisionMeta.decision} at:{" "}
-                    {formatDate(decisionMeta.decidedAt)}
-                  </span>
-                )}
-              </div>
-            )}
-          </div>
-        );
-      })}
-    </div>
-  </div>
-)}
-        {/* Detailed Peer Reviewer Info for Final Status Manuscripts */}
-        {role === "Admin" && 
-         ["For Publication", "For Revision", "Peer Reviewer Rejected"].includes(status) && (
-          <div className="mt-3 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-200">
-            <h4 className="text-base font-semibold text-gray-800 mb-3 flex items-center">
-              <span className="w-2 h-2 bg-blue-500 rounded-full mr-2"></span>
-              Peer Review Details
-            </h4>
-            
-            {manuscript.finalDecisionAt && (
-              <div className="mb-3 p-2 bg-white rounded border-l-4 border-blue-500">
-                <p className="text-sm">
-                  <span className="font-medium text-gray-700">Final Admin Decision:</span>{" "}
-                  <span className="text-blue-600 font-medium">{status}</span> on{" "}
-                  <span className="font-medium">{formatDate(manuscript.finalDecisionAt)}</span>
-                </p>
-              </div>
-            )}
-
-            <div className="space-y-3">
-              {(manuscript.originalAssignedReviewers || manuscript.assignedReviewers || []).map((reviewerId) => {
-                const reviewerMeta = manuscript.originalAssignedReviewersMeta?.[reviewerId] || 
-                                   manuscript.assignedReviewersMeta?.[reviewerId];
-                const reviewer = users.find(u => u.id === reviewerId);
-                const assignedByUser = users.find(u => u.id === reviewerMeta?.assignedBy);
-                const decision = manuscript.reviewerDecisionMeta?.[reviewerId];
-                const submission = manuscript.reviewerSubmissions?.find(s => s.reviewerId === reviewerId);
-                
-                if (!reviewer && !decision && !submission) return null;
-                
                 return (
-                  <div key={reviewerId} className="bg-white p-3 rounded-lg border shadow-sm">
-                    {/* Reviewer Header */}
-                    <div className="flex items-center justify-between mb-2">
-                      <h5 className="font-medium text-gray-800">
-                        {reviewer ? `${reviewer.firstName} ${reviewer.middleName ? reviewer.middleName + ' ' : ''}${reviewer.lastName}` : 'Unknown Reviewer'}
-                        {reviewer?.role && <span className="text-gray-500 text-sm ml-1">({reviewer.role})</span>}
-                      </h5>
-                      {decision && (
-                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                          decision.decision === 'accept' 
-                            ? 'bg-green-100 text-green-700' 
-                            : 'bg-red-100 text-red-700'
-                        }`}>
-                          {decision.decision === 'accept' ? 'Accepted' : 'Rejected'}
+                  <div key={reviewer.id} className="bg-blue-50 p-2 rounded-md">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <span
+                          className="text-blue-800 text-sm font-medium cursor-pointer"
+                          onClick={() =>
+                            setShowFullName((prev) => ({
+                              ...prev,
+                              [reviewer.id]: !prev[reviewer.id],
+                            }))
+                          }
+                          title="Click to toggle full name"
+                        >
+                          {displayName}
                         </span>
-                      )}
-                    </div>
 
-                    {/* Reviewer Details */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm text-gray-600 mb-2">
-                      {reviewer?.email && (
-                        <p><span className="font-medium">Email:</span> {reviewer.email}</p>
-                      )}
-                      {reviewerMeta?.assignedAt && (
-                        <p><span className="font-medium">Assigned:</span> {formatDate(reviewerMeta.assignedAt)}</p>
-                      )}
-                      {assignedByUser && (
-                        <p><span className="font-medium">Assigned by:</span> {assignedByUser.firstName} {assignedByUser.lastName}</p>
-                      )}
-                      {decision?.decidedAt && (
-                        <p><span className="font-medium">Decision made:</span> {formatDate(decision.decidedAt)}</p>
-                      )}
-                    </div>
-
-                    {/* Review Submission Details */}
-                    {submission && (
-                      <div className="mt-2 p-2 bg-gray-50 rounded border-l-4 border-gray-400">
-                        <p className="text-sm font-medium text-gray-700 mb-1">Review Submission:</p>
-                        <div className="text-sm text-gray-600 space-y-1">
-                          <p><span className="font-medium">Rating:</span> {submission.rating || 'Not provided'}/5</p>
-                          <p><span className="font-medium">Submitted:</span> {formatDate(submission.completedAt)}</p>
-                          {submission.comment && (
-                            <div>
-                              <p className="font-medium">Comments:</p>
-                              <p className="mt-1 p-2 bg-white rounded border text-xs italic">
-                                "{submission.comment}"
-                              </p>
-                            </div>
-                          )}
+                        <div className="text-xs text-gray-500 mt-1">
+                          Assigned: {formatDate(reviewer.assignedAt)} by {assignedByName}
                         </div>
+                      </div>
+
+                      <span
+                        className={`text-xs px-2 py-1 rounded ${
+                          !invitationStatus || invitationStatus === "pending"
+                            ? "bg-yellow-100 text-yellow-800"
+                            : decision === "accepted"
+                            ? "bg-green-100 text-green-800"
+                            : "bg-red-100 text-red-800"
+                        }`}
+                      >
+                        {!invitationStatus || invitationStatus === "pending"
+                          ? "Invitation Pending"
+                          : decision === "accepted"
+                          ? "Accepted"
+                          : "Declined"}
+                      </span>
+                    </div>
+
+                    {decisionMeta?.decision && (
+                      <div className="mt-2 pt-2 border-t border-blue-100 text-xs">
+                        <span
+                          className={`px-2 py-1 rounded-full font-medium ${
+                            decisionMeta.decision === "minor"
+                              ? "bg-yellow-100 text-yellow-700"
+                              : decisionMeta.decision === "major"
+                              ? "bg-orange-100 text-orange-700"
+                              : decisionMeta.decision === "publication"
+                              ? "bg-green-100 text-green-700"
+                              : decisionMeta.decision === "reject"
+                              ? "bg-red-100 text-red-700"
+                              : "bg-gray-100 text-gray-600"
+                          }`}
+                        >
+                          {decisionLabels[decisionMeta.decision] || decisionMeta.decision}
+                        </span>{" "}
+                        {decisionMeta.decidedAt && `at ${formatDate(decisionMeta.decidedAt)}`}
                       </div>
                     )}
                   </div>
                 );
               })}
             </div>
-          </div>
-        )}
+          )}
+
+        {/* Detailed Peer Reviewer Info for Final Status Manuscripts */}
+        {(role === "Admin" || role === "Peer Reviewer") &&
+          ["For Publication", "For Revision (Minor)", "For Revision (Major)", "Peer Reviewer Rejected", "Rejected"].includes(status) &&
+          (() => {
+            // Determine which reviewers' details to show based on role
+            const reviewerIdsToShow =
+              role === "Admin"
+                ? [
+                    ...new Set([
+                      ...(manuscript.originalAssignedReviewers || []),
+                      ...(manuscript.assignedReviewers || []),
+                    ]),
+                  ]
+                : // For Peer Reviewers, only show if they have a decision recorded
+                manuscript.reviewerDecisionMeta?.[currentUserId]
+                ? [currentUserId]
+                : [];
+
+            if (reviewerIdsToShow.length === 0) return null;
+
+            return (
+              <div className="mt-3 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-200">
+                <h4 className="text-base font-semibold text-gray-800 mb-3 flex items-center">
+                  <span className="w-2 h-2 bg-blue-500 rounded-full mr-2"></span>
+                  {role === "Admin" ? "Peer Review Details" : "My Review Details"}
+                </h4>
+
+                {/* Final decision summary (Only for Admins) */}
+                {role === "Admin" && manuscript.finalDecisionAt && (
+                  <div className="mb-3 p-2 bg-white rounded border-l-4 border-blue-500">
+                    <p className="text-sm">
+                      <span className="font-medium text-gray-700">
+                        Final Admin Decision:
+                      </span>{" "}
+                      <span className="text-blue-600 font-medium">{status}</span> on{" "}
+                      <span className="font-medium">
+                        {formatDate(manuscript.finalDecisionAt)}
+                      </span>
+                    </p>
+                  </div>
+                )}
+
+                <div className="space-y-3">
+                  {reviewerIdsToShow.map((reviewerId) => {
+                    const reviewerMeta =
+                      manuscript.originalAssignedReviewersMeta?.[reviewerId] ||
+                      manuscript.assignedReviewersMeta?.[reviewerId];
+                    const reviewer = users.find((u) => u.id === reviewerId);
+                    const assignedByUser = users.find(
+                      (u) => u.id === reviewerMeta?.assignedBy
+                    );
+                    const decision = manuscript.reviewerDecisionMeta?.[reviewerId];
+                    const submission = manuscript.reviewerSubmissions?.find(
+                      (s) => s.reviewerId === reviewerId
+                    );
+
+                    if (!reviewer && !decision && !submission) return null;
+
+                    return (
+                      <div
+                        key={reviewerId}
+                        className="bg-white p-3 rounded-lg border shadow-sm"
+                      >
+                        {/* Reviewer Header */}
+                        <div className="flex items-center justify-between mb-2">
+                          <h5 className="font-medium text-gray-800">
+                            {reviewer
+                              ? `${reviewer.firstName} ${
+                                  reviewer.middleName
+                                    ? reviewer.middleName + " "
+                                    : ""
+                                }${reviewer.lastName}`
+                              : "Unknown Reviewer"}
+                            {reviewer?.role && (
+                              <span className="text-gray-500 text-sm ml-1">
+                                ({reviewer.role})
+                              </span>
+                            )}
+                          </h5>
+                          {decision && (
+                            <span
+                              className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                decision.decision === "minor"
+                                  ? "bg-yellow-100 text-yellow-700"
+                                  : decision.decision === "major"
+                                  ? "bg-orange-100 text-orange-700"
+                                  : decision.decision === "publication"
+                                  ? "bg-green-100 text-green-700"
+                                  : decision.decision === "reject"
+                                  ? "bg-red-100 text-red-700"
+                                  : "bg-gray-100 text-gray-600"
+                              }`}
+                            >
+                              {decisionLabels[decision.decision] ||
+                                decision.decision}
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Reviewer Details */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm text-gray-600 mb-2">
+                          {reviewer?.email && role === "Admin" && (
+                            <p>
+                              <span className="font-medium">Email:</span>{" "}
+                              {reviewer.email}
+                            </p>
+                          )}
+                          {reviewerMeta?.assignedAt && (
+                            <p>
+                              <span className="font-medium">Assigned:</span>{" "}
+                              {formatDate(reviewerMeta.assignedAt)}
+                            </p>
+                          )}
+                          {assignedByUser && role === "Admin" && (
+                            <p>
+                              <span className="font-medium">Assigned by:</span>{" "}
+                              {assignedByUser.firstName} {assignedByUser.lastName}
+                            </p>
+                          )}
+                          {decision?.decidedAt && (
+                            <p>
+                              <span className="font-medium">Decision made:</span>{" "}
+                              {formatDate(decision.decidedAt)}
+                            </p>
+                          )}
+                        </div>
+
+                        {/* Review Submission Details */}
+                        {submission && (
+                          <div className="mt-2 p-2 bg-gray-50 rounded border-l-4 border-gray-400">
+                            <p className="text-sm font-medium text-gray-700 mb-1">
+                              Review Submission:
+                            </p>
+                            <div className="text-sm text-gray-600 space-y-1">
+                              <p>
+                                <span className="font-medium">Rating:</span>{" "}
+                                {submission.rating || "Not provided"}/5
+                              </p>
+                              <p>
+                                <span className="font-medium">Submitted:</span>{" "}
+                                {formatDate(submission.completedAt)}
+                              </p>
+                              {submission.comment && (
+                                <div>
+                                  <p className="font-medium">Comments:</p>
+                                  <p className="mt-1 p-2 bg-white rounded border text-xs italic">
+                                    "{submission.comment}"
+                                  </p>
+                                </div>
+                              )}
+                              { (submission.reviewFileUrl || submission.reviewFile || submission.reviewFilePath) && (
+                                <p className="mt-2">
+                                  <button
+                                    onClick={() =>
+                                      downloadFileCandidate(submission.reviewFileUrl || submission.reviewFile || submission.reviewFilePath, submission.fileName || submission.name)
+                                    }
+                                    className="text-blue-600 underline text-sm"
+                                  >
+                                    Download Review File
+                                  </button>
+                                </p>
+                             )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()}
 
         {/* Actions */}
         <div className="mt-3 flex flex-col sm:flex-row sm:items-center gap-2">
@@ -487,6 +716,19 @@ const ManuscriptItem = ({
                             ? r.completedAt.toDate().toLocaleString()
                             : r.completedAt || "—"}
                         </p>
+                        {/* reviewer file (if present) */}
+                        { (r.reviewFileUrl || r.reviewFile || r.reviewFilePath) && (
+                          <p className="mt-1">
+                            <button
+                              onClick={() =>
+                                downloadFileCandidate(r.reviewFileUrl || r.reviewFile || r.reviewFilePath, r.fileName || r.name)
+                              }
+                              className="text-blue-600 underline text-sm"
+                            >
+                              Download Review File
+                            </button>
+                          </p>
+                        )}
                       </li>
                     );
                   })}
@@ -497,30 +739,34 @@ const ManuscriptItem = ({
                 <p className="font-medium text-gray-700 mb-1">
                   Reviewer Decisions:
                 </p>
-                <ul className="list-disc ml-4 text-sm text-gray-700">
-                  {Object.entries(manuscript.reviewerDecisionMeta).map(
-                    ([revId, meta]) => {
-                      const reviewer = manuscript.assignedReviewersData?.find(
-                        (u) => u.id === revId
-                      );
-                      return (
-                        <li key={revId}>
-                          {reviewer
-                            ? `${reviewer.firstName} ${
-                                reviewer.middleName
-                                  ? reviewer.middleName.charAt(0) + "."
-                                  : ""
-                              } ${reviewer.lastName}`
-                            : revId}
-                          : {decisionLabels[meta.decision] || meta.decision}{" "}
-                          {meta.decidedAt
-                            ? `at ${formatDate(meta.decidedAt)}`
-                            : ""}
-                        </li>
-                      );
-                    }
-                  )}
-                </ul>
+               <ul className="list-disc ml-4 text-sm text-gray-700">
+  {manuscript.reviewerDecisionMeta &&
+    Object.entries(manuscript.reviewerDecisionMeta).map(([revId, decisionMeta]) => {
+      const reviewer = manuscript.assignedReviewersData?.find(u => u.id === revId);
+      if (!decisionMeta?.decision) return null;
+
+      return (
+        <li key={revId} className="mb-1">
+          <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+            decisionMeta.decision === "minor"
+              ? "bg-yellow-100 text-yellow-700"
+              : decisionMeta.decision === "major"
+              ? "bg-orange-100 text-orange-700"
+              : decisionMeta.decision === "publication"
+              ? "bg-green-100 text-green-700"
+              : decisionMeta.decision === "reject"
+              ? "bg-red-100 text-red-700"
+              : "bg-gray-100 text-gray-600"
+          }`}>
+            {decisionLabels[decisionMeta.decision] || decisionMeta.decision}
+          </span>{" "}
+          by {reviewer ? `${reviewer.firstName} ${reviewer.lastName}` : revId}
+          {decisionMeta.decidedAt && ` at ${formatDate(decisionMeta.decidedAt)}`}
+        </li>
+      );
+    })}
+</ul>
+
               </div>
             ) : (
               <p className="text-sm text-gray-500">
@@ -530,7 +776,8 @@ const ManuscriptItem = ({
 
             <div className="flex flex-wrap gap-2 mt-2">
               {[
-                "For Revision",
+                "For Revision (Minor)",
+                "For Revision (Major)",
                 "For Publication",
                 "Peer Reviewer Rejected",
               ].map((s) => (
@@ -565,160 +812,160 @@ const ManuscriptItem = ({
             </div>
 
             <div className="space-y-4 mb-4">
-  {answeredQuestions
-    .filter(
-      (q) =>
-        !q.question
-          ?.toLowerCase()
-          .trim()
-          .startsWith("manuscript title")
-    )
-    .map((q, idx) => {
-      // Handle file downloads
-      if (q.type === "file" && q.answer) {
-        const files = Array.isArray(q.answer) ? q.answer : [q.answer];
-        return (
-          <div
-            key={idx}
-            className="bg-gray-50 p-3 rounded-md border border-gray-200"
-          >
-            <div className="font-semibold mb-1">{q.question}</div>
-            <div className="space-y-2">
-              {files.map((file, fileIdx) => {
-                // If it's already a file object with URL
-                if (file.url) {
-                  return (
-                    <a
-                      key={fileIdx}
-                      href={file.url}
-                      download={file.name || `file-${fileIdx + 1}`}
-                      className="text-blue-600 hover:text-blue-800 underline flex items-center"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      <svg
-                        className="w-4 h-4 mr-1"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
+              {answeredQuestions
+                .filter(
+                  (q) =>
+                    !q.question
+                      ?.toLowerCase()
+                      .trim()
+                      .startsWith("manuscript title")
+                )
+                .map((q, idx) => {
+                  // Handle file downloads
+                  if (q.type === "file" && q.answer) {
+                    const files = Array.isArray(q.answer) ? q.answer : [q.answer];
+                    return (
+                      <div
+                        key={idx}
+                        className="bg-gray-50 p-3 rounded-md border border-gray-200"
                       >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
-                        />
-                      </svg>
-                      {file.name || `File ${fileIdx + 1}`}
-                    </a>
-                  );
-                }
-                // If it's a storage path
-                else if (file.path || file.storagePath) {
-                  const filePath = file.path || file.storagePath;
+                        <div className="font-semibold mb-1">{q.question}</div>
+                        <div className="space-y-2">
+                          {files.map((file, fileIdx) => {
+                            // If it's already a file object with URL
+                            if (file.url) {
+                              return (
+                                <a
+                                  key={fileIdx}
+                                  href={file.url}
+                                  download={file.name || `file-${fileIdx + 1}`}
+                                  className="text-blue-600 hover:text-blue-800 underline flex items-center"
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                >
+                                  <svg
+                                    className="w-4 h-4 mr-1"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    viewBox="0 0 24 24"
+                                  >
+                                    <path
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      strokeWidth={2}
+                                      d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+                                    />
+                                  </svg>
+                                  {file.name || `File ${fileIdx + 1}`}
+                                </a>
+                              );
+                            }
+                            // If it's a storage path
+                            else if (file.path || file.storagePath) {
+                              const filePath = file.path || file.storagePath;
+                              return (
+                                <button
+                                  key={fileIdx}
+                                  onClick={async () => {
+                                    try {
+                                      const url = await getDownloadURL(ref(storage, filePath));
+                                      const a = document.createElement('a');
+                                      a.href = url;
+                                      a.download = file.name || filePath.split('/').pop() || 'download';
+                                      document.body.appendChild(a);
+                                      a.click();
+                                      document.body.removeChild(a);
+                                    } catch (error) {
+                                      console.error('Error downloading file:', error);
+                                      alert('Error downloading file. Please try again.');
+                                    }
+                                  }}
+                                  className="text-blue-600 hover:text-blue-800 underline flex items-center"
+                                >
+                                  <svg
+                                    className="w-4 h-4 mr-1"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    viewBox="0 0 24 24"
+                                  >
+                                    <path
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      strokeWidth={2}
+                                      d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+                                    />
+                                  </svg>
+                                  {file.name || filePath.split('/').pop() || `File ${fileIdx + 1}`}
+                                </button>
+                              );
+                            }
+                            // Fallback for string paths
+                            else if (typeof file === 'string') {
+                              return (
+                                <button
+                                  key={fileIdx}
+                                  onClick={async () => {
+                                    try {
+                                      const url = await getDownloadURL(ref(storage, file));
+                                      const a = document.createElement('a');
+                                      a.href = url;
+                                      a.download = file.split('/').pop() || 'download';
+                                      document.body.appendChild(a);
+                                      a.click();
+                                      document.body.removeChild(a);
+                                    } catch (error) {
+                                      console.error('Error downloading file:', error);
+                                      alert('Error downloading file. Please try again.');
+                                    }
+                                  }}
+                                  className="text-blue-600 hover:text-blue-800 underline flex items-center"
+                                >
+                                  <svg
+                                    className="w-4 h-4 mr-1"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    viewBox="0 0 24 24"
+                                  >
+                                    <path
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      strokeWidth={2}
+                                      d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+                                    />
+                                  </svg>
+                                  {file.split('/').pop() || `File ${fileIdx + 1}`}
+                                </button>
+                              );
+                            }
+                            return null;
+                          })}
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  // Default handling for non-file answers
                   return (
-                    <button
-                      key={fileIdx}
-                      onClick={async () => {
-                        try {
-                          const url = await getDownloadURL(ref(storage, filePath));
-                          const a = document.createElement('a');
-                          a.href = url;
-                          a.download = file.name || filePath.split('/').pop() || 'download';
-                          document.body.appendChild(a);
-                          a.click();
-                          document.body.removeChild(a);
-                        } catch (error) {
-                          console.error('Error downloading file:', error);
-                          alert('Error downloading file. Please try again.');
-                        }
-                      }}
-                      className="text-blue-600 hover:text-blue-800 underline flex items-center"
+                    <div
+                      key={idx}
+                      className="bg-gray-50 p-3 rounded-md border border-gray-200"
                     >
-                      <svg
-                        className="w-4 h-4 mr-1"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
-                        />
-                      </svg>
-                      {file.name || filePath.split('/').pop() || `File ${fileIdx + 1}`}
-                    </button>
+                      <div className="font-semibold mb-1">{q.question}</div>
+                      <div className="text-gray-800 text-sm">
+                        {Array.isArray(q.answer)
+                          ? q.answer
+                              .map((a) =>
+                                a?.name
+                                  ? `${a.name}${a.email ? ` (${a.email})` : ""}`
+                                  : a
+                              )
+                              .join(", ")
+                          : q.answer || "—"}
+                      </div>
+                    </div>
                   );
-                }
-                // Fallback for string paths
-                else if (typeof file === 'string') {
-                  return (
-                    <button
-                      key={fileIdx}
-                      onClick={async () => {
-                        try {
-                          const url = await getDownloadURL(ref(storage, file));
-                          const a = document.createElement('a');
-                          a.href = url;
-                          a.download = file.split('/').pop() || 'download';
-                          document.body.appendChild(a);
-                          a.click();
-                          document.body.removeChild(a);
-                        } catch (error) {
-                          console.error('Error downloading file:', error);
-                          alert('Error downloading file. Please try again.');
-                        }
-                      }}
-                      className="text-blue-600 hover:text-blue-800 underline flex items-center"
-                    >
-                      <svg
-                        className="w-4 h-4 mr-1"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
-                        />
-                      </svg>
-                      {file.split('/').pop() || `File ${fileIdx + 1}`}
-                    </button>
-                  );
-                }
-                return null;
-              })}
+                })}
             </div>
-          </div>
-        );
-      }
-      
-      // Default handling for non-file answers
-      return (
-        <div
-          key={idx}
-          className="bg-gray-50 p-3 rounded-md border border-gray-200"
-        >
-          <div className="font-semibold mb-1">{q.question}</div>
-          <div className="text-gray-800 text-sm">
-            {Array.isArray(q.answer)
-              ? q.answer
-                  .map((a) =>
-                    a?.name
-                      ? `${a.name}${a.email ? ` (${a.email})` : ""}`
-                      : a
-                  )
-                  .join(", ")
-              : q.answer || "—"}
-          </div>
-        </div>
-      );
-    })}
-</div>
 
             <div className="mb-4 text-sm font-semibold">
               Status: <span className="font-normal">{status}</span>

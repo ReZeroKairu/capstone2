@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { db, auth } from "../firebase/firebase";
+import { useLocation, useNavigate } from "react-router-dom";
+
 import {
   collection,
   getDocs,
@@ -24,6 +26,8 @@ export default function FormResponses() {
   const [selectedFormId, setSelectedFormId] = useState("");
   const [isAdmin, setIsAdmin] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
+const location = useLocation();
+const navigate = useNavigate();
 
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
@@ -121,11 +125,25 @@ export default function FormResponses() {
       return 0;
     }
   };
+useEffect(() => {
+  const refreshPage = async () => {
+    console.log("Refresh event received!"); // Debug: should log when notification clicked
+    setPageCursors([]); // clear cursors to force fresh fetch
+    await fetchTotalCount(); // update total responses
+    await loadPage(1);       // reload first page
+  };
 
-  useEffect(() => {
-    fetchTotalCount();
-  }, [selectedFormId, startDate, endDate, currentUser, isAdmin]);
+  window.addEventListener("refreshFormResponses", refreshPage);
 
+  // Cleanup listener on unmount
+  return () => window.removeEventListener("refreshFormResponses", refreshPage);
+}, [currentUser, isAdmin, selectedFormId, startDate, endDate, searchTerm]);
+
+
+// ✅ KEEP this one as-is
+useEffect(() => {
+  fetchTotalCount();
+}, [selectedFormId, startDate, endDate, currentUser, isAdmin]);
   // helper: build query constraints array for current filters/search
   const buildConstraints = () => {
     const constraints = [where("status", "==", "Pending")];
@@ -488,14 +506,10 @@ export default function FormResponses() {
         )
       );
 
-      setResponses((prev) =>
-        prev.map((r) =>
-          r.id === res.id ? { ...r, status: "Assigning Peer Reviewer" } : r
-        )
-      );
-      setSelectedResponse((r) =>
-        r && r.id === res.id ? { ...r, status: "Assigning Peer Reviewer" } : r
-      );
+   setResponses((prev) => prev.filter((r) => r.id !== res.id));
+setSelectedResponse(null);
+setTotalResponses((prev) => Math.max(0, prev - 1));
+
     } catch (err) {
       console.error("Error accepting response:", err);
     }
@@ -563,13 +577,11 @@ export default function FormResponses() {
           })
         )
       );
+setResponses((prev) => prev.filter((r) => r.id !== res.id));
+setSelectedResponse(null);
+setTotalResponses((prev) => Math.max(0, prev - 1));
 
-      setResponses((prev) =>
-        prev.map((r) => (r.id === res.id ? { ...r, status: "Rejected" } : r))
-      );
-      setSelectedResponse((r) =>
-        r && r.id === res.id ? { ...r, status: "Rejected" } : r
-      );
+
     } catch (err) {
       console.error("Error rejecting response:", err);
     }

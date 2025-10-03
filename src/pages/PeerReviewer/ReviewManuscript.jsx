@@ -1,6 +1,5 @@
-import { useEffect, useState } from "react";
 import { getAuth } from "firebase/auth";
-import { db } from "../../firebase/firebase";
+import { db, storage } from "../../firebase/firebase";
 import {
   collection,
   updateDoc,
@@ -9,13 +8,85 @@ import {
   getDocs,
   getDoc,
 } from "firebase/firestore";
+import { ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
+import { useEffect, useState } from "react";
 import {
-  computeManuscriptStatus,
-  filterAcceptedReviewers,
   handlePeerReviewerDecision,
   handleReviewCompletion,
 } from "../../utils/manuscriptHelpers";
 import { useUserLogs } from "../../hooks/useUserLogs";
+
+// Helper to resolve file URL from manuscript object
+function useManuscriptFile(manuscript) {
+  const [fileUrl, setFileUrl] = useState(null);
+  const [fileName, setFileName] = useState(null);
+
+  useEffect(() => {
+    let mounted = true;
+    async function resolveFile() {
+      if (!manuscript) return;
+      // Find file answer in answeredQuestions
+      const fileQ = (manuscript.answeredQuestions || []).find(
+        (q) => q.type === "file" && q.answer
+      );
+      let path = null;
+      let name = null;
+      if (fileQ) {
+        if (typeof fileQ.answer === "string") {
+          path = fileQ.answer;
+          name = fileQ.fileName || path.split("/").pop();
+        } else if (typeof fileQ.answer === "object") {
+          path =
+            fileQ.answer.path ||
+            fileQ.answer.storagePath ||
+            fileQ.answer.fileUrl ||
+            fileQ.answer.url ||
+            null;
+          name =
+            fileQ.answer.name || fileQ.fileName || (path ? path.split("/").pop() : "Manuscript File");
+        }
+      }
+
+      // Fallback to top-level storagePath/fileUrl if present
+      if (!path) {
+        path = manuscript.storagePath || manuscript.fileUrl || manuscript.file || null;
+        name = manuscript.fileName || (path ? path.split("/").pop() : "Manuscript File");
+      }
+
+      if (!path) {
+        if (mounted) {
+          setFileUrl(null);
+          setFileName(null);
+        }
+        return;
+      }
+
+      try {
+        const url = await getDownloadURL(storageRef(storage, path));
+        if (mounted) {
+          setFileUrl(url);
+          setFileName(name);
+        }
+      } catch (err) {
+        // fallback REST URL (may require token / proper ACL)
+        const bucket = storage?.app?.options?.storageBucket || "pubtrack2.appspot.com";
+        const rest = `https://firebasestorage.googleapis.com/v0/b/${bucket}/o/${encodeURIComponent(
+          path
+        )}?alt=media`;
+        if (mounted) {
+          setFileUrl(rest);
+          setFileName(name);
+        }
+      }
+    }
+    resolveFile();
+    return () => {
+      mounted = false;
+    };
+  }, [manuscript]);
+
+  return { fileUrl, fileName };
+}
 
 export default function ReviewManuscript() {
   const [reviewerId, setReviewerId] = useState(null);
@@ -24,9 +95,9 @@ export default function ReviewManuscript() {
   const [reviews, setReviews] = useState({});
   const [users, setUsers] = useState({});
   const [activeReview, setActiveReview] = useState(null);
+  const [activeDecision, setActiveDecision] = useState({});
+  const [reviewFiles, setReviewFiles] = useState({});
   const [userRole, setUserRole] = useState(null);
-  
-  // Logging hook
   const { logManuscriptReview } = useUserLogs();
 
   const formatFirestoreDate = (ts) =>
@@ -37,9 +108,10 @@ export default function ReviewManuscript() {
       : "N/A";
 
   const decisionLabels = {
-    accept: "Accepted",
+    minor: "Accept (Minor Revision)",
+    major: "Accept (Major Revision)",
+    publication: "For Publication",
     reject: "Rejected",
-    backedOut: "Backed Out",
     pending: "Pending",
   };
 
@@ -67,53 +139,32 @@ export default function ReviewManuscript() {
         const msSnap = await getDocs(collection(db, "manuscripts"));
         const allMss = msSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
 
-        // Filter assigned manuscripts using consistent logic
-        const assigned = allMss
-          .filter((m) => {
-            // For final status manuscripts, only show if reviewer is in current assignedReviewers
-            if (["For Publication", "Peer Reviewer Rejected"].includes(m.status)) {
-              return (m.assignedReviewers || []).includes(uid);
-            }
-            
-            // For other statuses, show if they are involved in any way
-            const currentlyAssigned = (m.assignedReviewers || []).includes(uid);
-            const originallyAssigned = (m.originalAssignedReviewers || []).includes(uid);
-            const hasDecision = m.reviewerDecisionMeta && m.reviewerDecisionMeta[uid];
-            const hasSubmission = m.reviewerSubmissions && m.reviewerSubmissions.some(s => s.reviewerId === uid);
-            
-            return currentlyAssigned || originallyAssigned || hasDecision || hasSubmission;
-          })
-          .map((m) => {
-            const meta = m.assignedReviewersMeta?.[uid] || {};
-            const assignedByUser = usersMap[meta.assignedBy];
-            return {
-              ...m,
-              assignedReviewersMeta: {
-                ...m.assignedReviewersMeta,
-                [uid]: {
-                  ...meta,
-                  assignedByName: assignedByUser
-                    ? `${assignedByUser.firstName} ${
-                        assignedByUser.middleName
-                          ? assignedByUser.middleName + " "
-                          : ""
-                      }${assignedByUser.lastName}`
-                    : meta.assignedBy || "—",
-                },
-              },
-            };
-          });
+        // Include manuscripts assigned to the reviewer OR where the reviewer has already made a decision
+        let assigned = allMss.filter(
+          (m) =>
+            (m.assignedReviewers || []).includes(uid) ||
+            m.reviewerDecisionMeta?.[uid]?.decision
+        );
 
-        // Sort by assigned time descending
-        const assignedSorted = assigned.sort((a, b) => {
-          const aTime =
-            a.assignedReviewersMeta?.[uid]?.assignedAt?.seconds || 0;
-          const bTime =
-            b.assignedReviewersMeta?.[uid]?.assignedAt?.seconds || 0;
-          return bTime - aTime;
+        // Add 'acceptedAt' for sorting
+        assigned = assigned.map((m) => {
+          const myMeta = m.assignedReviewersMeta?.[uid];
+          const acceptedAt = myMeta?.respondedAt
+            ? myMeta.respondedAt instanceof Date
+              ? myMeta.respondedAt
+              : myMeta.respondedAt.toDate?.() || new Date()
+            : null;
+          return { ...m, acceptedAt };
         });
 
-        setManuscripts(assignedSorted);
+        // Sort by acceptedAt descending
+        assigned.sort((a, b) => {
+          if (!a.acceptedAt) return 1;
+          if (!b.acceptedAt) return -1;
+          return b.acceptedAt - a.acceptedAt;
+        });
+
+        setManuscripts(assigned);
         setLoading(false);
       } catch (err) {
         console.error("Failed to fetch user or manuscripts:", err);
@@ -124,7 +175,6 @@ export default function ReviewManuscript() {
     fetchUserAndManuscripts();
   }, []);
 
-  // Log reviewer history
   const logReviewerHistory = async (msRef, reviewerId, decision) => {
     await updateDoc(msRef, {
       [`reviewerHistory.${reviewerId}`]: arrayUnion({
@@ -134,175 +184,95 @@ export default function ReviewManuscript() {
     });
   };
 
-  // Update manuscript status
-  const updateManuscriptStatus = async (
-    manuscriptId,
-    updatedDecisions,
-    completedReviewers = []
-  ) => {
-    const msRef = doc(db, "manuscripts", manuscriptId);
-    
-    // Get the current manuscript to access assignedReviewers
-    const currentSnapshot = await getDoc(msRef);
-    const currentData = currentSnapshot.exists() ? currentSnapshot.data() : {};
-    const assignedReviewers = currentData.assignedReviewers || [];
+   const handleDecisionSubmit = async (manuscriptId) => {
+     const selected = manuscripts.find((m) => m.id === manuscriptId);
+     if (!selected) return;
 
-    const newStatus = computeManuscriptStatus(
-      updatedDecisions,
-      assignedReviewers,
-      currentData.reviewerSubmissions || []
-    );
+     const decision = activeDecision[manuscriptId];
+     const review = reviews[manuscriptId];
 
-    const statusChanged = currentData.status !== newStatus;
-    const decisionsChanged =
-      JSON.stringify(currentData.reviewerDecisionMeta || {}) !==
-      JSON.stringify(updatedDecisions);
+     if (!decision || !review?.comment) {
+       alert("Please provide your review comments before submitting.");
+       return;
+     }
 
-    if (statusChanged || decisionsChanged) {
-      await updateDoc(msRef, {
-        ...(statusChanged && { status: newStatus }),
-        ...(decisionsChanged && { reviewerDecisionMeta: updatedDecisions }),
-      });
+    let fileUrl = null;
+    let fileName = null; // store original filename
+    if (reviewFiles[manuscriptId]) {
+      const file = reviewFiles[manuscriptId];
+      if (file.size > 30 * 1024 * 1024) {
+        alert("File size exceeds 30MB. Please upload a smaller file.");
+        return;
+      }
+      const fileRef = storageRef(storage, `reviews/${manuscriptId}/${reviewerId}-${file.name}`);
+
+      // include contentDisposition so downloads from Firebase include the original filename
+      const metadata = {
+        contentType: file.type,
+        contentDisposition: `attachment; filename="${file.name}"`,
+      };
+      await uploadBytes(fileRef, file, metadata);
+      fileUrl = await getDownloadURL(fileRef);
+      fileName = file.name;
     }
 
-    setManuscripts((prev) =>
-      prev.map((m) =>
-        m.id === manuscriptId
-          ? { ...m, status: newStatus, reviewerDecisionMeta: updatedDecisions }
-          : m
-      )
-    );
-  };
-
-  const handleDecision = async (manuscriptId, decision) => {
-    const selected = manuscripts.find((m) => m.id === manuscriptId);
-    if (!selected) return;
-
     const updatedDecisions = {
-      ...(selected.reviewerDecisionMeta || {}),
-      [reviewerId]: { decision, decidedAt: new Date() },
-    };
+       ...(selected.reviewerDecisionMeta || {}),
+       [reviewerId]: {
+         decision,
+         comment: review.comment,
+         rating: review.rating || 0,
+         decidedAt: new Date(),
+         reviewFileUrl: fileUrl,
+         reviewFileName: fileName || null,
+       },
+     };
 
-    const msRef = doc(db, "manuscripts", manuscriptId);
-    await logReviewerHistory(msRef, reviewerId, decision);
-    await updateManuscriptStatus(manuscriptId, updatedDecisions);
+     const msRef = doc(db, "manuscripts", manuscriptId);
+     await logReviewerHistory(msRef, reviewerId, decision);
 
-    // Send notification about reviewer decision
-    const manuscriptTitle = getManuscriptDisplayTitle(selected);
+    await updateDoc(msRef, {
+      [`reviewerDecisionMeta.${reviewerId}`]: {
+        decision,
+        comment: review.comment,
+        rating: review.rating || 0,
+        decidedAt: new Date(),
+        reviewFileUrl: fileUrl,
+        reviewFileName: fileName || null,
+      },
+      status: "Back to Admin",
+      reviewerSubmissions: arrayUnion({
+        reviewerId,
+        comment: review.comment,
+        rating: review.rating || 0,
+        status: "Completed",
+        completedAt: new Date(),
+        reviewFileUrl: fileUrl,
+        reviewFileName: fileName || null,
+      }),
+    });
+
+    const manuscriptTitle = selected.manuscriptTitle || selected.title || "Untitled";
+
     await handlePeerReviewerDecision(manuscriptId, manuscriptTitle, reviewerId, decision);
-    
-    // Log the reviewer decision
+    await handleReviewCompletion(manuscriptId, manuscriptTitle, reviewerId);
     await logManuscriptReview(manuscriptId, manuscriptTitle, decision);
-
-    // Update local state immediately
-    setManuscripts((prev) =>
-      prev.map((m) =>
-        m.id === manuscriptId
-          ? { ...m, reviewerDecisionMeta: updatedDecisions }
-          : m
-      )
-    );
-  };
-
-  const handleBackOut = async (manuscriptId) => {
-    const selected = manuscripts.find((m) => m.id === manuscriptId);
-    if (!selected) return;
-
-    const msRef = doc(db, "manuscripts", manuscriptId);
-
-    const assigned = (selected.assignedReviewers || []).filter(
-      (id) => id !== reviewerId
-    );
-    const assignedMeta = { ...(selected.assignedReviewersMeta || {}) };
-    delete assignedMeta[reviewerId];
-
-    const updatedDecisions = { ...(selected.reviewerDecisionMeta || {}) };
-    delete updatedDecisions[reviewerId];
-
-    await logReviewerHistory(msRef, reviewerId, "backedOut");
-
-    const completedReviewers =
-      selected.reviewerSubmissions?.map((r) => r.reviewerId) || [];
-
-    await updateManuscriptStatus(
-      manuscriptId,
-      updatedDecisions,
-      completedReviewers
-    );
 
     setManuscripts((prev) =>
       prev.map((m) =>
         m.id === manuscriptId
           ? {
               ...m,
-              assignedReviewers: assigned,
-              assignedReviewersMeta: assignedMeta,
               reviewerDecisionMeta: updatedDecisions,
+              status: "Back to Admin",
             }
-          : m
-      )
-    );
-  };
-
-  const submitReview = async (manuscriptId) => {
-    const review = reviews[manuscriptId];
-    if (!review) return;
-
-    const selected = manuscripts.find((m) => m.id === manuscriptId);
-    if (!selected) return;
-
-    const hasSubmittedReview = selected.reviewerSubmissions?.some(
-      (r) => r.reviewerId === reviewerId
-    );
-    if (hasSubmittedReview) return;
-
-    const newSubmission = {
-      reviewerId,
-      comment: review.comment || "",
-      rating: review.rating || 0,
-      status: "Completed",
-      completedAt: new Date(),
-    };
-
-    const msRef = doc(db, "manuscripts", manuscriptId);
-
-    // Add review to Firestore
-    await updateDoc(msRef, {
-      reviewerSubmissions: arrayUnion(newSubmission),
-    });
-
-    const updatedReviewerSubmissions = [
-      ...(selected.reviewerSubmissions || []),
-      newSubmission,
-    ];
-
-    const completedReviewers = updatedReviewerSubmissions.map(
-      (r) => r.reviewerId
-    );
-    const updatedDecisions = selected.reviewerDecisionMeta || {};
-
-    await updateManuscriptStatus(
-      manuscriptId,
-      updatedDecisions,
-      completedReviewers
-    );
-
-    // Send notification about review completion
-    const manuscriptTitle = getManuscriptDisplayTitle(selected);
-    await handleReviewCompletion(manuscriptId, manuscriptTitle, reviewerId);
-    
-    // Log the review completion
-    await logManuscriptReview(manuscriptId, manuscriptTitle, "completed");
-
-    setManuscripts((prev) =>
-      prev.map((m) =>
-        m.id === manuscriptId
-          ? { ...m, reviewerSubmissions: updatedReviewerSubmissions }
           : m
       )
     );
 
     setActiveReview(null);
+    setActiveDecision((prev) => ({ ...prev, [manuscriptId]: null }));
+    setReviewFiles((prev) => ({ ...prev, [manuscriptId]: null }));
   };
 
   const handleReviewChange = (manuscriptId, field, value) => {
@@ -321,216 +291,266 @@ export default function ReviewManuscript() {
     m.answeredQuestions?.find((q) =>
       q.question?.toLowerCase().includes("manuscript title")
     )?.answer ||
-    m.formTitle ||
     "Untitled";
 
+  // Ensure storage path doesn't start/end with '/' or contain '//' before encoding
+const buildRestUrlSafe = (rawPath) => {
+  if (!rawPath) return null;
+  let p = String(rawPath).trim();
+  p = p.replace(/^\/+/, "").replace(/\/{2,}/g, "/").replace(/\/$/, "");
+  const bucket = storage?.app?.options?.storageBucket || "pubtrack2.appspot.com";
+  return `https://firebasestorage.googleapis.com/v0/b/${bucket}/o/${encodeURIComponent(p)}?alt=media`;
+};
+
   if (loading) return <p className="pt-28 px-6">Loading manuscripts...</p>;
-
-  const inProgressStatuses = [
-    "Peer Reviewer Assigned",
-    "Peer Reviewer Reviewing",
-    "Back to Admin",
-    "For Revision",
-  ];
-
-  const inProgressManuscripts = manuscripts.filter((m) =>
-    inProgressStatuses.includes(m.status)
-  );
-
-  if (!inProgressManuscripts.length)
-    return <p className="pt-28 px-6">No in-progress manuscripts found.</p>;
-
-  const getReviewerStatusLabel = (status) => {
-    switch (status) {
-      case "Back to Admin":
-        return "Review completed";
-      case "Peer Reviewer Assigned":
-        return "Awaiting your response";
-      case "Peer Reviewer Reviewing":
-        return "Review in progress";
-      case "For Revision":
-        return "Author revising";
-      default:
-        return status;
-    }
-  };
+  if (!manuscripts.length) return <p className="pt-28 px-6">No manuscripts assigned.</p>;
 
   return (
-    <div className="px-24 py-40">
+    <div className="px-6 py-28 max-w-5xl mx-auto">
       <h1 className="text-2xl font-bold mb-6">My Assigned Manuscripts</h1>
-      <ul className="space-y-6">
-        {inProgressManuscripts.map((m) => {
-          const myDecision =
-            m.reviewerDecisionMeta?.[reviewerId]?.decision || "pending";
+
+      <ul className="space-y-4">
+        {manuscripts.map((m) => {
+          const myMeta = m.reviewerDecisionMeta?.[reviewerId];
+          const myDecision = myMeta?.decision || "pending";
+          const myDecisionLabel = decisionLabels[myDecision] || "Pending";
+
           const hasSubmittedReview = m.reviewerSubmissions?.some(
             (r) => r.reviewerId === reviewerId
           );
 
+          const canSeeManuscript =
+            userRole === "Admin" ||
+            (userRole === "Peer Reviewer" &&
+              ((m.assignedReviewers || []).includes(reviewerId) || myDecision === "reject"));
+
+          if (!canSeeManuscript) return null;
+
+          // invited meta for this reviewer (who invited them and when)
+          const invitedMeta = m.assignedReviewersMeta?.[reviewerId] || {};
+          const invitedById = invitedMeta?.assignedBy || invitedMeta?.invitedBy || null;
+          const invitedAt = invitedMeta?.assignedAt || invitedMeta?.invitedAt || null;
+          const inviter =
+            invitedById && users[invitedById]
+              ? `${users[invitedById].firstName || ""} ${users[invitedById].lastName || ""}`.trim()
+              : invitedMeta?.assignedByName || invitedMeta?.invitedByName || "Unknown";
+
+          // abstract extraction (if present)
+          const abstract =
+            m.answeredQuestions?.find((q) =>
+              q.question?.toLowerCase().includes("abstract")
+            )?.answer || m.abstract || "—";
+
           return (
             <li
               key={m.id}
-              className="p-4 border rounded bg-white shadow-sm flex flex-col gap-3"
+              className="p-4 border rounded bg-white shadow-sm flex items-center justify-between"
             >
-              <p className="font-semibold">{getManuscriptDisplayTitle(m)}</p>
-              <p>Status: {getReviewerStatusLabel(m.status)}</p>
-              <p>
-                Submitted:{" "}
-                {m.submittedAt ? formatFirestoreDate(m.submittedAt) : "N/A"}
-              </p>
-              {m.assignedReviewersMeta?.[reviewerId] && (
-                <p>
-                  Assigned at:{" "}
-                  {formatFirestoreDate(
-                    m.assignedReviewersMeta[reviewerId].assignedAt
-                  )}
-                  <br />
-                  Assigned by:{" "}
-                  {m.assignedReviewersMeta[reviewerId].assignedByName}
-                </p>
-              )}
-
-              {m.reviewerDecisionMeta?.[reviewerId] && (
-                <div className="flex flex-wrap gap-2 mt-1">
-                  {(() => {
-                    const meta = m.reviewerDecisionMeta[reviewerId];
-                    const decisionTime = meta.decidedAt || null;
-                    return (
-                      <span
-                        className={`px-2 py-1 rounded text-white text-xs ${
-                          meta.decision === "accept"
-                            ? "bg-green-500"
-                            : meta.decision === "reject"
-                            ? "bg-red-500"
-                            : meta.decision === "backedOut"
-                            ? "bg-yellow-500"
-                            : "bg-gray-400"
-                        }`}
-                      >
-                        You: {decisionLabels[meta.decision] || "Pending"}
-                        {decisionTime && (
-                          <> | {formatFirestoreDate(decisionTime)}</>
-                        )}
-                      </span>
-                    );
-                  })()}
+              <div>
+                <div className="text-lg font-semibold">{getManuscriptDisplayTitle(m)}</div>
+                <div className="text-xs text-gray-500 mt-1">
+                  {/* double-blind: show inviter + invited at and status only */}
+                  Invited by {inviter} • Invited: {formatFirestoreDate(invitedAt)} • Status:{" "}
+                  <span className="font-medium">{m.status}</span>
                 </div>
-              )}
+              </div>
 
-              {userRole === "Admin" && m.reviewerDecisionMeta && (
-                <div className="mt-2 text-sm text-gray-700">
-                  <p className="font-medium">All Reviewer Decisions:</p>
-                  <ul className="list-disc ml-4">
-                    {Object.entries(m.reviewerDecisionMeta).map(
-                      ([revId, meta]) => (
-                        <li key={revId}>
-                          {users[revId]
-                            ? `${users[revId].firstName} ${users[revId].lastName}`
-                            : revId}
-                          : {decisionLabels[meta.decision] || meta.decision}
-                        </li>
-                      )
-                    )}
-                  </ul>
-                </div>
-              )}
+              <div className="flex items-center gap-3">
+                <span className="px-2 py-1 rounded text-xs bg-gray-100 text-gray-800">
+                  {myDecisionLabel}
+                </span>
 
-              {m.reviewerHistory?.[reviewerId] && (
-                <div className="mt-2 text-xs text-gray-600">
-                  <p className="font-medium">History:</p>
-                  <ul className="list-disc ml-4">
-                    {m.reviewerHistory[reviewerId].map((h, idx) => (
-                      <li key={idx}>
-                        {decisionLabels[h.decision] || h.decision} at{" "}
-                        {formatFirestoreDate(h.decidedAt)}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
+                <button
+                  onClick={() => setActiveReview((prev) => (prev === m.id ? null : m.id))}
+                  className="px-3 py-1 bg-blue-600 text-white rounded text-sm"
+                >
+                  {activeReview === m.id ? "Hide Details" : "View Details"}
+                </button>
+              </div>
 
-              {/* Action buttons */}
-              {myDecision === "pending" && (
-                <div className="flex gap-2 mt-2">
-                  <button
-                    onClick={() => handleDecision(m.id, "accept")}
-                    className="px-3 py-1 bg-green-500 text-white rounded hover:bg-green-600 text-sm"
+              {/* Details drawer/modal for this manuscript (inline expandable) */}
+              {activeReview === m.id && (
+                <div className="absolute inset-0 bg-black/40 z-40 flex items-center justify-center">
+                  <div
+                    className="bg-white rounded-md p-6 w-[90%] max-w-3xl shadow-lg overflow-auto max-h-[80vh]"
+                    onClick={(e) => e.stopPropagation()}
                   >
-                    Accept Manuscript
-                  </button>
-                  <button
-                    onClick={() => handleDecision(m.id, "reject")}
-                    className="px-3 py-1 bg-red-500 text-white rounded hover:bg-red-600 text-sm"
-                  >
-                    Reject Manuscript
-                  </button>
-                  <button
-                    onClick={() => handleBackOut(m.id)}
-                    className="px-3 py-1 bg-yellow-500 text-white rounded hover:bg-yellow-600 text-sm"
-                  >
-                    Back Out
-                  </button>
-                </div>
-              )}
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <h2 className="text-xl font-bold">{getManuscriptDisplayTitle(m)}</h2>
+                        <div className="text-sm text-gray-600">
+                          Invited by {inviter} • Invited at: {formatFirestoreDate(invitedAt)}
+                        </div>
+                        <div className="text-sm text-gray-600 mt-1">
+                          Status: <span className="font-medium">{m.status}</span>
+                        </div>
+                      </div>
+                      <div>
+                        <button
+                          onClick={() => setActiveReview(null)}
+                          className="px-3 py-1 rounded bg-gray-200 hover:bg-gray-300"
+                        >
+                          Close
+                        </button>
+                      </div>
+                    </div>
 
-              {(myDecision === "accept" || myDecision === "reject") &&
-                !hasSubmittedReview &&
-                (activeReview !== m.id ? (
-                  <button
-                    onClick={() => setActiveReview(m.id)}
-                    className={`mt-2 px-3 py-1 text-white rounded text-sm ${
-                      myDecision === "accept" 
-                        ? "bg-blue-500 hover:bg-blue-600" 
-                        : "bg-red-500 hover:bg-red-600"
-                    }`}
-                  >
-                    {myDecision === "accept" ? "Review" : "Submit Rejection Review"}
-                  </button>
-                ) : (
-                  <div className="flex flex-col gap-2 mt-2">
-                    <textarea
-                      placeholder={
-                        myDecision === "accept" 
-                          ? "Add your review comments" 
-                          : "Add your rejection reasons and feedback"
-                      }
-                      className="border p-2 rounded w-full"
-                      value={reviews[m.id]?.comment || ""}
-                      onChange={(e) =>
-                        handleReviewChange(m.id, "comment", e.target.value)
-                      }
-                    />
-                    <input
-                      type="number"
-                      min="0"
-                      max="5"
-                      placeholder="Rating (0-5)"
-                      className="border p-2 rounded w-32"
-                      value={reviews[m.id]?.rating || ""}
-                      onChange={(e) =>
-                        handleReviewChange(m.id, "rating", e.target.value)
-                      }
-                    />
-                    <button
-                      onClick={() => submitReview(m.id)}
-                      className={`mt-2 px-3 py-1 text-white rounded text-sm ${
-                        myDecision === "accept" 
-                          ? "bg-green-500 hover:bg-green-600" 
-                          : "bg-red-500 hover:bg-red-600"
-                      }`}
-                    >
-                      {myDecision === "accept" 
-                        ? "Submit Review & Mark Completed" 
-                        : "Submit Rejection Review & Mark Completed"}
-                    </button>
+                    <div className="mt-4 space-y-4">
+                      {/* Abstract */}
+                      <div>
+                        <p className="font-medium mb-2">Abstract</p>
+                        <div className="text-sm text-gray-800 whitespace-pre-wrap">{abstract}</div>
+                      </div>
+
+                      {/* File(s) */}
+                      <div>
+                        <p className="font-medium mb-2">Manuscript File(s)</p>
+                        {(m.answeredQuestions || [])
+                          .filter((q) => q.type === "file" && q.answer)
+                          .flatMap((q) => (Array.isArray(q.answer) ? q.answer : [q.answer]))
+                          .map((file, idx) => {
+                            // file may be storage path string or object
+                            const path =
+                              typeof file === "string"
+                                ? file
+                                : file?.storagePath || file?.path || file?.fileUrl || file?.url || null;
+                            const name = file?.fileName || file?.name || (path ? path.split("/").pop() : `File ${idx + 1}`);
+                            // build href: prefer full url in stored object, otherwise fallback to REST (will often work)
+                            const href = file?.url || file?.fileUrl || (path ? buildRestUrlSafe(path) : null);
+
+                            return href ? (
+                              <div key={idx} className="mb-1">
+                                <a
+                                  href={href}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-blue-600 underline"
+                                  download
+                                >
+                                  {name}
+                                </a>
+                                {file?.fileSize && (
+                                  <span className="text-xs text-gray-500 ml-2">
+                                    {Math.round(file.fileSize / 1024)} KB
+                                  </span>
+                                )}
+                              </div>
+                            ) : (
+                              <div key={idx} className="text-sm text-gray-600">
+                                {name} (unavailable)
+                              </div>
+                            );
+                          })}
+                      </div>
+
+                      {/* Review history & current reviewer meta */}
+                      <div>
+                        <p className="font-medium">Your Decision</p>
+                        <div className="text-sm text-gray-700">
+                          {myMeta?.comment ? (
+                            <>
+                              <p className="whitespace-pre-wrap">{myMeta.comment}</p>
+                              <p className="mt-1">Rating: {myMeta.rating ?? "N/A"}</p>
+                              {myMeta.reviewFileUrl && (
+                                <p className="mt-1">
+                                  <a
+                                    href={myMeta.reviewFileUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-blue-600 underline"
+                                  >
+                                    Download Your Review File
+                                  </a>
+                                </p>
+                              )}
+                            </>
+                          ) : (
+                            <p className="text-sm text-gray-600">You have not submitted your review yet.</p>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Review submission UI */}
+                      {myDecision === "pending" && !hasSubmittedReview && (
+                        <div className="border-t pt-4">
+                          <p className="font-medium mb-2">Reviewer Actions</p>
+
+                          {/* Decision buttons - always visible so reviewer can choose */}
+                          <div className="flex gap-2 mb-3">
+                            {["minor", "major", "publication", "reject"].map((d) => {
+                              const selected = activeDecision[m.id] === d;
+                              return (
+                                <button
+                                  key={d}
+                                  onClick={() => setActiveDecision((prev) => ({ ...prev, [m.id]: d }))}
+                                  className={`px-3 py-1 rounded text-white text-sm ${
+                                    d === "minor"
+                                      ? selected ? "bg-blue-700" : "bg-blue-500 hover:bg-blue-600"
+                                      : d === "major"
+                                      ? selected ? "bg-indigo-700" : "bg-indigo-500 hover:bg-indigo-600"
+                                      : d === "publication"
+                                      ? selected ? "bg-green-700" : "bg-green-500 hover:bg-green-600"
+                                      : selected ? "bg-red-700" : "bg-red-500 hover:bg-red-600"
+                                  }`}
+                                >
+                                  {decisionLabels[d]}
+                                </button>
+                              );
+                            })}
+                          </div>
+
+                          {/* Show review form only after a decision is selected */}
+                          {activeDecision[m.id] && (
+                            <div className="flex flex-col gap-2">
+                              <textarea
+                                placeholder="Add your review comments"
+                                className="border p-2 rounded w-full"
+                                value={reviews[m.id]?.comment || ""}
+                                onChange={(e) => handleReviewChange(m.id, "comment", e.target.value)}
+                              />
+                              <input
+                                type="number"
+                                min="0"
+                                max="5"
+                                placeholder="Rating (0-5)"
+                                className="border p-2 rounded w-32"
+                                value={reviews[m.id]?.rating || ""}
+                                onChange={(e) => handleReviewChange(m.id, "rating", e.target.value)}
+                              />
+                              <input
+                                type="file"
+                                accept=".pdf,.doc,.docx,.txt"
+                                onChange={(e) => {
+                                  const file = e.target.files[0];
+                                  setReviewFiles((prev) => ({ ...prev, [m.id]: file }));
+                                }}
+                                className="border p-2 rounded"
+                              />
+                              {reviewFiles[m.id] && (
+                                <p className="text-sm text-gray-600">Selected File: {reviewFiles[m.id].name}</p>
+                              )}
+
+                              <div className="flex gap-2">
+                                <button
+                                  onClick={() => handleDecisionSubmit(m.id)}
+                                  className="px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700 text-sm"
+                                >
+                                  Submit Review
+                                </button>
+                                <button
+                                  onClick={() => setActiveDecision((prev) => ({ ...prev, [m.id]: null }))}
+                                  className="px-3 py-1 bg-gray-300 text-gray-800 rounded hover:bg-gray-400 text-sm"
+                                >
+                                  Cancel Decision
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </div>
-                ))}
-
-              {(myDecision === "accept" || myDecision === "reject") && hasSubmittedReview && (
-                <p className={`mt-2 font-semibold ${
-                  myDecision === "accept" ? "text-green-600" : "text-red-600"
-                }`}>
-                  You have already submitted your {myDecision === "accept" ? "review" : "rejection review"}.
-                </p>
+                </div>
               )}
             </li>
           );
