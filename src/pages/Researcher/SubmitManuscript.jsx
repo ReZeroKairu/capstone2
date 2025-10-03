@@ -257,7 +257,7 @@ export default function SubmitManuscript() {
       parentResponseId: null,
       submittedAt: serverTimestamp(),
       fileUrl: downloadURL,
-      fileName: fileData.name,
+      fileName: fileData.name,      // <-- ensure this is saved
       fileType: fileData.type,
       fileSize: fileData.size,
       storagePath: exactStoragePath,

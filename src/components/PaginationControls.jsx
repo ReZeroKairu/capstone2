@@ -24,13 +24,14 @@ const PaginationControls = ({
 
     let prev = null;
     for (let num of range) {
-      if (prev) {
+      if (prev !== null) {
         if (num - prev === 2) rangeWithDots.push(prev + 1);
         else if (num - prev > 2) rangeWithDots.push("...");
       }
       rangeWithDots.push(num);
       prev = num;
     }
+
     return rangeWithDots;
   };
 
@@ -58,28 +59,28 @@ const PaginationControls = ({
         <button
           onClick={() => setCurrentPage(1)}
           disabled={currentPage === 1}
-          className="px-3 py-1 mr-1 bg-yellow-400 text-red-900 rounded-md border border-red-900 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="px-3 py-1 bg-yellow-400 text-red-900 rounded-md border border-red-900 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           First
         </button>
         <button
           onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
           disabled={currentPage === 1}
-          className="px-3 py-1 mr-4 bg-yellow-400 text-red-900 rounded-md border border-red-900 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="px-3 py-1 bg-yellow-400 text-red-900 rounded-md border border-red-900 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           Prev
         </button>
 
         {getPageNumbers(currentPage, totalPages).map((num, idx) =>
           num === "..." ? (
-            <span key={idx} className="px-3 py-1">
+            <span key={`dots-${idx}`} className="px-3 py-1">
               ...
             </span>
           ) : (
             <button
-              key={idx}
+              key={`page-${num}`}
               onClick={() => setCurrentPage(num)}
-              className={`px-3 py-1 mr-1 rounded-lg ${
+              className={`px-3 py-1 rounded-lg ${
                 num === currentPage
                   ? "bg-red-900 text-white border border-red-900"
                   : "bg-yellow-400 text-red-900 border border-red-900"
@@ -95,14 +96,14 @@ const PaginationControls = ({
             setCurrentPage((prev) => Math.min(prev + 1, totalPages))
           }
           disabled={currentPage === totalPages}
-          className="px-3 py-1 ml-3 mr-1 bg-yellow-400 text-red-900 rounded-md border border-red-900 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="px-3 py-1 bg-yellow-400 text-red-900 rounded-md border border-red-900 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           Next
         </button>
         <button
           onClick={() => setCurrentPage(totalPages)}
           disabled={currentPage === totalPages}
-          className="px-3 py-1 mr-1 bg-yellow-400 text-red-900 rounded-md border border-red-900 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="px-3 py-1 bg-yellow-400 text-red-900 rounded-md border border-red-900 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           Last
         </button>

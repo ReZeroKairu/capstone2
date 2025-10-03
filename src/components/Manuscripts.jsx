@@ -1,16 +1,22 @@
-import React, { useEffect, useState } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { getAuth } from "firebase/auth";
 import {
   collection,
   doc,
   getDoc,
   getDocs,
-  onSnapshot,
   updateDoc,
+  query,
+  where,
+  orderBy,
+  limit,
+  startAfter,
+  deleteDoc,
   serverTimestamp,
-  deleteField,
+  onSnapshot
 } from "firebase/firestore";
 import { db } from "../firebase/firebase";
+import { app } from "../firebase/firebase"; // added to get storageBucket
 import {
   computeManuscriptStatus,
   filterAcceptedReviewers,
@@ -45,6 +51,18 @@ const Manuscripts = () => {
       : ts instanceof Date
       ? ts.toLocaleString()
       : "N/A";
+
+  // Build a safe REST download URL from a storage path
+  const buildRestUrlSafe = (rawPath) => {
+    if (!rawPath) return null;
+    let p = String(rawPath).trim();
+    // remove leading slashes, collapse multiple slashes, remove trailing slash
+    p = p.replace(/^\/+/, "").replace(/\/{2,}/g, "/").replace(/\/$/, "");
+    const bucket = app?.options?.storageBucket || "pubtrack2.appspot.com";
+    return `https://firebasestorage.googleapis.com/v0/b/${bucket}/o/${encodeURIComponent(
+      p
+    )}?alt=media`;
+  };
 
   // --- Assign reviewer ---
   const handleAssign = async (manuscriptId, reviewerId) => {
@@ -284,6 +302,18 @@ const Manuscripts = () => {
       
       if (authorId) {
         try {
+          // Get reviewer IDs if this is a revision notification
+          const reviewerIds = [];
+          if ((newStatus === "For Revision (Minor)" || newStatus === "For Revision (Major)") && ms.assignedReviewers) {
+            // Get all reviewers who have submitted a review
+            const reviewsRef = collection(db, "manuscripts", manuscriptId, "reviews");
+            const reviewsSnapshot = await getDocs(reviewsRef);
+            const submittedReviewerIds = reviewsSnapshot.docs.map(doc => doc.data().reviewerId);
+            
+            // Only include reviewers who have submitted a review
+            reviewerIds.push(...ms.assignedReviewers.filter(id => submittedReviewerIds.includes(id)));
+          }
+          
           // Send notification to the author about the status change
           await handleManuscriptStatusChange(
             manuscriptId, 
@@ -291,19 +321,7 @@ const Manuscripts = () => {
             ms.status, // oldStatus
             newStatus, 
             authorId,  // authorId
-            userId     // adminId (who made the change)
-          );
-          
-          console.log(`Status change notification sent for manuscript ${manuscriptId} to author ${authorId}` );
-          
-          // Log the status change for the author
-          await UserLogService.logManuscriptStatusChange(
-            userId, // Admin who made the change
-            manuscriptId, 
-            manuscriptTitle, 
-            ms.status, 
-            newStatus, 
-            authorId  // The affected user (author)
+            userId,    // adminId (who made the change)
           );
           
           console.log(`Status change logged for author ${authorId}` );
@@ -344,7 +362,7 @@ const Manuscripts = () => {
         )
       );
     } catch (err) {
-      console.error("Error updating status:", err);
+      console.error("Error updating status:", err); 
     }
   };
   // --- Fetch data ---
@@ -366,131 +384,103 @@ const Manuscripts = () => {
         setUser(currentUser);
         setUserId(currentUser.uid);
 
-        const manuscriptsRef = collection(db, "manuscripts");
-        unsubscribeManuscripts = onSnapshot(manuscriptsRef, (snapshot) => {
-          const allMss = snapshot.docs
-            .map((doc) => {
-              const data = doc.data() || {};
+    const manuscriptsRef = collection(db, "manuscripts");
+unsubscribeManuscripts = onSnapshot(manuscriptsRef, (snapshot) => {
+  const allMss = snapshot.docs.map((doc) => {
+    const data = doc.data() || {};
 
-              let assignedReviewersData = [];
-              
-              // Get all reviewers (current + original) for comprehensive data
-              const allReviewerIds = [
-                ...(data.assignedReviewers || []),
-                ...(data.originalAssignedReviewers || [])
-              ];
-              const uniqueReviewerIds = [...new Set(allReviewerIds)];
-              
-              if (uniqueReviewerIds.length > 0) {
-                assignedReviewersData = uniqueReviewerIds
-                  .map((id) => {
-                    const u = allUsers.find((user) => user.id === id);
-                    // Check both current and original metadata
-                    const meta = data.assignedReviewersMeta?.[id] || data.originalAssignedReviewersMeta?.[id] || {};
-                    const decisionMeta = data.reviewerDecisionMeta?.[id] || {};
+    // Combine current + original reviewers
+    const allReviewerIds = [
+      ...(data.assignedReviewers || []),
+      ...(data.originalAssignedReviewers || [])
+    ];
+    const uniqueReviewerIds = [...new Set(allReviewerIds)];
 
-                    return {
-                      id,
-                      firstName: u?.firstName || "",
-                      middleName: u?.middleName || "",
-                      lastName: u?.lastName || "",
-                      assignedAt: meta.assignedAt || null,
-                      assignedBy: meta.assignedBy || "—",
-                      decision: decisionMeta.decision || null,
-                      decidedAt: decisionMeta.decidedAt || null,
-                    };
-                  })
-                  .sort((a, b) => {
-                    const aTime = a.assignedAt?.toDate?.()?.getTime?.() || 0;
-                    const bTime = b.assignedAt?.toDate?.()?.getTime?.() || 0;
-                    return aTime - bTime;
-                  });
+    let assignedReviewersData = uniqueReviewerIds.map((id) => {
+      const u = allUsers.find((user) => user.id === id);
+      const meta = data.assignedReviewersMeta?.[id] || data.originalAssignedReviewersMeta?.[id] || {};
+      const decisionMeta = data.reviewerDecisionMeta?.[id] || {};
 
-                if (userRole === "Peer Reviewer") {
-                  assignedReviewersData = assignedReviewersData.filter(
-                    (r) => r.id === currentUser.uid
-                  );
-                }
-              }
+      return {
+        id,
+        firstName: u?.firstName || "",
+        middleName: u?.middleName || "",
+        lastName: u?.lastName || "",
+        assignedAt: meta.assignedAt || null,
+        assignedBy: meta.assignedBy || "—",
+        decision: decisionMeta.decision || null,
+        decidedAt: decisionMeta.decidedAt || null,
+      };
+    }).sort((a, b) => (a.assignedAt?.toDate?.()?.getTime?.() || 0) - (b.assignedAt?.toDate?.()?.getTime?.() || 0));
 
-              let filteredData = {
-                ...data,
-                assignedReviewersData,
-              };
+    let manuscript = { id: doc.id, ...data, assignedReviewersData };
 
-              if (userRole === "Peer Reviewer") {
-                filteredData.userId = undefined;
-                filteredData.firstName = undefined;
-                filteredData.middleName = undefined;
-                filteredData.lastName = undefined;
-                filteredData.email = undefined;
-                filteredData.submitter = undefined;
-              }
+    // Role-based modifications
+    if (userRole === "Peer Reviewer") {
+      // Only keep their own reviewer data
+      manuscript.assignedReviewersData = assignedReviewersData.filter(r => r.id === currentUser.uid);
 
-              if (userRole === "Researcher") {
-                filteredData.assignedReviewersData = [];
-              }
+      // Hide author info
+      manuscript.userId = undefined;
+      manuscript.firstName = undefined;
+      manuscript.middleName = undefined;
+      manuscript.lastName = undefined;
+      manuscript.email = undefined;
+      manuscript.submitter = undefined;
+    }
 
-              return { id: doc.id, ...filteredData };
-            })
-            .filter((m) => {
-              if (userRole === "Admin") return true;
-              if (userRole === "Peer Reviewer") {
-                // For final status manuscripts, only show if reviewer is in current assignedReviewers
-                // This respects admin's decision about who gets credit
-                if (["For Publication", "Peer Reviewer Rejected"].includes(m.status)) {
-                  return (m.assignedReviewers || []).includes(currentUser.uid);
-                }
-                
-                // For other statuses, show if they are involved in any way
-                const currentlyAssigned = (m.assignedReviewers || []).includes(currentUser.uid);
-                const originallyAssigned = (m.originalAssignedReviewers || []).includes(currentUser.uid);
-                const hasDecision = m.reviewerDecisionMeta && m.reviewerDecisionMeta[currentUser.uid];
-                const hasSubmission = m.reviewerSubmissions && m.reviewerSubmissions.some(s => s.reviewerId === currentUser.uid);
-                
-                return currentlyAssigned || originallyAssigned || hasDecision || hasSubmission;
-              }
-              if (userRole === "Researcher") {
-                return (
-                  m.userId === currentUser.uid ||
-                  m.submitterId === currentUser.uid ||
-                  (m.coAuthorsIds || []).includes(currentUser.uid) ||
-                  (m.assignedReviewers || []).includes(currentUser.uid)
-                );
-              }
-              return (
-                m.userId === currentUser.uid ||
-                m.submitterId === currentUser.uid ||
-                (m.coAuthorsIds || []).includes(currentUser.uid)
-              );
-            });
+    if (userRole === "Researcher") {
+      manuscript.assignedReviewersData = [];
+    }
 
-          allMss.sort((a, b) => {
-            // Priority 1: Sort by completion date (finalDecisionAt) for completed manuscripts
-            const aCompletionTime = a.finalDecisionAt?.toDate?.()?.getTime?.() || 
-                                   (["For Publication", "For Revision", "Peer Reviewer Rejected"].includes(a.status) ? 
-                                    (a.acceptedAt?.toDate?.()?.getTime?.() || a.submittedAt?.toDate?.()?.getTime?.() || 0) : 0);
-            const bCompletionTime = b.finalDecisionAt?.toDate?.()?.getTime?.() || 
-                                   (["For Publication", "For Revision", "Peer Reviewer Rejected"].includes(b.status) ? 
-                                    (b.acceptedAt?.toDate?.()?.getTime?.() || b.submittedAt?.toDate?.()?.getTime?.() || 0) : 0);
-            
-            // If both have completion times, sort by completion time (newest first)
-            if (aCompletionTime && bCompletionTime) {
-              return bCompletionTime - aCompletionTime;
-            }
-            
-            // If only one has completion time, completed manuscripts come first
-            if (aCompletionTime && !bCompletionTime) return -1;
-            if (!aCompletionTime && bCompletionTime) return 1;
-            
-            // Priority 2: For non-completed manuscripts, sort by submitted/accepted time
-            const aTime = a.acceptedAt?.toDate?.()?.getTime?.() || a.submittedAt?.toDate?.()?.getTime?.() || 0;
-            const bTime = b.acceptedAt?.toDate?.()?.getTime?.() || b.submittedAt?.toDate?.()?.getTime?.() || 0;
-            return bTime - aTime;
-          });
+    return manuscript;
+  });
 
-          setManuscripts(allMss);
-        });
+  // No filtering that removes manuscripts — Peer Reviewer keeps all they are assigned to
+ let filtered = allMss;
+
+if (userRole === "Peer Reviewer") {
+  const myId = currentUser.uid;
+  filtered = allMss.filter((m) => {
+    const myDecision = m.reviewerDecisionMeta?.[myId]?.decision; // "publication" or "reject"
+    const isAssigned = (m.assignedReviewers || []).includes(myId) || 
+                      (m.originalAssignedReviewers || []).includes(myId);
+    const hasSubmitted = m.reviewerSubmissions?.some(s => s.reviewerId === myId);
+
+    // Only show manuscripts they are involved in
+    if (!(isAssigned || hasSubmitted || myDecision)) return false;
+
+    // If there's a final decision, only show if it matches the reviewer's decision
+    if (m.status === "For Publication") {
+      return myDecision === "publication";
+    } else if (m.status === "Rejected" || m.status === "Peer Reviewer Rejected") {
+      return myDecision === "reject";
+    }
+    
+    // If no final decision yet, show the manuscript
+    return true;
+  });
+} else if (userRole === "Researcher") {
+  filtered = allMss.filter((m) =>
+    m.userId === currentUser.uid ||
+    m.submitterId === currentUser.uid ||
+    (m.coAuthorsIds || []).includes(currentUser.uid) ||
+    (m.assignedReviewers || []).includes(currentUser.uid)
+  );
+}
+
+
+  // Sort newest first
+  filtered.sort((a, b) => {
+    const aTime = a.acceptedAt?.toDate?.()?.getTime?.() || a.submittedAt?.toDate?.()?.getTime?.() || 0;
+    const bTime = b.acceptedAt?.toDate?.()?.getTime?.() || b.submittedAt?.toDate?.()?.getTime?.() || 0;
+    return bTime - aTime;
+  });
+
+  setManuscripts(filtered);
+});
+
+
       } catch (err) {
         console.error(err);
       } finally {
@@ -526,51 +516,47 @@ const Manuscripts = () => {
     );
 
   // --- Filter manuscripts ---
-  const filteredManuscripts = manuscripts
-    .filter((m) => {
-      if (filter === "all") return m.status !== "Pending";
-      if (filter === "Rejected")
-        return m.status === "Rejected" || m.status === "Peer Reviewer Rejected";
-      if (filter === "Back to Admin") return m.status === "Back to Admin";
-      return m.status === filter;
-    })
-    .filter((m) => {
-      if (!searchQuery) return true;
-      const queryWords = searchQuery.toLowerCase().split(" ");
-      
-      // Get manuscript title from various possible fields
-      const manuscriptTitle = m.title || m.manuscriptTitle || m.formTitle || 
-                             m.answeredQuestions?.find(q => 
-                               q.question?.toLowerCase().includes('title'))?.answer || "Untitled";
-      
-      // Build searchable fields array
-      const fields = [
-        manuscriptTitle,
-        m.firstName,
-        m.middleName, 
-        m.lastName,
-        m.role,
-        m.email,
-        m.submitter,
-        m.status,
-        // Add reviewer names if available
-        ...(m.assignedReviewersData?.map(r => `${r.firstName} ${r.lastName}`) || []),
-        // Add form responses if available
-        ...(m.answeredQuestions?.map(q => q.answer?.toString()) || [])
-      ];
-      
-      return queryWords.every((word) =>
-        fields.some((f) => f?.toString().toLowerCase().includes(word))
-      );
-    });
+// Filter manuscripts based on status and search
+const filteredManuscripts = manuscripts
+  .filter((m) => {
+    if (filter === "all") return true;
+    if (filter === "Pending") return !m.status || m.status === "Pending";
+    if (filter === "Rejected") return m.status === "Rejected" || m.status === "Peer Reviewer Rejected";
+    if (filter === "Back to Admin") return m.status === "Back to Admin";
+    return m.status === filter;
+  })
+  .filter((m) => {
+    if (!searchQuery) return true;
+    const queryWords = searchQuery.toLowerCase().split(" ");
+    const manuscriptTitle = m.title || m.manuscriptTitle || m.formTitle ||
+      m.answeredQuestions?.find(q => q.question?.toLowerCase().includes('title'))?.answer || "Untitled";
 
-  const indexOfLast = currentPage * manuscriptsPerPage;
-  const indexOfFirst = indexOfLast - manuscriptsPerPage;
-  const currentManuscripts = filteredManuscripts.slice(
-    indexOfFirst,
-    indexOfLast
-  );
-  const totalPages = Math.ceil(filteredManuscripts.length / manuscriptsPerPage);
+    const fields = [
+      manuscriptTitle,
+      m.firstName,
+      m.middleName,
+      m.lastName,
+      m.role,
+      m.email,
+      m.submitter,
+      m.status,
+      ...(m.assignedReviewersData?.map(r => `${r.firstName} ${r.lastName}`) || []),
+      ...(m.answeredQuestions?.map(q => q.answer?.toString()) || [])
+    ];
+
+    return queryWords.every(word =>
+      fields.some(f => f?.toString().toLowerCase().includes(word))
+    );
+  });
+
+// Remove any null/undefined items (e.g., filtered out for role)
+const visibleManuscripts = filteredManuscripts.filter(Boolean);
+
+// Pagination calculation
+const totalPages = Math.ceil(visibleManuscripts.length / manuscriptsPerPage);
+const indexOfLast = currentPage * manuscriptsPerPage;
+const indexOfFirst = indexOfLast - manuscriptsPerPage;
+const currentManuscripts = visibleManuscripts.slice(indexOfFirst, indexOfLast);
 
   return (
     <div className="pt-24 px-4 sm:px-6 lg:px-24 pb-36">
@@ -593,22 +579,22 @@ const Manuscripts = () => {
         manuscripts={manuscripts}
       />
 
-      <ul className="space-y-4">
-        {currentManuscripts.filter(Boolean).map((m) => (
-          <ManuscriptItem
-            key={m.id}
-            manuscript={m}
-            role={role}
-            users={users}
-            handleAssign={handleAssign}
-            unassignReviewer={unassignReviewer}
-            showFullName={showFullName}
-            setShowFullName={setShowFullName}
-            formatFirestoreDate={formatFirestoreDate}
-            handleStatusChange={handleStatusChange} // <-- added for Back to Admin buttons
-          />
-        ))}
-      </ul>
+<ul className="space-y-4">
+  {currentManuscripts.map((m) => (
+    <ManuscriptItem
+      key={m.id}
+      manuscript={m}
+      role={role}
+      users={users}
+      handleAssign={handleAssign}
+      unassignReviewer={unassignReviewer}
+      showFullName={showFullName}
+      setShowFullName={setShowFullName}
+      formatFirestoreDate={formatFirestoreDate}
+      handleStatusChange={handleStatusChange} 
+    />
+  ))}
+</ul>
 
       <PaginationControls
         currentPage={currentPage}

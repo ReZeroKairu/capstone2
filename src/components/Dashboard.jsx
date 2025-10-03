@@ -22,6 +22,8 @@ const IN_PROGRESS_STATUSES = [
   "Peer Reviewer Reviewing",
   "Back to Admin",
   "For Revision",
+  "For Revision (Minor)",
+  "For Revision (Major)",
 ];
 
 const STATUS_STEPS = [
@@ -34,6 +36,12 @@ const STATUS_STEPS = [
   "For Publication",
   "Rejected",
 ];
+
+const STATUS_MAPPING = {
+  "For Revision (Minor)": "For Revision",
+  "For Revision (Major)": "For Revision",
+  "Peer Reviewer Rejected": "Rejected",
+};
 
 const Dashboard = ({ sidebarOpen }) => {
   const [user, setUser] = useState(null);
@@ -82,27 +90,35 @@ const Dashboard = ({ sidebarOpen }) => {
           return;
         }
 
-        // Peer Reviewer - need to fetch all manuscripts and filter client-side
         if (userRole === "Peer Reviewer") {
           const q = query(manuscriptsRef, orderBy("submittedAt", "desc"));
           const unsub = onSnapshot(q, (snapshot) => {
             const allManuscripts = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
             
-            // Filter manuscripts where peer reviewer is involved
+            // Filter manuscripts where peer reviewer is involved, matching the Manuscripts component logic
             const filteredManuscripts = allManuscripts.filter((m) => {
-              // For final status manuscripts, only show if reviewer is in current assignedReviewers
-              // This respects admin's decision about who gets credit
-              if (["For Publication", "Peer Reviewer Rejected"].includes(m.status)) {
-                return (m.assignedReviewers || []).includes(currentUser.uid);
+              const myId = currentUser.uid;
+              const myDecision = m.reviewerDecisionMeta?.[myId]?.decision; // "publication" or "reject"
+              const isAssigned = (m.assignedReviewers || []).includes(myId) || 
+                               (m.originalAssignedReviewers || []).includes(myId);
+              const hasSubmitted = m.reviewerSubmissions?.some(s => s.reviewerId === myId);
+
+              // Show manuscripts they are involved in OR were previously involved with
+              const wasInvolved = isAssigned || hasSubmitted || myDecision || 
+                               (m.originalAssignedReviewers || []).includes(myId);
+              
+              if (!wasInvolved) return false;
+
+              // If there's a final decision, only show if it matches the reviewer's decision
+              if (m.status === "For Publication") {
+                return myDecision === "publication";
+              } else if (m.status === "Rejected" || m.status === "Peer Reviewer Rejected") {
+                return myDecision === "reject";
               }
               
-              // For other statuses, show if they are involved in any way
-              const currentlyAssigned = (m.assignedReviewers || []).includes(currentUser.uid);
-              const originallyAssigned = (m.originalAssignedReviewers || []).includes(currentUser.uid);
-              const hasDecision = m.reviewerDecisionMeta && m.reviewerDecisionMeta[currentUser.uid];
-              const hasSubmission = m.reviewerSubmissions && m.reviewerSubmissions.some(s => s.reviewerId === currentUser.uid);
-              
-              return currentlyAssigned || originallyAssigned || hasDecision || hasSubmission;
+              // For all other statuses (including For Revision), show the manuscript
+              // if they were ever involved with it
+              return true;
             });
             
             setManuscripts(filteredManuscripts);
@@ -144,6 +160,13 @@ const Dashboard = ({ sidebarOpen }) => {
           orderBy("submittedAt", "desc")
         );
         
+        // --- ADDED: Query for manuscripts where user is a co-author via coAuthorsIds ---
+        const qCoAuthor = query(
+          manuscriptsRef,
+          where("coAuthorsIds", "array-contains", currentUser.uid),
+          orderBy("submittedAt", "desc")
+        );
+        
         // Query for recent manuscripts (used for co-author detection)
         const qRecent = query(
           manuscriptsRef,
@@ -166,6 +189,14 @@ const Dashboard = ({ sidebarOpen }) => {
         });
 
         const unsubAssigned = onSnapshot(qAssigned, (snap) => {
+          snap.docs.forEach((d) =>
+            localMap.set(d.id, { id: d.id, ...d.data() })
+          );
+          mergeAndSet();
+        });
+
+        // --- ADDED: Listener for the new co-author query ---
+        const unsubCoAuthor = onSnapshot(qCoAuthor, (snap) => {
           snap.docs.forEach((d) =>
             localMap.set(d.id, { id: d.id, ...d.data() })
           );
@@ -209,7 +240,9 @@ const Dashboard = ({ sidebarOpen }) => {
           mergeAndSet();
         });
 
-        unsubscribes.push(unsubOwn, unsubSubmitter, unsubAssigned, unsubRecent);
+        // --- UPDATED: Added the new unsubCoAuthor to the cleanup array ---
+        unsubscribes.push(unsubOwn, unsubSubmitter, unsubAssigned, unsubCoAuthor, unsubRecent);
+
       } catch (err) {
         console.error("Error fetching manuscripts:", err);
       } finally {
@@ -234,32 +267,37 @@ const Dashboard = ({ sidebarOpen }) => {
     if (role === "Admin") {
       counts.push({ label: "Total Manuscripts", count: manuscripts.length });
     } else if (role === "Peer Reviewer") {
-      // Count manuscripts using same logic as filtering
       const reviewedCount = manuscripts.filter((m) => {
-        // For final status manuscripts, only count if reviewer is in current assignedReviewers
-        if (["For Publication", "Peer Reviewer Rejected"].includes(m.status)) {
-          return (m.assignedReviewers || []).includes(user.uid);
-        }
-        
-        // For other statuses, count if they are involved in any way
+        // Include if they are assigned, were assigned, made a decision, or submitted a review
         const currentlyAssigned = (m.assignedReviewers || []).includes(user.uid);
         const originallyAssigned = (m.originalAssignedReviewers || []).includes(user.uid);
         const hasDecision = m.reviewerDecisionMeta && m.reviewerDecisionMeta[user.uid];
         const hasSubmission = m.reviewerSubmissions && m.reviewerSubmissions.some(s => s.reviewerId === user.uid);
         
+        // For final decisions, only count if their decision matches
+        if (["For Publication", "Peer Reviewer Rejected"].includes(m.status)) {
+          if (hasDecision) {
+            const decision = m.reviewerDecisionMeta[user.uid].decision;
+            return (m.status === "For Publication" && decision === "publication") || 
+                   (m.status === "Peer Reviewer Rejected" && decision === "reject");
+          }
+          return false;
+        }
+        
+        // For all other statuses, include if they were ever involved
         return currentlyAssigned || originallyAssigned || hasDecision || hasSubmission;
       }).length;
-      counts.push({
-        label: "Total Manuscripts Reviewed",
-        count: reviewedCount,
-      });
+      
+      counts.push({ label: "Total Manuscripts Reviewed", count: reviewedCount });
     } else if (role === "Researcher") {
-      const submittedCount = manuscripts.filter(
-        (m) =>
-          m.userId === user.uid ||
-          m.coAuthors?.some((c) => c.id === user.uid) ||
-          m.coAuthorsIds?.includes(user.uid)
-      ).length;
+      const submittedCount = manuscripts.filter((m) => {
+          const isOwner = m.userId === user.uid;
+          const isSubmitter = m.submitterId === user.uid;
+          const isCoAuthor =
+            m.coAuthors?.some((c) => c.id === user.uid) ||
+            m.coAuthorsIds?.includes(user.uid);
+          return isOwner || isSubmitter || isCoAuthor;
+      }).length;
       counts.push({
         label: "Total Manuscripts Submitted",
         count: submittedCount,
@@ -269,10 +307,26 @@ const Dashboard = ({ sidebarOpen }) => {
     // Other counts
     counts.push(
       {
+        label: "Pending",
+        count: manuscripts.filter((m) => m.status === "Pending").length,
+      },
+      {
         label: "In Progress",
+        count: manuscripts.filter((m) => IN_PROGRESS_STATUSES.includes(m.status)).length,
+      },
+      {
+        label: "For Revision",
         count: manuscripts.filter((m) =>
-          IN_PROGRESS_STATUSES.includes(m.status)
+          ["For Revision (Minor)", "For Revision (Major)"].includes(m.status)
         ).length,
+      },
+      {
+        label: "For Revision (Minor)",
+        count: manuscripts.filter((m) => m.status === "For Revision (Minor)").length,
+      },
+      {
+        label: "For Revision (Major)",
+        count: manuscripts.filter((m) => m.status === "For Revision (Major)").length,
       },
       {
         label: "For Publication",
@@ -280,8 +334,7 @@ const Dashboard = ({ sidebarOpen }) => {
       },
       {
         label: "Rejected",
-        count: manuscripts.filter((m) => rejectedStatuses.includes(m.status))
-          .length,
+        count: manuscripts.filter((m) => rejectedStatuses.includes(m.status)).length,
       }
     );
 
@@ -290,7 +343,6 @@ const Dashboard = ({ sidebarOpen }) => {
 
   // --- Filtered manuscripts ---
   const displayedManuscripts = useMemo(() => {
-    // Role-specific total clicks should show all manuscripts
     const totalLabels = [
       "Total Manuscripts",
       "Total Manuscripts Submitted",
@@ -299,22 +351,19 @@ const Dashboard = ({ sidebarOpen }) => {
 
     if (filterStatus === "All" || totalLabels.includes(filterStatus))
       return manuscripts;
-
-    if (filterStatus === "In Progress") {
+    if (filterStatus === "Pending")
+      return manuscripts.filter((m) => m.status === "Pending");
+    if (filterStatus === "In Progress")
       return manuscripts.filter((m) => IN_PROGRESS_STATUSES.includes(m.status));
-    }
-
-    if (filterStatus === "Rejected") {
-      return manuscripts.filter((m) =>
-        ["Rejected", "Peer Reviewer Rejected"].includes(m.status)
-      );
-    }
-
-    if (filterStatus === "For Publication") {
+    if (filterStatus === "Rejected")
+      return manuscripts.filter((m) => ["Rejected", "Peer Reviewer Rejected"].includes(m.status));
+    if (filterStatus === "For Publication")
       return manuscripts.filter((m) => m.status === "For Publication");
-    }
-
-    // Exact status match
+    if (filterStatus === "For Revision")
+      return manuscripts.filter((m) =>
+        ["For Revision (Minor)", "For Revision (Major)"].includes(m.status)
+      );
+    // Exact status (Minor only or Major only)
     return manuscripts.filter((m) => m.status === filterStatus);
   }, [manuscripts, filterStatus]);
 
@@ -364,8 +413,7 @@ const Dashboard = ({ sidebarOpen }) => {
         {/* Sidebar Summary Panel */}
         {role && (
           <div
-            className="lg:w-1/4 bg-gradient-to-b from-indigo-50 to-white rounded-2xl p-6 shadow-lg overflow-y-auto"
-            style={{ maxHeight: "400px" }}
+            className="lg:w-1/4 bg-gradient-to-b from-indigo-50 to-white rounded-2xl p-6 shadow-lg self-start"
           >
             <h2 className="text-xl font-semibold mb-4 text-gray-700">
               Dashboard
@@ -412,9 +460,7 @@ const Dashboard = ({ sidebarOpen }) => {
                 : m.submittedAt?.seconds
                 ? new Date(m.submittedAt.seconds * 1000).toLocaleString()
                 : "";
-
-              const statusForProgress =
-                m.status === "Peer Reviewer Rejected" ? "Rejected" : m.status;
+              const statusForProgress = STATUS_MAPPING[m.status] || m.status;
               const stepIndex = Math.max(
                 0,
                 STATUS_STEPS.indexOf(statusForProgress || "Pending")
@@ -424,11 +470,11 @@ const Dashboard = ({ sidebarOpen }) => {
                 "Peer Reviewer Rejected",
               ].includes(m.status);
               const isCompleted = m.status === "For Publication";
-              const statusColor = isCompleted
-                ? "green"
-                : isRejected
-                ? "red"
-                : "yellow";
+              let statusColor = "yellow";
+              if (isCompleted) statusColor = "green";
+              if (isRejected) statusColor = "red";
+              if (m.status === "For Revision (Minor)") statusColor = "blue";
+              if (m.status === "For Revision (Major)") statusColor = "orange";
 
               return (
                 <div

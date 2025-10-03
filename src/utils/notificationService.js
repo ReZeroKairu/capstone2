@@ -6,14 +6,6 @@ import { db } from "../firebase/firebase";
  */
 export class NotificationService {
   
-  /**
-   * Create a notification for a specific user
-   * @param {string} userId - Target user ID
-   * @param {string} type - Notification type (manuscript_status, assignment, etc.)
-   * @param {string} title - Notification title
-   * @param {string} message - Notification message
-   * @param {Object} metadata - Additional data (manuscriptId, etc.)
-   */
   static async createNotification(userId, type, title, message, metadata = {}) {
     try {
       const notificationData = {
@@ -27,42 +19,31 @@ export class NotificationService {
           createdAt: new Date().toISOString()
         }
       };
-
       const notificationsRef = collection(db, "Users", userId, "Notifications");
       await addDoc(notificationsRef, notificationData);
-      
       console.log(`Notification created for user ${userId}: ${title}`);
     } catch (error) {
       console.error("Error creating notification:", error);
     }
   }
-
-  /**
-   * Create notifications for multiple users
-   * @param {Array} userIds - Array of user IDs
-   * @param {string} type - Notification type
-   * @param {string} title - Notification title
-   * @param {string} message - Notification message
-   * @param {Object} metadata - Additional data
-   */
-  static async createBulkNotifications(userIds, type, title, message, metadata = {}) {
-    const promises = userIds.map(userId => 
-      this.createNotification(userId, type, title, message, metadata)
-    );
-    
-    try {
-      await Promise.all(promises);
-      console.log(`Bulk notifications created for ${userIds.length} users`);
-    } catch (error) {
-      console.error("Error creating bulk notifications:", error);
-    }
+static async createBulkNotifications(userIds, type, title, message, metadata = {}) {
+  // Ensure userIds is always an array
+  if (!Array.isArray(userIds)) {
+    userIds = userIds ? [userIds] : [];
   }
 
-  /**
-   * Get user's display name for notifications
-   * @param {string} userId - User ID
-   * @returns {Promise<string>} User's display name
-   */
+  const promises = userIds.map(userId => 
+    this.createNotification(userId, type, title, message, metadata)
+  );
+
+  try {
+    await Promise.all(promises);
+    console.log(`Bulk notifications created for ${userIds.length} users`);
+  } catch (error) {
+    console.error("Error creating bulk notifications:", error);
+  }
+}
+
   static async getUserDisplayName(userId) {
     try {
       const userDoc = await getDoc(doc(db, "Users", userId));
@@ -77,189 +58,152 @@ export class NotificationService {
     }
   }
 
-  /**
-   * Manuscript status change notifications
-   */
-  static async notifyManuscriptStatusChange(manuscriptId, manuscriptTitle, oldStatus, newStatus, authorId, adminId) {
+  // ----------------- Manuscript Notifications -----------------
+
+  static async notifyManuscriptStatusChange(manuscriptId, manuscriptTitle, oldStatus, newStatus, authorId, adminId, reviewerIds = []) {
     const statusMessages = {
       "Pending": "Your manuscript has been submitted and is pending review.",
       "Assigning Peer Reviewer": "Your manuscript is being assigned to peer reviewers.",
       "Peer Reviewer Assigned": "Peer reviewers have been assigned to your manuscript.",
       "Peer Reviewer Reviewing": "Your manuscript is currently under peer review.",
       "Back to Admin": "Peer review is complete. Your manuscript is back with the admin for final decision.",
-      "For Revision": "Your manuscript requires revisions based on peer review feedback.",
+      "For Revision (Minor)": "Your manuscript requires minor revisions based on peer review feedback.",
+      "For Revision (Major)": "Your manuscript requires major revisions based on peer review feedback.",
       "For Publication": "🎉 Congratulations! Your manuscript has been accepted for publication.",
-      "Rejected": "Your manuscript has been rejected. Please review the feedback provided.",
-      "Peer Reviewer Rejected": "Your manuscript has been rejected by peer reviewers."
+      "Rejected": "Your manuscript has been rejected. Please review the feedback provided."
     };
 
+    // Notify author
     const message = statusMessages[newStatus] || `Your manuscript status has been updated to: ${newStatus}`;
-    
-    // Determine the best action URL based on status
-    let actionUrl = "/manuscripts";
-    if (["For Publication", "Rejected", "Peer Reviewer Rejected"].includes(newStatus)) {
-      actionUrl = "/dashboard"; // Final statuses go to dashboard for celebration/review
-    }
-    
-    // Notify the author
+    let actionUrl = ["For Publication", "Rejected"].includes(newStatus) ? "/dashboard" : "/manuscripts";
+
     await this.createNotification(
       authorId,
       "manuscript_status",
       `Manuscript Status Update: ${manuscriptTitle}`,
       message,
-      { 
-        manuscriptId, 
-        manuscriptTitle, 
-        oldStatus, 
-        newStatus,
-        actionUrl,
-        userRole: "Researcher" // Hint for routing
-      }
+      { manuscriptId, manuscriptTitle, oldStatus, newStatus, actionUrl, userRole: "Researcher" }
     );
 
-    // If it's a final decision, also notify admin if different from author
-    if (["For Publication", "Rejected", "Peer Reviewer Rejected"].includes(newStatus) && adminId && adminId !== authorId) {
+    // Notify admin
+    if (["For Publication", "Rejected"].includes(newStatus) && adminId && adminId !== authorId) {
       const adminMessage = `Manuscript "${manuscriptTitle}" has been finalized with status: ${newStatus}`;
       await this.createNotification(
         adminId,
         "manuscript_final",
         `Manuscript Finalized: ${manuscriptTitle}`,
         adminMessage,
+        { manuscriptId, manuscriptTitle, newStatus, actionUrl: "/manuscripts", userRole: "Admin" }
+      );
+    }
+
+    // Notify reviewers when manuscript is sent for revision (minor or major)
+    if ((newStatus === "For Revision (Minor)" || newStatus === "For Revision (Major)") && reviewerIds && reviewerIds.length > 0) {
+      const revisionType = newStatus.includes("Minor") ? "minor" : "major";
+      const reviewerMessage = `The manuscript "${manuscriptTitle}" you reviewed has been sent for ${revisionType} revisions.`;
+      await this.createBulkNotifications(
+        reviewerIds,
+        "manuscript_revision",
+        `Manuscript Requires ${revisionType.charAt(0).toUpperCase() + revisionType.slice(1)} Revisions: ${manuscriptTitle}`,
+        reviewerMessage,
         { 
           manuscriptId, 
           manuscriptTitle, 
-          newStatus,
-          actionUrl: "/manuscripts",
-          userRole: "Admin"
+          revisionType,
+          actionUrl: "/manuscripts" 
         }
       );
     }
   }
 
-  /**
-   * Notify researchers about manuscript submission
-   */
   static async notifyManuscriptSubmission(manuscriptId, manuscriptTitle, authorId, adminIds) {
     const authorName = await this.getUserDisplayName(authorId);
-    
-    // Notify all admins about new submission
     const adminMessage = `New manuscript "${manuscriptTitle}" has been submitted by ${authorName}`;
-    
     await this.createBulkNotifications(
       adminIds,
       "new_submission",
       "New Manuscript Submission",
       adminMessage,
-      {
-        manuscriptId,
-        manuscriptTitle,
-        authorId,
-        actionUrl: "/formresponses", // Redirect to form responses for review
-        userRole: "Admin"
-      }
+      { manuscriptId, manuscriptTitle, authorId, actionUrl: "/formresponses", userRole: "Admin" }
     );
   }
 
-  /**
-   * Notify peer reviewers about assignment
-   */
   static async notifyPeerReviewerAssignment(manuscriptId, manuscriptTitle, reviewerIds, assignedByAdminId) {
     const adminName = await this.getUserDisplayName(assignedByAdminId);
-    
     const message = `You have been assigned to review the manuscript "${manuscriptTitle}" by ${adminName}`;
-    
     await this.createBulkNotifications(
       reviewerIds,
       "reviewer_assignment",
       "New Manuscript Assignment",
       message,
-      { 
-        manuscriptId, 
-        manuscriptTitle, 
-        assignedBy: assignedByAdminId,
-        actionUrl: "/review-manuscript",
-        userRole: "Peer Reviewer"
-      }
+      { manuscriptId, manuscriptTitle, assignedBy: assignedByAdminId, actionUrl: "/review-manuscript", userRole: "Peer Reviewer" }
     );
   }
 
-  /**
-   * Notify admin about peer reviewer decisions
-   */
-  static async notifyPeerReviewerDecision(manuscriptId, manuscriptTitle, reviewerId, decision, adminIds) {
-    const reviewerName = await this.getUserDisplayName(reviewerId);
-    const decisionText = decision === "accept" ? "accepted" : decision === "reject" ? "rejected" : "backed out of";
-    
-    const message = `${reviewerName} has ${decisionText} the manuscript "${manuscriptTitle}"`;
-    
-    await this.createBulkNotifications(
-      adminIds,
-      "reviewer_decision",
-      `Peer Reviewer ${decision === "accept" ? "Acceptance" : decision === "reject" ? "Rejection" : "Withdrawal"}`,
-      message,
-      { 
-        manuscriptId, 
-        manuscriptTitle, 
-        reviewerId, 
-        decision,
-        actionUrl: "/manuscripts",
-        userRole: "Admin"
-      }
-    );
-  }
+  // ----------------- Peer Reviewer Decisions -----------------
 
-  /**
-   * Notify admin about completed reviews
-   */
-  static async notifyReviewCompleted(manuscriptId, manuscriptTitle, reviewerId, adminIds) {
-    const reviewerName = await this.getUserDisplayName(reviewerId);
-    
-    const message = `${reviewerName} has completed their review for "${manuscriptTitle}"`;
-    
-    await this.createBulkNotifications(
-      adminIds,
-      "review_completed",
-      "Review Completed",
-      message,
-      { 
-        manuscriptId, 
-        manuscriptTitle, 
-        reviewerId,
-        actionUrl: "/manuscripts",
-        userRole: "Admin"
-      }
-    );
-  }
+// ----------------- Peer Reviewer Decisions -----------------
 
-  /**
-   * Notify about deadline reminders
-   */
-  static async notifyDeadlineReminder(userIds, type, title, message, metadata = {}) {
-    await this.createBulkNotifications(
-      userIds,
-      "deadline_reminder",
-      title,
-      message,
-      { 
-        ...metadata,
-        actionUrl: metadata.actionUrl || "/admin/deadlines" // Default to deadlines page for admins
-      }
-    );
-  }
+static async notifyPeerReviewerAccept(manuscriptId, manuscriptTitle, reviewerId, adminIds) {
+  const reviewerName = await this.getUserDisplayName(reviewerId);
+  const message = `${reviewerName} has accepted to review the manuscript "${manuscriptTitle}"`;
+  await this.createBulkNotifications(
+    adminIds,
+    "reviewer_accept",
+    "Peer Reviewer Accepted",
+    message,
+    { manuscriptId, manuscriptTitle, reviewerId, actionUrl: "/manuscripts", userRole: "Admin" }
+  );
+}
 
-  /**
-   * Get all admin user IDs
-   */
-  static async getAdminUserIds() {
-    try {
-      const usersRef = collection(db, "Users");
-      const querySnapshot = await getDocs(query(usersRef, where("role", "==", "Admin")));
-      return querySnapshot.docs.map(doc => doc.id);
-    } catch (error) {
-      console.error("Error fetching admin users:", error);
-      return [];
-    }
+static async notifyPeerReviewerDecline(manuscriptId, manuscriptTitle, reviewerId, adminIds) {
+  const reviewerName = await this.getUserDisplayName(reviewerId);
+  const message = `${reviewerName} has declined to review the manuscript "${manuscriptTitle}"`;
+  await this.createBulkNotifications(
+    adminIds,
+    "reviewer_decline",
+    "Peer Reviewer Declined",
+    message,
+    { manuscriptId, manuscriptTitle, reviewerId, actionUrl: "/manuscripts", userRole: "Admin" }
+  );
+}
+
+// ----------------- Wrapper for Peer Reviewer Decisions -----------------
+static async notifyPeerReviewerDecision(manuscriptId, manuscriptTitle, reviewerId, adminIds, accepted) {
+  if (accepted) {
+    await this.notifyPeerReviewerAccept(manuscriptId, manuscriptTitle, reviewerId, adminIds);
+  } else {
+    await this.notifyPeerReviewerDecline(manuscriptId, manuscriptTitle, reviewerId, adminIds);
   }
+}
+
+static async notifyReviewCompleted(manuscriptId, manuscriptTitle, reviewerId, adminIds) {
+  const reviewerName = await this.getUserDisplayName(reviewerId);
+  const message = `${reviewerName} has completed their review for "${manuscriptTitle}"`;
+  await this.createBulkNotifications(
+    adminIds,
+    "review_completed",
+    "Review Completed",
+    message,
+    { manuscriptId, manuscriptTitle, reviewerId, actionUrl: "/manuscripts", userRole: "Admin" }
+  );
+}
+
+
+  // ----------------- Utility -----------------
+
+ static async getAdminUserIds() {
+  try {
+    const usersRef = collection(db, "Users");
+    const querySnapshot = await getDocs(query(usersRef, where("role", "==", "Admin")));
+    const adminIds = querySnapshot.docs.map(doc => doc.id);
+    return adminIds.length ? adminIds : []; // ensures array is returned
+  } catch (error) {
+    console.error("Error fetching admin users:", error);
+    return []; // return empty array if fetch fails
+  }
+}
+
 }
 
 export default NotificationService;
