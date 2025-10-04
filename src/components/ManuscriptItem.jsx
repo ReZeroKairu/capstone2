@@ -868,7 +868,7 @@ const ManuscriptItem = ({
                                   key={fileIdx}
                                   onClick={async () => {
                                     try {
-                                      const url = await getDownloadURL(ref(storage, filePath));
+                                      const url = await getDownloadURL(storageRef(storage, filePath));
                                       const a = document.createElement('a');
                                       a.href = url;
                                       a.download = file.name || filePath.split('/').pop() || 'download';
@@ -906,7 +906,7 @@ const ManuscriptItem = ({
                                   key={fileIdx}
                                   onClick={async () => {
                                     try {
-                                      const url = await getDownloadURL(ref(storage, file));
+                                      const url = await getDownloadURL(storageRef(storage, file));
                                       const a = document.createElement('a');
                                       a.href = url;
                                       a.download = file.split('/').pop() || 'download';
