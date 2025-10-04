@@ -64,6 +64,18 @@ const ManuscriptItem = ({
   const myDecision = myDecisionMeta?.decision;
   const finalDecision = manuscript.finalDecision;
 
+  const researcherVisibleStatuses = [
+  "For Revision (Minor)",
+  "For Revision (Major)",
+  "For Publication",
+  "Rejected",
+  ];
+  const formatReviewerName = (reviewer, full) =>
+  full
+    ? `${reviewer.firstName} ${reviewer.middleName} ${reviewer.lastName}`.trim()
+    : `${reviewer.firstName} ${reviewer.middleName ? reviewer.middleName.charAt(0) + '.' : ''} ${reviewer.lastName}`.trim();
+
+
   // Determine if current user can see this manuscript
   const canSeeManuscript = (() => {
     if (role === "Admin") return true; // Admin sees everything
@@ -202,15 +214,39 @@ const ManuscriptItem = ({
         // ✅ Increment counts only for rejected reviewers
         await updateReviewerStats(updatedAssignedReviewers, "rejectedManuscripts");
       } else if (["For Revision (Minor)", "For Revision (Major)"].includes(newStatus)) {
-        // Keep all assigned reviewers
-        updatedAssignedReviewers = buildReviewerObjects(ms.assignedReviewers || []);
-        updatedAssignedMeta = Object.fromEntries(
-          updatedAssignedReviewers.map((r) => [
-            r.id,
-            ms.assignedReviewersMeta?.[r.id] || { assignedAt: r.assignedAt, assignedBy: r.assignedBy },
-          ])
-        );
-      }
+    // Keep all assigned reviewers
+    updatedAssignedReviewers = buildReviewerObjects(ms.assignedReviewers || []);
+    
+    // Preserve existing assignedReviewersMeta
+    updatedAssignedMeta = {
+      ...ms.assignedReviewersMeta,
+      ...Object.fromEntries(
+        updatedAssignedReviewers.map((r) => [
+          r.id,
+          ms.assignedReviewersMeta?.[r.id] || { assignedAt: r.assignedAt, assignedBy: r.assignedBy },
+        ])
+      ),
+    };
+
+    // Preserve reviewer submissions
+    const updatedReviewerSubmissions = ms.reviewerSubmissions || [];
+
+    // Update doc (add reviewerSubmissions)
+    await updateDoc(msRef, {
+      status: newStatus,
+      assignedReviewers: updatedAssignedReviewers.map((r) => r.id),
+      assignedReviewersMeta: updatedAssignedMeta,
+      reviewerSubmissions: updatedReviewerSubmissions,
+      originalAssignedReviewers: ms.assignedReviewers || [],
+      originalAssignedReviewersMeta: ms.assignedReviewersMeta || {},
+      finalDecisionAt: new Date(),
+      finalDecisionBy: "Admin",
+    });
+
+    // Exit the function to avoid double updating below
+    return;
+  }
+
 
       // Update manuscript document
       await updateDoc(msRef, {
@@ -354,12 +390,9 @@ const downloadFileCandidate = async (candidate, suggestedName) => {
                 const decisionMeta =
                   manuscript.reviewerDecisionMeta?.[reviewer.id] || null;
 
-                const key = `${manuscript.id}_${reviewer.id}`;
-                const displayName = showFullName[key]
-                  ? `${reviewer.firstName} ${reviewer.middleName} ${reviewer.lastName}`.trim()
-                  : `${reviewer.firstName} ${
-                      reviewer.middleName ? reviewer.middleName.charAt(0) + "." : ""
-                    } ${reviewer.lastName}`.trim();
+         const submissionKey = `submission_${manuscript.id}_${reviewer.id}`;
+
+            const displayName = formatReviewerName(reviewer, showFullName[submissionKey]);
 
                 const assignedByUser = users.find((u) => u.id === reviewer.assignedBy);
                 const assignedByName = assignedByUser
@@ -372,18 +405,21 @@ const downloadFileCandidate = async (candidate, suggestedName) => {
                   <div key={reviewer.id} className="bg-blue-50 p-2 rounded-md">
                     <div className="flex justify-between items-start">
                       <div>
-                        <span
-                          className="text-blue-800 text-sm font-medium cursor-pointer"
-                          onClick={() =>
-                            setShowFullName((prev) => ({
-                              ...prev,
-                              [reviewer.id]: !prev[reviewer.id],
-                            }))
-                          }
-                          title="Click to toggle full name"
-                        >
-                          {displayName}
-                        </span>
+                      <span
+  className="text-blue-800 text-sm font-medium cursor-pointer"
+  onClick={() => {
+    const assignedKey = `assigned_${manuscript.id}_${reviewer.id}`;
+    setShowFullName((prev) => ({
+      ...prev,
+      [assignedKey]: !prev[assignedKey],
+    }));
+  }}
+  title="Click to toggle full name"
+>
+  {formatReviewerName(reviewer, showFullName[`assigned_${manuscript.id}_${reviewer.id}`])}
+</span>
+
+
 
                         <div className="text-xs text-gray-500 mt-1">
                           Assigned: {formatDate(reviewer.assignedAt)} by {assignedByName}
@@ -433,176 +469,97 @@ const downloadFileCandidate = async (candidate, suggestedName) => {
             </div>
           )}
 
-        {/* Detailed Peer Reviewer Info for Final Status Manuscripts */}
-        {(role === "Admin" || role === "Peer Reviewer") &&
-          ["For Publication", "For Revision (Minor)", "For Revision (Major)", "Peer Reviewer Rejected", "Rejected"].includes(status) &&
-          (() => {
-            // Determine which reviewers' details to show based on role
-            const reviewerIdsToShow =
-              role === "Admin"
-                ? [
-                    ...new Set([
-                      ...(manuscript.originalAssignedReviewers || []),
-                      ...(manuscript.assignedReviewers || []),
-                    ]),
-                  ]
-                : // For Peer Reviewers, only show if they have a decision recorded
-                manuscript.reviewerDecisionMeta?.[currentUserId]
-                ? [currentUserId]
-                : [];
+      {/* --- Peer Review Details --- */}
+{(role === "Admin" ||
+ (role === "Researcher" && researcherVisibleStatuses.includes(status)) ||
+ (role === "Peer Reviewer" && manuscript.reviewerSubmissions?.some(s => s.reviewerId === currentUserId))
+) &&
+["For Publication", "For Revision (Minor)", "For Revision (Major)", "Peer Reviewer Rejected", "Rejected", "Back to Admin"].includes(status)
+&& (
+  <div className="mt-3 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-200">
+    <h4 className="text-base font-semibold text-gray-800 mb-3 flex items-center">
+      <span className="w-2 h-2 bg-blue-500 rounded-full mr-2"></span>
+      {role === "Admin" ? "Peer Review Details" : role === "Researcher" ? "Review Details" : "My Review Details"}
+    </h4>
 
-            if (reviewerIdsToShow.length === 0) return null;
+    {/* Final decision summary for Admins only */}
+    {role === "Admin" && manuscript.finalDecisionAt && (
+      <div className="mb-3 p-2 bg-white rounded border-l-4 border-blue-500">
+        <p className="text-sm">
+          <span className="font-medium text-gray-700">Final Admin Decision:</span>{" "}
+          <span className="text-blue-600 font-medium">{status}</span> on{" "}
+          <span className="font-medium">{formatDate(manuscript.finalDecisionAt)}</span>
+        </p>
+      </div>
+    )}
 
-            return (
-              <div className="mt-3 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-200">
-                <h4 className="text-base font-semibold text-gray-800 mb-3 flex items-center">
-                  <span className="w-2 h-2 bg-blue-500 rounded-full mr-2"></span>
-                  {role === "Admin" ? "Peer Review Details" : "My Review Details"}
-                </h4>
+   {/* Reviewer submissions / Review Details */}
+<div className="space-y-3">
+  {(role === "Admin"
+    ? [...new Set([...(manuscript.originalAssignedReviewers || []), ...(manuscript.assignedReviewers || [])])]
+    : role === "Peer Reviewer"
+    ? [currentUserId]
+    : role === "Researcher"
+    ? manuscript.reviewerSubmissions?.map((s) => s.reviewerId) || []
+    : []
+  ).map((reviewerId) => {
+    const reviewer = users.find((u) => u.id === reviewerId);
+    const submission = manuscript.reviewerSubmissions?.find(
+      (s) => s.reviewerId === reviewerId
+    );
 
-                {/* Final decision summary (Only for Admins) */}
-                {role === "Admin" && manuscript.finalDecisionAt && (
-                  <div className="mb-3 p-2 bg-white rounded border-l-4 border-blue-500">
-                    <p className="text-sm">
-                      <span className="font-medium text-gray-700">
-                        Final Admin Decision:
-                      </span>{" "}
-                      <span className="text-blue-600 font-medium">{status}</span> on{" "}
-                      <span className="font-medium">
-                        {formatDate(manuscript.finalDecisionAt)}
-                      </span>
-                    </p>
-                  </div>
-                )}
+    if (!submission) return null;
 
-                <div className="space-y-3">
-                  {reviewerIdsToShow.map((reviewerId) => {
-                    const reviewerMeta =
-                      manuscript.originalAssignedReviewersMeta?.[reviewerId] ||
-                      manuscript.assignedReviewersMeta?.[reviewerId];
-                    const reviewer = users.find((u) => u.id === reviewerId);
-                    const assignedByUser = users.find(
-                      (u) => u.id === reviewerMeta?.assignedBy
-                    );
-                    const decision = manuscript.reviewerDecisionMeta?.[reviewerId];
-                    const submission = manuscript.reviewerSubmissions?.find(
-                      (s) => s.reviewerId === reviewerId
-                    );
+    return (
+      <div key={reviewerId} className="bg-white p-3 rounded-lg border shadow-sm">
+        {/* Header */}
+        {role === "Admin" && reviewer && (
+          <div className="flex items-center justify-between mb-2">
+            <h5 className="font-medium text-gray-800">
+              {reviewer.firstName} {reviewer.middleName ? reviewer.middleName + " " : ""}{reviewer.lastName}
+              {reviewer.role && (
+                <span className="text-gray-500 text-sm ml-1">({reviewer.role})</span>
+              )}
+            </h5>
+          </div>
+        )}
 
-                    if (!reviewer && !decision && !submission) return null;
+        {/* Comments */}
+        {submission.comment && (
+          <div className="mb-2">
+            <p className="font-medium text-gray-700">Comments:</p>
+            <p className="mt-1 p-2 bg-gray-50 rounded border text-sm italic">
+              "{submission.comment}"
+            </p>
+          </div>
+        )}
 
-                    return (
-                      <div
-                        key={reviewerId}
-                        className="bg-white p-3 rounded-lg border shadow-sm"
-                      >
-                        {/* Reviewer Header */}
-                        <div className="flex items-center justify-between mb-2">
-                          <h5 className="font-medium text-gray-800">
-                            {reviewer
-                              ? `${reviewer.firstName} ${
-                                  reviewer.middleName
-                                    ? reviewer.middleName + " "
-                                    : ""
-                                }${reviewer.lastName}`
-                              : "Unknown Reviewer"}
-                            {reviewer?.role && (
-                              <span className="text-gray-500 text-sm ml-1">
-                                ({reviewer.role})
-                              </span>
-                            )}
-                          </h5>
-                          {decision && (
-                            <span
-                              className={`px-2 py-1 rounded-full text-xs font-medium ${
-                                decision.decision === "minor"
-                                  ? "bg-yellow-100 text-yellow-700"
-                                  : decision.decision === "major"
-                                  ? "bg-orange-100 text-orange-700"
-                                  : decision.decision === "publication"
-                                  ? "bg-green-100 text-green-700"
-                                  : decision.decision === "reject"
-                                  ? "bg-red-100 text-red-700"
-                                  : "bg-gray-100 text-gray-600"
-                              }`}
-                            >
-                              {decisionLabels[decision.decision] ||
-                                decision.decision}
-                            </span>
-                          )}
-                        </div>
+        {/* Download review file */}
+        {(submission.reviewFileUrl || submission.reviewFile || submission.reviewFilePath) && (
+          <p className="mt-1">
+            <button
+              onClick={() =>
+                downloadFileCandidate(
+                  submission.reviewFileUrl || submission.reviewFile || submission.reviewFilePath,
+                  submission.fileName || submission.name
+                )
+              }
+              className="text-blue-600 underline text-sm"
+            >
+              Download Review File
+            </button>
+          </p>
+        )}
+      </div>
+    );
+  })}
+</div>
 
-                        {/* Reviewer Details */}
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm text-gray-600 mb-2">
-                          {reviewer?.email && role === "Admin" && (
-                            <p>
-                              <span className="font-medium">Email:</span>{" "}
-                              {reviewer.email}
-                            </p>
-                          )}
-                          {reviewerMeta?.assignedAt && (
-                            <p>
-                              <span className="font-medium">Assigned:</span>{" "}
-                              {formatDate(reviewerMeta.assignedAt)}
-                            </p>
-                          )}
-                          {assignedByUser && role === "Admin" && (
-                            <p>
-                              <span className="font-medium">Assigned by:</span>{" "}
-                              {assignedByUser.firstName} {assignedByUser.lastName}
-                            </p>
-                          )}
-                          {decision?.decidedAt && (
-                            <p>
-                              <span className="font-medium">Decision made:</span>{" "}
-                              {formatDate(decision.decidedAt)}
-                            </p>
-                          )}
-                        </div>
+  </div>
+)}
 
-                        {/* Review Submission Details */}
-                        {submission && (
-                          <div className="mt-2 p-2 bg-gray-50 rounded border-l-4 border-gray-400">
-                            <p className="text-sm font-medium text-gray-700 mb-1">
-                              Review Submission:
-                            </p>
-                            <div className="text-sm text-gray-600 space-y-1">
-                          
-                              <p>
-                                <span className="font-medium">Submitted:</span>{" "}
-                                {formatDate(submission.completedAt)}
-                              </p>
-                              {submission.comment && (
-                                <div>
-                                  <p className="font-medium">Comments:</p>
-                                  <p className="mt-1 p-2 bg-white rounded border text-xs italic">
-                                    "{submission.comment}"
-                                  </p>
-                                </div>
-                              )}
-                              { (submission.reviewFileUrl || submission.reviewFile || submission.reviewFilePath) && (
-                                <p className="mt-2">
-                                  <button
-                                    onClick={() =>
-                                      downloadFileCandidate(submission.reviewFileUrl || submission.reviewFile || submission.reviewFilePath, submission.fileName || submission.name)
-                                    }
-                                    className="text-blue-600 underline text-sm"
-                                  >
-                                    Download Review File
-                                  </button>
-                                </p>
-                             )}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            );
-          })()}
 
+                 
         {/* Actions */}
         <div className="mt-3 flex flex-col sm:flex-row sm:items-center gap-2">
           {role !== "Peer Reviewer" && (

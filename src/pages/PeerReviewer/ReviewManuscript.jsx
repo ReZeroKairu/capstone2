@@ -457,7 +457,7 @@ const downloadFileCandidate = async (file) => {
                           
                               <input
                                 type="file"
-                                accept=".pdf,.doc,.docx,.txt"
+                                accept=".doc,.docx"
                                 onChange={(e) => {
                                   const file = e.target.files[0];
                                   setReviewFiles((prev) => ({ ...prev, [m.id]: file }));
