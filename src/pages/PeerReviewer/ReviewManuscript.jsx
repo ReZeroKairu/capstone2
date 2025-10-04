@@ -16,78 +16,24 @@ import {
 } from "../../utils/manuscriptHelpers";
 import { useUserLogs } from "../../hooks/useUserLogs";
 
-// Helper to resolve file URL from manuscript object
-function useManuscriptFile(manuscript) {
-  const [fileUrl, setFileUrl] = useState(null);
-  const [fileName, setFileName] = useState(null);
+// --------------------------
+// Hook to resolve file URLs
+// --------------------------
 
-  useEffect(() => {
-    let mounted = true;
-    async function resolveFile() {
-      if (!manuscript) return;
-      // Find file answer in answeredQuestions
-      const fileQ = (manuscript.answeredQuestions || []).find(
-        (q) => q.type === "file" && q.answer
-      );
-      let path = null;
-      let name = null;
-      if (fileQ) {
-        if (typeof fileQ.answer === "string") {
-          path = fileQ.answer;
-          name = fileQ.fileName || path.split("/").pop();
-        } else if (typeof fileQ.answer === "object") {
-          path =
-            fileQ.answer.path ||
-            fileQ.answer.storagePath ||
-            fileQ.answer.fileUrl ||
-            fileQ.answer.url ||
-            null;
-          name =
-            fileQ.answer.name || fileQ.fileName || (path ? path.split("/").pop() : "Manuscript File");
-        }
-      }
 
-      // Fallback to top-level storagePath/fileUrl if present
-      if (!path) {
-        path = manuscript.storagePath || manuscript.fileUrl || manuscript.file || null;
-        name = manuscript.fileName || (path ? path.split("/").pop() : "Manuscript File");
-      }
+// --------------------------
+// REST URL fallback helper
+// --------------------------
+const buildRestUrlSafe = (rawPath) => {
+  if (!rawPath) return null;
+  const path = rawPath.toString().trim().replace(/^\/+|\/+$/g, "").replace(/\/{2,}/g, "/");
+ const bucket = storage?.app?.options?.storageBucket || "pubtrack2.firebasestorage.app";
+  return `https://firebasestorage.googleapis.com/v0/b/${bucket}/o/${encodeURIComponent(path)}?alt=media`;
+};
 
-      if (!path) {
-        if (mounted) {
-          setFileUrl(null);
-          setFileName(null);
-        }
-        return;
-      }
-
-      try {
-        const url = await getDownloadURL(storageRef(storage, path));
-        if (mounted) {
-          setFileUrl(url);
-          setFileName(name);
-        }
-      } catch (err) {
-        // fallback REST URL (may require token / proper ACL)
-        const bucket = storage?.app?.options?.storageBucket || "pubtrack2.appspot.com";
-        const rest = `https://firebasestorage.googleapis.com/v0/b/${bucket}/o/${encodeURIComponent(
-          path
-        )}?alt=media`;
-        if (mounted) {
-          setFileUrl(rest);
-          setFileName(name);
-        }
-      }
-    }
-    resolveFile();
-    return () => {
-      mounted = false;
-    };
-  }, [manuscript]);
-
-  return { fileUrl, fileName };
-}
-
+// --------------------------
+// Main Component
+// --------------------------
 export default function ReviewManuscript() {
   const [reviewerId, setReviewerId] = useState(null);
   const [manuscripts, setManuscripts] = useState([]);
@@ -99,7 +45,8 @@ export default function ReviewManuscript() {
   const [reviewFiles, setReviewFiles] = useState({});
   const [userRole, setUserRole] = useState(null);
   const { logManuscriptReview } = useUserLogs();
-
+  const [manuscriptFileUrls, setManuscriptFileUrls] = useState({});
+  
   const formatFirestoreDate = (ts) =>
     ts?.toDate?.()
       ? ts.toDate().toLocaleString()
@@ -115,6 +62,7 @@ export default function ReviewManuscript() {
     pending: "Pending",
   };
 
+  // Fetch user, role, manuscripts
   useEffect(() => {
     const fetchUserAndManuscripts = async () => {
       try {
@@ -125,55 +73,88 @@ export default function ReviewManuscript() {
         const uid = user.uid;
         setReviewerId(uid);
 
-        // Fetch user role
         const userDoc = await getDoc(doc(db, "Users", uid));
         if (userDoc.exists()) setUserRole(userDoc.data().role);
 
-        // Fetch all users
         const usersSnap = await getDocs(collection(db, "Users"));
         const allUsers = usersSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
-        const usersMap = Object.fromEntries(allUsers.map((u) => [u.id, u]));
-        setUsers(usersMap);
+        setUsers(Object.fromEntries(allUsers.map((u) => [u.id, u])));
 
-        // Fetch all manuscripts
         const msSnap = await getDocs(collection(db, "manuscripts"));
-        const allMss = msSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        let allMss = msSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
 
-        // Include manuscripts assigned to the reviewer OR where the reviewer has already made a decision
-        let assigned = allMss.filter(
+        // Assigned to reviewer OR already reviewed
+        allMss = allMss.filter(
           (m) =>
             (m.assignedReviewers || []).includes(uid) ||
             m.reviewerDecisionMeta?.[uid]?.decision
         );
 
-        // Add 'acceptedAt' for sorting
-        assigned = assigned.map((m) => {
-          const myMeta = m.assignedReviewersMeta?.[uid];
-          const acceptedAt = myMeta?.respondedAt
-            ? myMeta.respondedAt instanceof Date
-              ? myMeta.respondedAt
-              : myMeta.respondedAt.toDate?.() || new Date()
-            : null;
-          return { ...m, acceptedAt };
-        });
-
-        // Sort by acceptedAt descending
-        assigned.sort((a, b) => {
+        // Sort by acceptedAt
+        allMss = allMss.map((m) => {
+          const acceptedAt = m.assignedReviewersMeta?.[uid]?.respondedAt;
+          return { ...m, acceptedAt: acceptedAt ? acceptedAt.toDate?.() || acceptedAt : null };
+        }).sort((a, b) => {
           if (!a.acceptedAt) return 1;
           if (!b.acceptedAt) return -1;
           return b.acceptedAt - a.acceptedAt;
         });
 
-        setManuscripts(assigned);
+        setManuscripts(allMss);
         setLoading(false);
       } catch (err) {
         console.error("Failed to fetch user or manuscripts:", err);
         setLoading(false);
       }
     };
-
     fetchUserAndManuscripts();
   }, []);
+ useEffect(() => {
+  const resolveAllFiles = async () => {
+    const urlsMap = {};
+
+    for (const m of manuscripts) {
+      const files = (m.answeredQuestions || [])
+        .filter(q => q.type === "file" && q.answer)
+        .flatMap(q => Array.isArray(q.answer) ? q.answer : [q.answer]);
+
+      urlsMap[m.id] = await Promise.all(
+        files.map(async (file) => {
+          if (!file) return null;
+
+          // 1️⃣ If file is already a URL, use it directly
+          if (typeof file === "object" && (file.url || file.fileUrl)) {
+            return file.url || file.fileUrl;
+          }
+
+          // 2️⃣ If file is a string path
+          if (typeof file === "string") {
+            try {
+              return await getDownloadURL(storageRef(storage, file));
+            } catch {
+              return buildRestUrlSafe(file);
+            }
+          }
+
+          // 3️⃣ If file is an object with a storage path
+          const path = file.path || file.storagePath || null;
+          if (!path) return null;
+
+          try {
+            return await getDownloadURL(storageRef(storage, path));
+          } catch {
+            return buildRestUrlSafe(path);
+          }
+        })
+      );
+    }
+
+    setManuscriptFileUrls(urlsMap);
+  };
+
+  if (manuscripts.length) resolveAllFiles();
+}, [manuscripts]);
+
 
   const logReviewerHistory = async (msRef, reviewerId, decision) => {
     await updateDoc(msRef, {
@@ -184,29 +165,28 @@ export default function ReviewManuscript() {
     });
   };
 
-   const handleDecisionSubmit = async (manuscriptId) => {
-     const selected = manuscripts.find((m) => m.id === manuscriptId);
-     if (!selected) return;
+  const handleDecisionSubmit = async (manuscriptId) => {
+    const selected = manuscripts.find((m) => m.id === manuscriptId);
+    if (!selected) return;
 
-     const decision = activeDecision[manuscriptId];
-     const review = reviews[manuscriptId];
-
-     if (!decision || !review?.comment) {
-       alert("Please provide your review comments before submitting.");
-       return;
-     }
+    const decision = activeDecision[manuscriptId];
+    const review = reviews[manuscriptId];
+    if (!decision || !review?.comment) {
+      alert("Please provide your review comments before submitting.");
+      return;
+    }
 
     let fileUrl = null;
-    let fileName = null; // store original filename
+    let fileName = null;
+
     if (reviewFiles[manuscriptId]) {
       const file = reviewFiles[manuscriptId];
       if (file.size > 30 * 1024 * 1024) {
         alert("File size exceeds 30MB. Please upload a smaller file.");
         return;
       }
-      const fileRef = storageRef(storage, `reviews/${manuscriptId}/${reviewerId}-${file.name}`);
 
-      // include contentDisposition so downloads from Firebase include the original filename
+      const fileRef = storageRef(storage, `reviews/${manuscriptId}/${reviewerId}-${file.name}`);
       const metadata = {
         contentType: file.type,
         contentDisposition: `attachment; filename="${file.name}"`,
@@ -217,22 +197,8 @@ export default function ReviewManuscript() {
     }
 
     const updatedDecisions = {
-       ...(selected.reviewerDecisionMeta || {}),
-       [reviewerId]: {
-         decision,
-         comment: review.comment,
-         rating: review.rating || 0,
-         decidedAt: new Date(),
-         reviewFileUrl: fileUrl,
-         reviewFileName: fileName || null,
-       },
-     };
-
-     const msRef = doc(db, "manuscripts", manuscriptId);
-     await logReviewerHistory(msRef, reviewerId, decision);
-
-    await updateDoc(msRef, {
-      [`reviewerDecisionMeta.${reviewerId}`]: {
+      ...(selected.reviewerDecisionMeta || {}),
+      [reviewerId]: {
         decision,
         comment: review.comment,
         rating: review.rating || 0,
@@ -240,6 +206,13 @@ export default function ReviewManuscript() {
         reviewFileUrl: fileUrl,
         reviewFileName: fileName || null,
       },
+    };
+
+    const msRef = doc(db, "manuscripts", manuscriptId);
+    await logReviewerHistory(msRef, reviewerId, decision);
+
+    await updateDoc(msRef, {
+      [`reviewerDecisionMeta.${reviewerId}`]: updatedDecisions[reviewerId],
       status: "Back to Admin",
       reviewerSubmissions: arrayUnion({
         reviewerId,
@@ -259,15 +232,7 @@ export default function ReviewManuscript() {
     await logManuscriptReview(manuscriptId, manuscriptTitle, decision);
 
     setManuscripts((prev) =>
-      prev.map((m) =>
-        m.id === manuscriptId
-          ? {
-              ...m,
-              reviewerDecisionMeta: updatedDecisions,
-              status: "Back to Admin",
-            }
-          : m
-      )
+      prev.map((m) => m.id === manuscriptId ? { ...m, reviewerDecisionMeta: updatedDecisions, status: "Back to Admin" } : m)
     );
 
     setActiveReview(null);
@@ -278,29 +243,15 @@ export default function ReviewManuscript() {
   const handleReviewChange = (manuscriptId, field, value) => {
     setReviews((prev) => ({
       ...prev,
-      [manuscriptId]: {
-        ...prev[manuscriptId],
-        [field]: value,
-      },
+      [manuscriptId]: { ...prev[manuscriptId], [field]: value },
     }));
   };
 
   const getManuscriptDisplayTitle = (m) =>
     m.manuscriptTitle ||
     m.title ||
-    m.answeredQuestions?.find((q) =>
-      q.question?.toLowerCase().includes("manuscript title")
-    )?.answer ||
+    m.answeredQuestions?.find((q) => q.question?.toLowerCase().includes("manuscript title"))?.answer ||
     "Untitled";
-
-  // Ensure storage path doesn't start/end with '/' or contain '//' before encoding
-const buildRestUrlSafe = (rawPath) => {
-  if (!rawPath) return null;
-  let p = String(rawPath).trim();
-  p = p.replace(/^\/+/, "").replace(/\/{2,}/g, "/").replace(/\/$/, "");
-  const bucket = storage?.app?.options?.storageBucket || "pubtrack2.appspot.com";
-  return `https://firebasestorage.googleapis.com/v0/b/${bucket}/o/${encodeURIComponent(p)}?alt=media`;
-};
 
   if (loading) return <p className="pt-28 px-6">Loading manuscripts...</p>;
   if (!manuscripts.length) return <p className="pt-28 px-6">No manuscripts assigned.</p>;
@@ -308,139 +259,82 @@ const buildRestUrlSafe = (rawPath) => {
   return (
     <div className="px-6 py-28 max-w-5xl mx-auto">
       <h1 className="text-2xl font-bold mb-6">My Assigned Manuscripts</h1>
-
       <ul className="space-y-4">
         {manuscripts.map((m) => {
           const myMeta = m.reviewerDecisionMeta?.[reviewerId];
           const myDecision = myMeta?.decision || "pending";
           const myDecisionLabel = decisionLabels[myDecision] || "Pending";
 
-          const hasSubmittedReview = m.reviewerSubmissions?.some(
-            (r) => r.reviewerId === reviewerId
-          );
+          const hasSubmittedReview = m.reviewerSubmissions?.some(r => r.reviewerId === reviewerId);
 
           const canSeeManuscript =
             userRole === "Admin" ||
-            (userRole === "Peer Reviewer" &&
-              ((m.assignedReviewers || []).includes(reviewerId) || myDecision === "reject"));
-
+            (userRole === "Peer Reviewer" && ((m.assignedReviewers || []).includes(reviewerId) || myDecision === "reject"));
           if (!canSeeManuscript) return null;
 
-          // invited meta for this reviewer (who invited them and when)
           const invitedMeta = m.assignedReviewersMeta?.[reviewerId] || {};
           const invitedById = invitedMeta?.assignedBy || invitedMeta?.invitedBy || null;
           const invitedAt = invitedMeta?.assignedAt || invitedMeta?.invitedAt || null;
           const inviter =
-            invitedById && users[invitedById]
-              ? `${users[invitedById].firstName || ""} ${users[invitedById].lastName || ""}`.trim()
-              : invitedMeta?.assignedByName || invitedMeta?.invitedByName || "Unknown";
+            invitedById && users[invitedById] ? `${users[invitedById].firstName || ""} ${users[invitedById].lastName || ""}`.trim() : invitedMeta?.assignedByName || invitedMeta?.invitedByName || "Unknown";
 
-          // abstract extraction (if present)
-          const abstract =
-            m.answeredQuestions?.find((q) =>
-              q.question?.toLowerCase().includes("abstract")
-            )?.answer || m.abstract || "—";
+          const abstract = m.answeredQuestions?.find(q => q.question?.toLowerCase().includes("abstract"))?.answer || m.abstract || "—";
 
           return (
-            <li
-              key={m.id}
-              className="p-4 border rounded bg-white shadow-sm flex items-center justify-between"
-            >
+            <li key={m.id} className="p-4 border rounded bg-white shadow-sm flex items-center justify-between">
               <div>
                 <div className="text-lg font-semibold">{getManuscriptDisplayTitle(m)}</div>
                 <div className="text-xs text-gray-500 mt-1">
-                  {/* double-blind: show inviter + invited at and status only */}
-                  Invited by {inviter} • Invited: {formatFirestoreDate(invitedAt)} • Status:{" "}
-                  <span className="font-medium">{m.status}</span>
+                  Invited by {inviter} • Invited: {formatFirestoreDate(invitedAt)} • Status: <span className="font-medium">{m.status}</span>
                 </div>
               </div>
-
               <div className="flex items-center gap-3">
-                <span className="px-2 py-1 rounded text-xs bg-gray-100 text-gray-800">
-                  {myDecisionLabel}
-                </span>
-
+                <span className="px-2 py-1 rounded text-xs bg-gray-100 text-gray-800">{myDecisionLabel}</span>
                 <button
-                  onClick={() => setActiveReview((prev) => (prev === m.id ? null : m.id))}
+                  onClick={() => setActiveReview(prev => prev === m.id ? null : m.id)}
                   className="px-3 py-1 bg-blue-600 text-white rounded text-sm"
                 >
                   {activeReview === m.id ? "Hide Details" : "View Details"}
                 </button>
               </div>
 
-              {/* Details drawer/modal for this manuscript (inline expandable) */}
               {activeReview === m.id && (
-                <div className="absolute inset-0 bg-black/40 z-40 flex items-center justify-center">
-                  <div
-                    className="bg-white rounded-md p-6 w-[90%] max-w-3xl shadow-lg overflow-auto max-h-[80vh]"
-                    onClick={(e) => e.stopPropagation()}
-                  >
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+                  <div className="bg-white rounded-2xl p-6 w-[90%] max-w-3xl shadow-xl overflow-auto max-h-[85vh]" onClick={e => e.stopPropagation()}>
+                    {/* Header & Abstract */}
                     <div className="flex justify-between items-start">
                       <div>
                         <h2 className="text-xl font-bold">{getManuscriptDisplayTitle(m)}</h2>
-                        <div className="text-sm text-gray-600">
-                          Invited by {inviter} • Invited at: {formatFirestoreDate(invitedAt)}
-                        </div>
-                        <div className="text-sm text-gray-600 mt-1">
-                          Status: <span className="font-medium">{m.status}</span>
-                        </div>
+                        <div className="text-sm text-gray-600">Invited by {inviter} • Invited at: {formatFirestoreDate(invitedAt)}</div>
+                        <div className="text-sm text-gray-600 mt-1">Status: <span className="font-medium">{m.status}</span></div>
                       </div>
                       <div>
-                        <button
-                          onClick={() => setActiveReview(null)}
-                          className="px-3 py-1 rounded bg-gray-200 hover:bg-gray-300"
-                        >
-                          Close
-                        </button>
+                        <button onClick={() => setActiveReview(null)} className="px-3 py-1 rounded bg-gray-200 hover:bg-gray-300">Close</button>
                       </div>
                     </div>
 
                     <div className="mt-4 space-y-4">
-                      {/* Abstract */}
                       <div>
                         <p className="font-medium mb-2">Abstract</p>
                         <div className="text-sm text-gray-800 whitespace-pre-wrap">{abstract}</div>
                       </div>
 
-                      {/* File(s) */}
+                      {/* Manuscript Files */}
                       <div>
                         <p className="font-medium mb-2">Manuscript File(s)</p>
-                        {(m.answeredQuestions || [])
-                          .filter((q) => q.type === "file" && q.answer)
-                          .flatMap((q) => (Array.isArray(q.answer) ? q.answer : [q.answer]))
-                          .map((file, idx) => {
-                            // file may be storage path string or object
-                            const path =
-                              typeof file === "string"
-                                ? file
-                                : file?.storagePath || file?.path || file?.fileUrl || file?.url || null;
-                            const name = file?.fileName || file?.name || (path ? path.split("/").pop() : `File ${idx + 1}`);
-                            // build href: prefer full url in stored object, otherwise fallback to REST (will often work)
-                            const href = file?.url || file?.fileUrl || (path ? buildRestUrlSafe(path) : null);
+                        {(m.answeredQuestions || []).filter(q => q.type === "file" && q.answer).flatMap(q => Array.isArray(q.answer) ? q.answer : [q.answer]).map((file, idx) => {
+                          const url = manuscriptFileUrls[m.id]?.[idx] || null;
 
-                            return href ? (
-                              <div key={idx} className="mb-1">
-                                <a
-                                  href={href}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-blue-600 underline"
-                                  download
-                                >
-                                  {name}
-                                </a>
-                                {file?.fileSize && (
-                                  <span className="text-xs text-gray-500 ml-2">
-                                    {Math.round(file.fileSize / 1024)} KB
-                                  </span>
-                                )}
-                              </div>
-                            ) : (
-                              <div key={idx} className="text-sm text-gray-600">
-                                {name} (unavailable)
-                              </div>
-                            );
-                          })}
+                          const name = file?.fileName || file?.name || (typeof file === "string" ? file.split("/").pop() : `File ${idx+1}`);
+                          return url ? (
+                            <div key={idx} className="mb-1">
+                              <a href={url} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline" download>{name}</a>
+                              {file?.fileSize && <span className="text-xs text-gray-500 ml-2">{Math.round(file.fileSize/1024)} KB</span>}
+                            </div>
+                          ) : (
+                            <div key={idx} className="text-sm text-gray-600">{name} (loading...)</div>
+                          );
+                        })}
                       </div>
 
                       {/* Review history & current reviewer meta */}
