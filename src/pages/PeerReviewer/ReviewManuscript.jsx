@@ -255,6 +255,40 @@ export default function ReviewManuscript() {
 
   if (loading) return <p className="pt-28 px-6">Loading manuscripts...</p>;
   if (!manuscripts.length) return <p className="pt-28 px-6">No manuscripts assigned.</p>;
+const downloadFileCandidate = async (file) => {
+  if (!file) return;
+
+  let url = null;
+
+  // If it's already a full URL
+  if (typeof file === "string" && file.startsWith("http")) {
+    url = file;
+  } 
+  // If it's an object with url or fileUrl
+  else if (file.url || file.fileUrl) {
+    url = file.url || file.fileUrl;
+  } 
+  // If it's a Firebase storage path
+  else if (file.path || file.storagePath || typeof file === "string") {
+    const path = file.path || file.storagePath || file;
+    try {
+      url = await getDownloadURL(storageRef(storage, path));
+    } catch {
+      url = buildRestUrlSafe(path);
+    }
+  }
+
+  if (!url) return;
+
+  // Trigger download
+  const link = document.createElement("a");
+  link.href = url;
+  link.download =
+    file?.name || file?.fileName || (typeof file === "string" ? file.split("/").pop() : "file");
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+};
 
   return (
     <div className="px-6 py-28 max-w-5xl mx-auto">
@@ -322,19 +356,39 @@ export default function ReviewManuscript() {
                       {/* Manuscript Files */}
                       <div>
                         <p className="font-medium mb-2">Manuscript File(s)</p>
-                        {(m.answeredQuestions || []).filter(q => q.type === "file" && q.answer).flatMap(q => Array.isArray(q.answer) ? q.answer : [q.answer]).map((file, idx) => {
-                          const url = manuscriptFileUrls[m.id]?.[idx] || null;
+                       {(m.answeredQuestions || [])
+  .filter(q => q.type === "file" && q.answer)
+  .flatMap(q => Array.isArray(q.answer) ? q.answer : [q.answer])
+  .map((file, idx) => {
+    const name =
+      file?.fileName ||
+      file?.name ||
+      (typeof file === "string" ? file.split("/").pop() : `File ${idx + 1}`);
 
-                          const name = file?.fileName || file?.name || (typeof file === "string" ? file.split("/").pop() : `File ${idx+1}`);
-                          return url ? (
-                            <div key={idx} className="mb-1">
-                              <a href={url} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline" download>{name}</a>
-                              {file?.fileSize && <span className="text-xs text-gray-500 ml-2">{Math.round(file.fileSize/1024)} KB</span>}
-                            </div>
-                          ) : (
-                            <div key={idx} className="text-sm text-gray-600">{name} (loading...)</div>
-                          );
-                        })}
+    return (
+      <button
+        key={idx}
+        onClick={() => downloadFileCandidate(file)}
+        className="text-blue-600 hover:text-blue-800 underline flex items-center mb-1"
+      >
+        <svg
+          className="w-4 h-4 mr-1"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+          />
+        </svg>
+        {name}
+      </button>
+    );
+  })}
+
                       </div>
 
                       {/* Review history & current reviewer meta */}
