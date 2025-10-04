@@ -235,102 +235,63 @@ const ManuscriptItem = ({
   }) || [];
 
   // Helper to download a file candidate (either an http(s) URL or a storage path)
-  const downloadFileCandidate = async (candidate, suggestedName) => {
-    if (!candidate) return;
-    try {
-      // If candidate is already a full URL, open it in new tab (will prompt download if Content-Disposition)
-      if (typeof candidate === "string" && (candidate.startsWith("http://") || candidate.startsWith("https://"))) {
-        const a = document.createElement("a");
-        a.href = candidate;
-        a.target = "_blank";
-        a.rel = "noopener noreferrer";
-        if (suggestedName) a.download = suggestedName;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        return;
-      }
+const downloadFileCandidate = async (candidate, suggestedName) => {
+  if (!candidate) return;
 
-      // If candidate is an object that contains a url field, use it
-      if (typeof candidate === "object" && candidate.url) {
-        const a = document.createElement("a");
-        a.href = candidate.url;
-        a.target = "_blank";
-        a.rel = "noopener noreferrer";
-        if (candidate.name) a.download = candidate.name;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        return;
-      }
+  try {
+    let url;
 
-      // Otherwise treat candidate as a storage path and call getDownloadURL
-      const path = typeof candidate === "string" ? candidate : candidate.path || candidate.storagePath || candidate.filePath;
+    // Determine actual URL
+    if (typeof candidate === "string" && /^https?:\/\//.test(candidate)) {
+      url = candidate;
+    } else if (typeof candidate === "object" && candidate.url) {
+      url = candidate.url;
+    } else {
+      const path =
+        typeof candidate === "string"
+          ? candidate
+          : candidate.path || candidate.storagePath || candidate.filePath;
       if (!path) return;
-      const url = await getDownloadURL(ref(storage, path));
-      const a = document.createElement("a");
-      a.href = url;
-      a.target = "_blank";
-      a.rel = "noopener noreferrer";
-      a.download = suggestedName || (typeof candidate === "string" ? path.split("/").pop() : candidate.name || path.split("/").pop());
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-    } catch (err) {
-      console.error("Error downloading review file:", err);
-      // fallback: try building REST URL (may require token/public)
-      try {
-        const bucket = storage?.app?.options?.storageBucket || "pubtrack2.appspot.com";
-        let p = String(typeof candidate === "string" ? candidate : candidate.path || candidate.storagePath || "").trim();
-        p = p.replace(/^\/+/, "").replace(/\/{2,}/g, "/").replace(/\/$/, "");
-        const rest = `https://firebasestorage.googleapis.com/v0/b/${bucket}/o/${encodeURIComponent(p)}?alt=media`;
-        const a = document.createElement("a");
-        a.href = rest;
-        a.target = "_blank";
-        a.rel = "noopener noreferrer";
-        a.download = suggestedName || p.split("/").pop();
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-      } catch (err2) {
-        console.error("Fallback download also failed:", err2);
-        alert("Unable to download file. Check permissions or contact admin.");
-      }
-    }
-  };
 
-  // helper: download using blob to preserve filename (falls back to open link)
-  async function downloadWithFilename(urlOrPath, filename) {
-    try {
-      let url = urlOrPath;
-      // if this looks like a storage path, resolve tokened URL via getDownloadURL
-      if (!/^https?:\/\//.test(String(urlOrPath))) {
-        url = await getDownloadURL(storageRef(storage, String(urlOrPath)));
-      }
-      // try to fetch the resource (CORS must allow)
-      const res = await fetch(url);
-      if (!res.ok) throw new Error("Fetch failed: " + res.status);
-      const blob = await res.blob();
-      const blobUrl = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = blobUrl;
-      a.download = filename || (url.split("/").pop() || "file");
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      // release
-      setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
-      return;
-    } catch (err) {
-      console.warn("downloadWithFilename failed, opening URL instead:", err);
-      // fallback: open link in new tab (browser may handle token & download)
-      const finalUrl = /^https?:\/\//.test(String(urlOrPath)) ? urlOrPath : await (async () => {
-        try { return await getDownloadURL(storageRef(storage, String(urlOrPath))); } catch { return null; }
-      })();
-      if (finalUrl) window.open(finalUrl, "_blank", "noopener");
-      else alert("Unable to download file (permissions or CORS). Contact admin.");
+      // Always get a fresh download URL from Firebase
+      url = await getDownloadURL(storageRef(storage, path));
     }
+
+    // Directly open URL in a new tab if it’s a full URL
+    if (/^https?:\/\//.test(url)) {
+      const tempLink = document.createElement("a");
+      tempLink.href = url;
+      tempLink.download = suggestedName || url.split("/").pop();
+      tempLink.target = "_blank";
+      document.body.appendChild(tempLink);
+      tempLink.click();
+      document.body.removeChild(tempLink);
+      return;
+    }
+
+    // Otherwise fetch blob
+    const res = await fetch(url);
+    if (!res.ok) throw new Error("Failed to fetch file");
+    const blob = await res.blob();
+
+    // Always create a new blob URL
+    const blobUrl = URL.createObjectURL(blob);
+
+    const a = document.createElement("a");
+    a.href = blobUrl;
+    a.download = suggestedName || "download";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+
+    // Revoke after 1s to ensure download triggered
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+  } catch (err) {
+    console.error("Download failed:", err);
+    alert("Unable to download file. Please try again.");
   }
+};
+
 
   return (
     <>
@@ -811,161 +772,72 @@ const ManuscriptItem = ({
               {formatDate(submittedAt)}
             </div>
 
-            <div className="space-y-4 mb-4">
-              {answeredQuestions
-                .filter(
-                  (q) =>
-                    !q.question
-                      ?.toLowerCase()
-                      .trim()
-                      .startsWith("manuscript title")
-                )
-                .map((q, idx) => {
-                  // Handle file downloads
-                  if (q.type === "file" && q.answer) {
-                    const files = Array.isArray(q.answer) ? q.answer : [q.answer];
-                    return (
-                      <div
-                        key={idx}
-                        className="bg-gray-50 p-3 rounded-md border border-gray-200"
-                      >
-                        <div className="font-semibold mb-1">{q.question}</div>
-                        <div className="space-y-2">
-                          {files.map((file, fileIdx) => {
-                            // If it's already a file object with URL
-                            if (file.url) {
-                              return (
-                                <a
-                                  key={fileIdx}
-                                  href={file.url}
-                                  download={file.name || `file-${fileIdx + 1}`}
-                                  className="text-blue-600 hover:text-blue-800 underline flex items-center"
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                >
-                                  <svg
-                                    className="w-4 h-4 mr-1"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    viewBox="0 0 24 24"
-                                  >
-                                    <path
-                                      strokeLinecap="round"
-                                      strokeLinejoin="round"
-                                      strokeWidth={2}
-                                      d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
-                                    />
-                                  </svg>
-                                  {file.name || `File ${fileIdx + 1}`}
-                                </a>
-                              );
-                            }
-                            // If it's a storage path
-                            else if (file.path || file.storagePath) {
-                              const filePath = file.path || file.storagePath;
-                              return (
-                                <button
-                                  key={fileIdx}
-                                  onClick={async () => {
-                                    try {
-                                      const url = await getDownloadURL(storageRef(storage, filePath));
-                                      const a = document.createElement('a');
-                                      a.href = url;
-                                      a.download = file.name || filePath.split('/').pop() || 'download';
-                                      document.body.appendChild(a);
-                                      a.click();
-                                      document.body.removeChild(a);
-                                    } catch (error) {
-                                      console.error('Error downloading file:', error);
-                                      alert('Error downloading file. Please try again.');
-                                    }
-                                  }}
-                                  className="text-blue-600 hover:text-blue-800 underline flex items-center"
-                                >
-                                  <svg
-                                    className="w-4 h-4 mr-1"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    viewBox="0 0 24 24"
-                                  >
-                                    <path
-                                      strokeLinecap="round"
-                                      strokeLinejoin="round"
-                                      strokeWidth={2}
-                                      d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
-                                    />
-                                  </svg>
-                                  {file.name || filePath.split('/').pop() || `File ${fileIdx + 1}`}
-                                </button>
-                              );
-                            }
-                            // Fallback for string paths
-                            else if (typeof file === 'string') {
-                              return (
-                                <button
-                                  key={fileIdx}
-                                  onClick={async () => {
-                                    try {
-                                      const url = await getDownloadURL(storageRef(storage, file));
-                                      const a = document.createElement('a');
-                                      a.href = url;
-                                      a.download = file.split('/').pop() || 'download';
-                                      document.body.appendChild(a);
-                                      a.click();
-                                      document.body.removeChild(a);
-                                    } catch (error) {
-                                      console.error('Error downloading file:', error);
-                                      alert('Error downloading file. Please try again.');
-                                    }
-                                  }}
-                                  className="text-blue-600 hover:text-blue-800 underline flex items-center"
-                                >
-                                  <svg
-                                    className="w-4 h-4 mr-1"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    viewBox="0 0 24 24"
-                                  >
-                                    <path
-                                      strokeLinecap="round"
-                                      strokeLinejoin="round"
-                                      strokeWidth={2}
-                                      d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
-                                    />
-                                  </svg>
-                                  {file.split('/').pop() || `File ${fileIdx + 1}`}
-                                </button>
-                              );
-                            }
-                            return null;
-                          })}
-                        </div>
-                      </div>
-                    );
-                  }
-
-                  // Default handling for non-file answers
-                  return (
-                    <div
-                      key={idx}
-                      className="bg-gray-50 p-3 rounded-md border border-gray-200"
-                    >
-                      <div className="font-semibold mb-1">{q.question}</div>
-                      <div className="text-gray-800 text-sm">
-                        {Array.isArray(q.answer)
-                          ? q.answer
-                              .map((a) =>
-                                a?.name
-                                  ? `${a.name}${a.email ? ` (${a.email})` : ""}`
-                                  : a
-                              )
-                              .join(", ")
-                          : q.answer || "—"}
-                      </div>
-                    </div>
-                  );
-                })}
+<div className="space-y-4 mb-4">
+  {answeredQuestions
+    .filter(
+      (q) =>
+        !q.question
+          ?.toLowerCase()
+          .trim()
+          .startsWith("manuscript title")
+    )
+    .map((q, idx) => {
+      if (q.type === "file" && q.answer) {
+        const files = Array.isArray(q.answer) ? q.answer : [q.answer];
+        return (
+          <div
+            key={idx}
+            className="bg-gray-50 p-3 rounded-md border border-gray-200"
+          >
+            <div className="font-semibold mb-1">{q.question}</div>
+            <div className="space-y-2">
+              {files.map((file, fileIdx) => (
+                <button
+                  key={fileIdx}
+                  onClick={() => downloadFileCandidate(file)}
+                  className="text-blue-600 hover:text-blue-800 underline flex items-center"
+                >
+                  <svg
+                    className="w-4 h-4 mr-1"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+                    />
+                  </svg>
+                  {file.name || file.fileName || "Download"}
+                </button>
+              ))}
             </div>
+          </div>
+        );
+      }
+
+      // Default handling for non-file answers
+      return (
+        <div
+          key={idx}
+          className="bg-gray-50 p-3 rounded-md border border-gray-200"
+        >
+          <div className="font-semibold mb-1">{q.question}</div>
+          <div className="text-gray-800 text-sm">
+            {Array.isArray(q.answer)
+              ? q.answer
+                  .map((a) =>
+                    a?.name ? `${a.name}${a.email ? ` (${a.email})` : ""}` : a
+                  )
+                  .join(", ")
+              : q.answer || "—"}
+          </div>
+        </div>
+      );
+    })}
+</div>
 
             <div className="mb-4 text-sm font-semibold">
               Status: <span className="font-normal">{status}</span>
