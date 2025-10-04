@@ -567,10 +567,7 @@ const downloadFileCandidate = async (candidate, suggestedName) => {
                               Review Submission:
                             </p>
                             <div className="text-sm text-gray-600 space-y-1">
-                              <p>
-                                <span className="font-medium">Rating:</span>{" "}
-                                {submission.rating || "Not provided"}/5
-                              </p>
+                          
                               <p>
                                 <span className="font-medium">Submitted:</span>{" "}
                                 {formatDate(submission.completedAt)}
@@ -665,9 +662,7 @@ const downloadFileCandidate = async (candidate, suggestedName) => {
                               } ${reviewer.lastName}`
                             : r.reviewerId}
                         </p>
-                        <p className="text-xs text-gray-600">
-                          Rating: {r.rating ?? "—"}
-                        </p>
+                     
                         <p className="text-xs text-gray-600">
                           Comment: {r.comment || "—"}
                         </p>

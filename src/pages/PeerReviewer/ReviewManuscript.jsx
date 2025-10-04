@@ -201,7 +201,6 @@ export default function ReviewManuscript() {
       [reviewerId]: {
         decision,
         comment: review.comment,
-        rating: review.rating || 0,
         decidedAt: new Date(),
         reviewFileUrl: fileUrl,
         reviewFileName: fileName || null,
@@ -217,7 +216,6 @@ export default function ReviewManuscript() {
       reviewerSubmissions: arrayUnion({
         reviewerId,
         comment: review.comment,
-        rating: review.rating || 0,
         status: "Completed",
         completedAt: new Date(),
         reviewFileUrl: fileUrl,
@@ -398,7 +396,7 @@ const downloadFileCandidate = async (file) => {
                           {myMeta?.comment ? (
                             <>
                               <p className="whitespace-pre-wrap">{myMeta.comment}</p>
-                              <p className="mt-1">Rating: {myMeta.rating ?? "N/A"}</p>
+
                               {myMeta.reviewFileUrl && (
                                 <p className="mt-1">
                                   <a
@@ -456,15 +454,7 @@ const downloadFileCandidate = async (file) => {
                                 value={reviews[m.id]?.comment || ""}
                                 onChange={(e) => handleReviewChange(m.id, "comment", e.target.value)}
                               />
-                              <input
-                                type="number"
-                                min="0"
-                                max="5"
-                                placeholder="Rating (0-5)"
-                                className="border p-2 rounded w-32"
-                                value={reviews[m.id]?.rating || ""}
-                                onChange={(e) => handleReviewChange(m.id, "rating", e.target.value)}
-                              />
+                          
                               <input
                                 type="file"
                                 accept=".pdf,.doc,.docx,.txt"
