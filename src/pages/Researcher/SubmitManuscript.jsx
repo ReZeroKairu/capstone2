@@ -15,8 +15,6 @@ import { ref, getDownloadURL } from "firebase/storage";
 import { useNotifications } from "../../hooks/useNotifications";
 import { useUserLogs } from "../../hooks/useUserLogs";
 import FileUpload from '../../components/FileUpload';
-import { FileLink } from '../../components/FileLink';
-
 
 export default function SubmitManuscript() {
   const [forms, setForms] = useState([]);
@@ -25,7 +23,6 @@ export default function SubmitManuscript() {
   const [currentUser, setCurrentUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [cooldown, setCooldown] = useState(0);
-  const [message, setMessage] = useState("");
 
   const { notifyManuscriptSubmission } = useNotifications();
   const { logManuscriptSubmission } = useUserLogs();
@@ -37,6 +34,16 @@ export default function SubmitManuscript() {
 
   const cooldownRef = useRef(0);
   useEffect(() => { cooldownRef.current = cooldown; }, [cooldown]);
+
+  // Floating message state
+  const [message, setMessage] = useState("");
+  const [messageVisible, setMessageVisible] = useState(false);
+
+  const showMessage = (msg) => {
+    setMessage(msg);
+    setMessageVisible(true);
+    setTimeout(() => setMessageVisible(false), 4000);
+  };
 
   // Fetch forms and users
   useEffect(() => {
@@ -59,7 +66,7 @@ export default function SubmitManuscript() {
         });
       } catch (err) {
         console.error("Error fetching data:", err);
-        setMessage("Failed to load forms or users.");
+        showMessage("Failed to load forms or users.");
         setLoading(false);
       }
     };
@@ -90,7 +97,7 @@ export default function SubmitManuscript() {
       }
     } catch (err) {
       console.error("Error selecting form:", err);
-      setMessage("Failed to load selected form.");
+      showMessage("Failed to load selected form.");
     }
   };
 
@@ -145,186 +152,181 @@ export default function SubmitManuscript() {
   };
 
   const handleSubmit = async (e) => {
-  e.preventDefault();
-  if (!form) return setMessage("No form selected.");
-  if (cooldownRef.current > 0) return setMessage(`You already submitted. Please wait ${cooldownRef.current}s.`);
-  if (!currentUser) return setMessage("User not signed in.");
+    e.preventDefault();
+    if (!form) return showMessage("No form selected.");
+    if (cooldownRef.current > 0) return showMessage(`You already submitted. Please wait ${cooldownRef.current}s.`);
+    if (!currentUser) return showMessage("User not signed in.");
 
-  const fileQuestionIndex = form.questions.findIndex(q => q.type === 'file');
-  const fileData = answers[fileQuestionIndex];
+    const fileQuestionIndex = form.questions.findIndex(q => q.type === 'file');
+    const fileData = answers[fileQuestionIndex];
 
-  if (fileQuestionIndex === -1 || !fileData) {
-    setMessage("Please upload a manuscript file.");
-    return;
-  }
+    if (fileQuestionIndex === -1 || !fileData) {
+      showMessage("Please upload a manuscript file.");
+      return;
+    }
 
-  const allowedTypes = [
-    "application/msword",
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  ];
-  if (!allowedTypes.includes(fileData.type)) {
-    setMessage("Only Word documents (.doc or .docx) are allowed.");
-    return;
-  }
+    const allowedTypes = [
+      "application/msword",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ];
+    if (!allowedTypes.includes(fileData.type)) {
+      showMessage("Only Word documents (.doc or .docx) are allowed.");
+      return;
+    }
 
-  const missingRequired = form.questions.some((q, index) =>
-    q.required ? (q.type === "checkbox" ? !(answers[index]?.length > 0) : !answers[index]) : false
-  );
-  if (missingRequired) return setMessage("Please fill all required fields.");
+    const missingRequired = form.questions.some((q, index) =>
+      q.required ? (q.type === "checkbox" ? !(answers[index]?.length > 0) : !answers[index]) : false
+    );
+    if (missingRequired) return showMessage("Please fill all required fields.");
 
-  const manuscriptTitleIndex = form.questions.findIndex(q => q.isManuscriptTitle);
-  if (manuscriptTitleIndex === -1) return setMessage("Form must have a 'Manuscript Title' field.");
-  const manuscriptTitleAnswer = answers[manuscriptTitleIndex] || "";
-  if (!manuscriptTitleAnswer.trim()) return setMessage("Please enter a Manuscript Title.");
+    const manuscriptTitleIndex = form.questions.findIndex(q => q.isManuscriptTitle);
+    if (manuscriptTitleIndex === -1) return showMessage("Form must have a 'Manuscript Title' field.");
+    const manuscriptTitleAnswer = answers[manuscriptTitleIndex] || "";
+    if (!manuscriptTitleAnswer.trim()) return showMessage("Please enter a Manuscript Title.");
 
-  try {
-    setLoading(true);
-    const userSnap = await getDoc(doc(db, "Users", currentUser.uid));
-    if (!userSnap.exists()) return setMessage("User record not found.");
-    const userInfo = userSnap.data();
-    const initialStatus = "Pending";
+    try {
+      setLoading(true);
+      const userSnap = await getDoc(doc(db, "Users", currentUser.uid));
+      if (!userSnap.exists()) return showMessage("User record not found.");
+      const userInfo = userSnap.data();
+      const initialStatus = "Pending";
 
-    // Use exact storagePath from FileUpload
-    const exactStoragePath = fileData.storagePath; // timestamped path
-    const downloadURL = fileData.url;
+      const exactStoragePath = fileData.storagePath;
+      const downloadURL = fileData.url;
 
-    const answeredQuestions = form.questions.map((q, index) => {
-      if (q.type === "coauthors") {
-        return {
-          question: "Co-Authors",
-          type: "coauthors",
-          required: q.required || false,
-          answer: selectedUsers.map(u => `${formatName(u.firstName, u.middleName, u.lastName)} (${u.email})`),
-        };
-      }
-      if (q.type === "file") {
+      const answeredQuestions = form.questions.map((q, index) => {
+        if (q.type === "coauthors") {
+          return {
+            question: "Co-Authors",
+            type: "coauthors",
+            required: q.required || false,
+            answer: selectedUsers.map(u => `${formatName(u.firstName, u.middleName, u.lastName)} (${u.email})`),
+          };
+        }
+        if (q.type === "file") {
+          return {
+            question: q.text,
+            type: "file",
+            required: q.required || false,
+            answer: downloadURL || null,
+            fileName: fileData?.name || null,
+            fileType: fileData?.type || null,
+            fileSize: fileData?.size || null,
+            storagePath: exactStoragePath,
+          };
+        }
         return {
           question: q.text,
-          type: "file",
+          type: q.type,
           required: q.required || false,
-          answer: downloadURL || null,
-          fileName: fileData?.name || null,
-          fileType: fileData?.type || null,
-          fileSize: fileData?.size || null,
-          storagePath: exactStoragePath,
+          answer: q.type === "checkbox" ? answers[index] || [] : answers[index] || "",
         };
-      }
-      return {
-        question: q.text,
-        type: q.type,
-        required: q.required || false,
-        answer: q.type === "checkbox" ? answers[index] || [] : answers[index] || "",
-      };
-    });
+      });
 
-    const coAuthors = selectedUsers.map(u => ({
-      id: u.id,
-      firstName: u.firstName,
-      middleName: u.middleName || "",
-      lastName: u.lastName,
-      email: u.email,
-    }));
-    const coAuthorsIds = selectedUsers.map(u => u.id);
+      const coAuthors = selectedUsers.map(u => ({
+        id: u.id,
+        firstName: u.firstName,
+        middleName: u.middleName || "",
+        lastName: u.lastName,
+        email: u.email,
+      }));
+      const coAuthorsIds = selectedUsers.map(u => u.id);
 
-    const searchIndex = [
-      (userInfo.email || "").toLowerCase(),
-      ((userInfo.firstName || "") + " " + (userInfo.middleName || "") + " " + (userInfo.lastName || "")).trim().toLowerCase(),
-      manuscriptTitleAnswer.toLowerCase(),
-      ...selectedUsers.map(u => (u.email || "").toLowerCase()),
-      ...selectedUsers.map(u => ((u.firstName || "") + " " + (u.middleName || "") + " " + (u.lastName || "")).trim().toLowerCase()),
-    ].filter(Boolean);
+      const searchIndex = [
+        (userInfo.email || "").toLowerCase(),
+        ((userInfo.firstName || "") + " " + (userInfo.middleName || "") + " " + (userInfo.lastName || "")).trim().toLowerCase(),
+        manuscriptTitleAnswer.toLowerCase(),
+        ...selectedUsers.map(u => (u.email || "").toLowerCase()),
+        ...selectedUsers.map(u => ((u.firstName || "") + " " + (u.middleName || "") + " " + (u.lastName || "")).trim().toLowerCase()),
+      ].filter(Boolean);
 
-    setCooldown(5);
-    cooldownRef.current = 5;
+      setCooldown(5);
+      cooldownRef.current = 5;
 
-    // Submission to form_responses
-    const responseRef = await addDoc(collection(db, "form_responses"), {
-      formId: form.id,
-      formTitle: form.title || "",
-      manuscriptTitle: manuscriptTitleAnswer,
-      userId: currentUser.uid,
-      firstName: userInfo.firstName || "",
-      middleName: userInfo.middleName || "",
-      lastName: userInfo.lastName || "",
-      email: userInfo.email || "",
-      role: userInfo.role || "Researcher",
-      answeredQuestions,
-      coAuthors,
-      coAuthorsIds,
-      searchIndex,
-      status: initialStatus,
-      versionNumber: 1,
-      parentResponseId: null,
-      submittedAt: serverTimestamp(),
-      fileUrl: downloadURL,
-      fileName: fileData.name,      // <-- ensure this is saved
-      fileType: fileData.type,
-      fileSize: fileData.size,
-      storagePath: exactStoragePath,
-    });
-
-    // Submission to manuscripts collection
-    const manuscriptRef = await addDoc(collection(db, "manuscripts"), {
-      responseId: responseRef.id,
-      formId: form.id,
-      formTitle: form.title || "",
-      manuscriptTitle: manuscriptTitleAnswer,
-      answeredQuestions,
-      submitterId: currentUser.uid,
-      firstName: userInfo.firstName || "",
-      middleName: userInfo.middleName || "",
-      lastName: userInfo.lastName || "",
-      email: userInfo.email || "",
-      role: userInfo.role || "Researcher",
-      coAuthors,
-      coAuthorsIds,
-      assignedReviewers: [],
-      status: initialStatus,
-      versionNumber: 1,
-      parentResponseId: null,
-      searchIndex,
-      submittedAt: serverTimestamp(),
-      fileUrl: downloadURL,
-      fileName: fileData.name,
-      fileType: fileData.type,
-      fileSize: fileData.size,
-      storagePath: exactStoragePath,
-      hasFile: true,
-      fileUploadedAt: serverTimestamp(),
-    });
-
-    await updateDoc(doc(db, "Users", currentUser.uid), {
-      lastSubmittedAt: serverTimestamp(),
-      lastSubmissionFile: {
-        name: fileData.name,
-        size: fileData.size,
-        type: fileData.type,
-        url: downloadURL,
+      const responseRef = await addDoc(collection(db, "form_responses"), {
+        formId: form.id,
+        formTitle: form.title || "",
+        manuscriptTitle: manuscriptTitleAnswer,
+        userId: currentUser.uid,
+        firstName: userInfo.firstName || "",
+        middleName: userInfo.middleName || "",
+        lastName: userInfo.lastName || "",
+        email: userInfo.email || "",
+        role: userInfo.role || "Researcher",
+        answeredQuestions,
+        coAuthors,
+        coAuthorsIds,
+        searchIndex,
+        status: initialStatus,
+        versionNumber: 1,
+        parentResponseId: null,
+        submittedAt: serverTimestamp(),
+        fileUrl: downloadURL,
+        fileName: fileData.name,
+        fileType: fileData.type,
+        fileSize: fileData.size,
         storagePath: exactStoragePath,
-        uploadedAt: serverTimestamp(),
-      },
-    });
+      });
 
-    await notifyManuscriptSubmission(manuscriptRef.id, manuscriptTitleAnswer || form.title || "Untitled Manuscript", currentUser.uid);
-    await logManuscriptSubmission(currentUser.uid, manuscriptRef.id, manuscriptTitleAnswer || form.title || "Untitled Manuscript");
+      const manuscriptRef = await addDoc(collection(db, "manuscripts"), {
+        responseId: responseRef.id,
+        formId: form.id,
+        formTitle: form.title || "",
+        manuscriptTitle: manuscriptTitleAnswer,
+        answeredQuestions,
+        submitterId: currentUser.uid,
+        firstName: userInfo.firstName || "",
+        middleName: userInfo.middleName || "",
+        lastName: userInfo.lastName || "",
+        email: userInfo.email || "",
+        role: userInfo.role || "Researcher",
+        coAuthors,
+        coAuthorsIds,
+        assignedReviewers: [],
+        status: initialStatus,
+        versionNumber: 1,
+        parentResponseId: null,
+        searchIndex,
+        submittedAt: serverTimestamp(),
+        fileUrl: downloadURL,
+        fileName: fileData.name,
+        fileType: fileData.type,
+        fileSize: fileData.size,
+        storagePath: exactStoragePath,
+        hasFile: true,
+        fileUploadedAt: serverTimestamp(),
+      });
 
-    setAnswers({});
-    setSelectedUsers([]);
-    setMessage("Manuscript submitted successfully!");
-    setTimeout(() => setMessage(""), 4000);
-  } catch (err) {
-    console.error("Error submitting form:", err);
-    setMessage("Failed to submit form. Please   try again.");
-  } finally {
-    setLoading(false);
-  }
-};
+      await updateDoc(doc(db, "Users", currentUser.uid), {
+        lastSubmittedAt: serverTimestamp(),
+        lastSubmissionFile: {
+          name: fileData.name,
+          size: fileData.size,
+          type: fileData.type,
+          url: downloadURL,
+          storagePath: exactStoragePath,
+          uploadedAt: serverTimestamp(),
+        },
+      });
 
+      await notifyManuscriptSubmission(manuscriptRef.id, manuscriptTitleAnswer || form.title || "Untitled Manuscript", currentUser.uid);
+      await logManuscriptSubmission(currentUser.uid, manuscriptRef.id, manuscriptTitleAnswer || form.title || "Untitled Manuscript");
+
+      setAnswers({});
+      setSelectedUsers([]);
+      showMessage("Manuscript submitted successfully!");
+    } catch (err) {
+      console.error("Error submitting form:", err);
+      showMessage("Failed to submit form. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   if (loading) return <p className="text-center py-10">Loading...</p>;
 
   return (
-    <div className="min-h-screen px-4 md:py-12 lg:py-16 mx-auto max-w-3xl mt-12 bg-white text-[#222]">
+    <div className="min-h-screen px-4 md:py-12 lg:py-16 mx-auto max-w-3xl mt-12 bg-white text-[#222] relative">
       <h1 className="text-2xl font-semibold mb-6 text-[#111] text-center">Submit Manuscript</h1>
 
       {/* Form selection dropdown */}
@@ -448,7 +450,7 @@ export default function SubmitManuscript() {
             ))}
           </div>
 
-          <div className="flex justify-end mt-8">
+            <div className="flex justify-end mt-8">
             <button
               type="submit"
               disabled={!currentUser || cooldown > 0 || loading}
@@ -460,11 +462,20 @@ export default function SubmitManuscript() {
               {loading ? "Submitting..." : cooldown > 0 ? `Please wait ${cooldown}s` : "Submit Manuscript"}
             </button>
           </div>
-
-          {message && (
-            <p className={`mt-2 text-center text-sm ${message.toLowerCase().includes("successfully") ? "text-green-500" : "text-red-500"}`}>{message}</p>
-          )}
         </form>
+      )}
+
+      {/* Floating message */}
+      {message && messageVisible && (
+        <div
+          className={`fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 px-6 py-4 rounded-lg shadow-lg z-50 transition-opacity duration-500 ${
+            message.toLowerCase().includes("successfully")
+              ? "bg-green-100 text-green-700"
+              : "bg-red-100 text-red-700"
+          }`}
+        >
+          {message}
+        </div>
       )}
     </div>
   );
