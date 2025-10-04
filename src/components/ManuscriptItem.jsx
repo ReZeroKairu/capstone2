@@ -791,28 +791,36 @@ const downloadFileCandidate = async (candidate, suggestedName) => {
           >
             <div className="font-semibold mb-1">{q.question}</div>
             <div className="space-y-2">
-              {files.map((file, fileIdx) => (
-                <button
-                  key={fileIdx}
-                  onClick={() => downloadFileCandidate(file)}
-                  className="text-blue-600 hover:text-blue-800 underline flex items-center"
-                >
-                  <svg
-                    className="w-4 h-4 mr-1"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
-                    />
-                  </svg>
-                  {file.name || file.fileName || "Download"}
-                </button>
-              ))}
+             {files.map((file, fileIdx) => {
+  const fileName =
+    typeof file === "string"
+      ? file.split("/").pop() // get name from path
+      : file.name || file.fileName || `File-${fileIdx + 1}`;
+
+  return (
+    <button
+      key={fileIdx}
+      onClick={() => downloadFileCandidate(file, fileName)}
+      className="text-blue-600 hover:text-blue-800 underline flex items-center"
+    >
+      <svg
+        className="w-4 h-4 mr-1"
+        fill="none"
+        stroke="currentColor"
+        viewBox="0 0 24 24"
+      >
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={2}
+          d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+        />
+      </svg>
+      {fileName}
+    </button>
+  );
+})}
+
             </div>
           </div>
         );
