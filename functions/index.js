@@ -1,33 +1,30 @@
-// index.js (enhanced uploadFile with immediate ClamAV scan)
+// index.js (clean, no virus scan)
 const { onRequest, onCall } = require("firebase-functions/v2/https");
+const { onObjectFinalized } = require("firebase-functions/v2/storage");
 const functions = require("firebase-functions");
 const admin = require("firebase-admin");
 const { Storage } = require("@google-cloud/storage");
 const storage = new Storage();
 const logger = require("firebase-functions/logger");
-const { NodeClam } = require("clamav.js");
 const tmp = require("tmp");
+const fs = require("fs");
 
-// Initialize Firebase Admin safely
-if (!admin.apps.length) {
-  admin.initializeApp();
+functions.setGlobalOptions({ region: "asia-southeast1" });
+
+if (!admin.apps.length) admin.initializeApp();
+
+const db = admin.firestore();
+const MONTH_LIMIT = 3;
+
+function getMonthKey(date = new Date()) {
+  const y = date.getUTCFullYear();
+  const m = String(date.getUTCMonth() + 1).padStart(2, "0");
+  return `${y}-${m}`;
 }
 
-// Initialize ClamAV scanner
-const clam = new NodeClam().init({
-  removeInfected: false,
-  quarantineInfected: false,
-  debugMode: false,
-  clamdscan: {
-    host: "127.0.0.1",
-    port: 3310,
-    timeout: 60000,
-  },
-});
-
-// ========================================================
-// HTTP Upload Function (with pre-upload scan)
-// ========================================================
+// ----------------------
+// HTTP Upload Function
+// ----------------------
 exports.uploadFile = onRequest(async (req, res) => {
   if (req.method === "OPTIONS") {
     res.set("Access-Control-Allow-Origin", "*");
@@ -37,56 +34,32 @@ exports.uploadFile = onRequest(async (req, res) => {
   }
 
   const file = req.body.file;
-  if (!file) return res.status(400).send("No file provided.");
+  if (!file) return res.status(400).send({ message: "No file provided." });
 
-  // Save to a temporary file to scan
   const tmpFile = tmp.fileSync();
-  const fs = require("fs");
   fs.writeFileSync(tmpFile.name, file.data);
 
   try {
-    const { isInfected, viruses } = await clam.scanFile(tmpFile.name);
-    if (isInfected) {
-      logger.warn(`Infected file detected: ${file.name}, viruses: ${viruses}`);
-      return res.status(400).send({
-        message: "Upload rejected: file is infected",
-        viruses,
-      });
-    }
-
-    // File is clean, upload to Storage
-    const bucket = storage.bucket("your-bucket-name");
+    const bucket = storage.bucket("pubtrack2.firebasestorage.app");
     const storagePath = `profilePics/${Date.now()}_${file.name.replace(/[^\w\d.-]/g, "_")}`;
     const fileUpload = bucket.file(storagePath);
-    const stream = fileUpload.createWriteStream();
+    await fileUpload.save(file.data);
 
-    stream.on("finish", async () => {
-      logger.info("File uploaded successfully");
-      res.status(200).send({
-        message: "File uploaded successfully",
-        url: `https://storage.googleapis.com/${bucket.name}/${storagePath}`,
-        storagePath,
-      });
-    });
+    const downloadURL = `https://storage.googleapis.com/${bucket.name}/${storagePath}`;
+    logger.info("File uploaded successfully");
 
-    stream.on("error", (err) => {
-      logger.error("Error uploading file", err);
-      res.status(500).send("Error uploading file");
-    });
-
-    stream.end(file.data);
+    return res.status(200).send({ url: downloadURL, storagePath });
   } catch (err) {
-    logger.error("Error scanning file", err);
-    return res.status(500).send("Error scanning file");
+    logger.error("Error uploading file:", err);
+    return res.status(500).send({ message: "Failed to upload file" });
   } finally {
     tmpFile.removeCallback();
   }
 });
 
-// ========================================================
-// Secure Delete User Function
-// (unchanged)
-// ========================================================
+// ----------------------
+// Delete User Account
+// ----------------------
 exports.deleteUserAccount = onCall(async (request) => {
   const context = request.auth;
   if (!context) throw new functions.https.HttpsError("unauthenticated", "Not signed in");
@@ -110,46 +83,72 @@ exports.deleteUserAccount = onCall(async (request) => {
   }
 });
 
-// ========================================================
-// ClamAV Background Scan (optional extra safety)
-// ========================================================
-exports.scanManuscriptUploads = functions.storage.object().onFinalize(async (object) => {
-  const bucketName = object.bucket;
-  const filePath = object.name;
-  if (!filePath.startsWith("manuscripts/")) return null;
+// ----------------------
+// Manuscript Submission Limit
+// ----------------------
+// ----------------------
+// Manuscript Submission Limit
+// ----------------------
+exports.createManuscript = onCall(async (data, context) => {
+  if (!context.auth || !context.auth.uid) {
+    throw new functions.https.HttpsError("unauthenticated", "Please sign in first.");
+  }
 
-  const file = storage.bucket(bucketName).file(filePath);
-  console.log(`Background scanning uploaded file: ${filePath}`);
+  const uid = context.auth.uid;
+  const manuscriptData = data?.manuscript;
+  if (!manuscriptData) {
+    throw new functions.https.HttpsError("invalid-argument", "Missing manuscript data.");
+  }
 
-  const tmpFile = tmp.fileSync();
-  await file.download({ destination: tmpFile.name });
+  const userSnap = await db.collection("Users").doc(uid).get();
+  if (!userSnap.exists) {
+    throw new functions.https.HttpsError("not-found", "User not found.");
+  }
+  const userRole = userSnap.data().role || "Researcher";
+
+  const now = admin.firestore.Timestamp.now();
+  const monthKey = getMonthKey(new Date()); // UTC month key
+  const counterRef = db.doc(`submissionCounters/${uid}_${monthKey}`);
+  const manuscriptsRef = db.collection("manuscripts");
+
+  // Determine monthly limit
+  const MONTH_LIMIT = userRole === "Researcher" ? 6 : Infinity;
 
   try {
-    const { isInfected, viruses } = await clam.scanFile(tmpFile.name);
-    if (isInfected) {
-      console.log(`Infected file detected: ${filePath}, viruses: ${viruses}`);
-      await file.delete();
+    const result = await db.runTransaction(async (tx) => {
+      const snap = await tx.get(counterRef);
+      let count = snap.exists ? snap.data().count || 0 : 0;
 
-      const responses = await admin.firestore().collection("form_responses")
-        .where("storagePath", "==", filePath).get();
+      if (count >= MONTH_LIMIT) {
+        throw new functions.https.HttpsError(
+          "failed-precondition",
+          `You have reached your monthly limit of ${MONTH_LIMIT} manuscript submissions.`
+        );
+      }
 
-      responses.forEach(async (docSnap) => {
-        await docSnap.ref.update({
-          status: "Rejected - Infected File",
-          infectedViruses: viruses,
-          fileUrl: null,
-          storagePath: null,
-        });
+      tx.set(
+        counterRef,
+        { uid, month: monthKey, count: count + 1, lastUpdatedAt: now },
+        { merge: true }
+      );
+
+      const newDoc = manuscriptsRef.doc();
+      tx.set(newDoc, {
+        ...manuscriptData,
+        ownerId: uid,
+        role: userRole,
+        createdAt: now,
+        monthKey,
+        createdVia: "cloud-function",
       });
 
-      return null;
-    } else {
-      console.log("File is clean.");
-      return null;
-    }
+      return { manuscriptId: newDoc.id, newCount: count + 1 };
+    });
+
+    return { success: true, ...result };
   } catch (err) {
-    console.error("Error scanning file:", err);
-  } finally {
-    tmpFile.removeCallback();
+    console.error("createManuscript error:", err);
+    if (err instanceof functions.https.HttpsError) throw err;
+    throw new functions.https.HttpsError("internal", "Failed to create manuscript.");
   }
 });

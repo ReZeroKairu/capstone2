@@ -5,6 +5,7 @@ import {
   getDocs,
   doc,
   getDoc,
+  setDoc,
   addDoc,
   updateDoc,
   serverTimestamp,
@@ -32,20 +33,29 @@ export default function SubmitManuscript() {
   const [userSearch, setUserSearch] = useState("");
   const [filteredUsers, setFilteredUsers] = useState([]);
 
+  const [monthlyCount, setMonthlyCount] = useState(0);
+  const [monthlyLimit, setMonthlyLimit] = useState(6); // default for Researchers
+
   const cooldownRef = useRef(0);
   useEffect(() => { cooldownRef.current = cooldown; }, [cooldown]);
 
   // Floating message state
   const [message, setMessage] = useState("");
   const [messageVisible, setMessageVisible] = useState(false);
-
   const showMessage = (msg) => {
     setMessage(msg);
     setMessageVisible(true);
     setTimeout(() => setMessageVisible(false), 4000);
   };
 
-  // Fetch forms and users
+  // Helper to get YYYY-MM key for monthly counters
+  const getMonthKey = (date = new Date()) => {
+    const y = date.getUTCFullYear();
+    const m = String(date.getUTCMonth() + 1).padStart(2, "0");
+    return `${y}-${m}`;
+  };
+
+  // Fetch forms, users, and user info
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -60,8 +70,25 @@ export default function SubmitManuscript() {
           .filter(u => u.role === "Researcher")
         );
 
-        auth.onAuthStateChanged((user) => {
-          setCurrentUser(user || null);
+        auth.onAuthStateChanged(async (user) => {
+          if (!user) {
+            setCurrentUser(null);
+            setLoading(false);
+            return;
+          }
+          setCurrentUser(user);
+
+          // Fetch user role and set monthly limit
+          const userSnap = await getDoc(doc(db, "Users", user.uid));
+          if (!userSnap.exists()) return showMessage("User record not found.");
+          const role = userSnap.data().role || "Researcher";
+          setMonthlyLimit(role === "Researcher" ? 6 : Infinity);
+
+          // Fetch current month submission count
+          const monthKey = getMonthKey();
+          const counterDoc = await getDoc(doc(db, `submissionCounters/${user.uid}_${monthKey}`));
+          setMonthlyCount(counterDoc.exists() ? counterDoc.data().count || 0 : 0);
+
           setLoading(false);
         });
       } catch (err) {
@@ -156,23 +183,17 @@ export default function SubmitManuscript() {
     if (!form) return showMessage("No form selected.");
     if (cooldownRef.current > 0) return showMessage(`You already submitted. Please wait ${cooldownRef.current}s.`);
     if (!currentUser) return showMessage("User not signed in.");
+    if (monthlyCount >= monthlyLimit) return showMessage(`Monthly submission limit of ${monthlyLimit} reached.`);
 
     const fileQuestionIndex = form.questions.findIndex(q => q.type === 'file');
     const fileData = answers[fileQuestionIndex];
-
-    if (fileQuestionIndex === -1 || !fileData) {
-      showMessage("Please upload a manuscript file.");
-      return;
-    }
+    if (fileQuestionIndex === -1 || !fileData) return showMessage("Please upload a manuscript file.");
 
     const allowedTypes = [
       "application/msword",
       "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     ];
-    if (!allowedTypes.includes(fileData.type)) {
-      showMessage("Only Word documents (.doc or .docx) are allowed.");
-      return;
-    }
+    if (!allowedTypes.includes(fileData.type)) return showMessage("Only Word documents (.doc or .docx) are allowed.");
 
     const missingRequired = form.questions.some((q, index) =>
       q.required ? (q.type === "checkbox" ? !(answers[index]?.length > 0) : !answers[index]) : false
@@ -297,6 +318,7 @@ export default function SubmitManuscript() {
         fileUploadedAt: serverTimestamp(),
       });
 
+      // Update user's last submission
       await updateDoc(doc(db, "Users", currentUser.uid), {
         lastSubmittedAt: serverTimestamp(),
         lastSubmissionFile: {
@@ -308,6 +330,14 @@ export default function SubmitManuscript() {
           uploadedAt: serverTimestamp(),
         },
       });
+
+      // Increment monthly counter
+      const monthKey = getMonthKey();
+      const counterRef = doc(db, `submissionCounters/${currentUser.uid}_${monthKey}`);
+      await updateDoc(counterRef, { count: monthlyCount + 1 }).catch(async () => {
+        await setDoc(counterRef, { count: 1, uid: currentUser.uid, month: monthKey });
+      });
+      setMonthlyCount(prev => prev + 1);
 
       await notifyManuscriptSubmission(manuscriptRef.id, manuscriptTitleAnswer || form.title || "Untitled Manuscript", currentUser.uid);
       await logManuscriptSubmission(currentUser.uid, manuscriptRef.id, manuscriptTitleAnswer || form.title || "Untitled Manuscript");
@@ -388,20 +418,19 @@ export default function SubmitManuscript() {
                   </>
                 ) : q.type === "file" ? (
                   <FileUpload
-  id={`question-${index}`}
-  name={`question-${index}`}
-  onUploadSuccess={(file) => handleChange(index, file)}
-  onUploadError={(error) => {
-    console.error("Upload failed:", error);
-    handleChange(index, null);
-    setMessage(error.message || "Failed to upload file.");
-  }}
-  accept=".doc,.docx"
-  buttonText="Upload File"
-  uploadingText="Uploading..."
-  className="mb-2"
-/>
-
+                    id={`question-${index}`}
+                    name={`question-${index}`}
+                    onUploadSuccess={(file) => handleChange(index, file)}
+                    onUploadError={(error) => {
+                      console.error("Upload failed:", error);
+                      handleChange(index, null);
+                      setMessage(error.message || "Failed to upload file.");
+                    }}
+                    accept=".doc,.docx"
+                    buttonText="Upload File"
+                    uploadingText="Uploading..."
+                    className="mb-2"
+                  />
                 ) : (
                   <>
                     <label htmlFor={`question-${index}`} className="block font-semibold mb-1">
@@ -450,16 +479,24 @@ export default function SubmitManuscript() {
             ))}
           </div>
 
-            <div className="flex justify-end mt-8">
+          <div className="flex justify-end mt-8">
             <button
               type="submit"
-              disabled={!currentUser || cooldown > 0 || loading}
+              disabled={!currentUser || cooldown > 0 || loading || monthlyCount >= monthlyLimit}
               className={`px-6 py-2 rounded-lg font-medium text-base transition-colors duration-200 ${
-                !currentUser || cooldown > 0 || loading ? "bg-gray-400 cursor-not-allowed" : "bg-green-600 hover:bg-green-700 text-white focus:ring-2 focus:ring-green-500 focus:ring-offset-2"
+                !currentUser || cooldown > 0 || loading || monthlyCount >= monthlyLimit
+                  ? "bg-gray-400 cursor-not-allowed"
+                  : "bg-green-600 hover:bg-green-700 text-white focus:ring-2 focus:ring-green-500 focus:ring-offset-2"
               }`}
               aria-busy={loading}
             >
-              {loading ? "Submitting..." : cooldown > 0 ? `Please wait ${cooldown}s` : "Submit Manuscript"}
+              {loading
+                ? "Submitting..."
+                : cooldown > 0
+                  ? `Please wait ${cooldown}s`
+                  : monthlyCount >= monthlyLimit
+                    ? `Monthly limit reached (${monthlyLimit})`
+                    : "Submit Manuscript"}
             </button>
           </div>
         </form>
