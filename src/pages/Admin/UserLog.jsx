@@ -13,8 +13,9 @@ import {
 } from "firebase/firestore";
 import { db } from "../../firebase/firebase";
 import { userCache, getUserInfo } from "../../utils/userCache";
+import { useNavigate } from "react-router-dom";
 
-// ... (imports remain unchanged)
+
 
 const UserLog = ({ onLogsUpdated }) => {
   const [logs, setLogs] = useState([]);
@@ -29,6 +30,7 @@ const UserLog = ({ onLogsUpdated }) => {
   const [endDate, setEndDate] = useState("");
   const [actionFilter, setActionFilter] = useState("all");
   const [roleFilter, setRoleFilter] = useState("all");
+const navigate = useNavigate();
 
   const fetchFullName = async (log) => {
     let first = log.previousFirstName || log.newFirstName || "";
@@ -237,9 +239,19 @@ const UserLog = ({ onLogsUpdated }) => {
               >
                 <div className="flex flex-col gap-1">
                   <p className="text-sm md:text-base truncate">
-                    <span className="font-semibold text-gray-700">Email:</span>{" "}
-                    {log.email}
-                  </p>
+  <span className="font-semibold text-gray-700">Email:</span>{" "}
+  {log.userId ? (
+    <span
+      className="text-red-800 cursor-pointer hover:underline"
+      onClick={() => navigate(`/profile/${log.userId}`)}
+    >
+      {log.email}
+    </span>
+  ) : (
+    log.email
+  )}
+</p>
+
                   <p className="text-sm md:text-base truncate">
                     <span className="font-semibold text-gray-700">
                       Timestamp:

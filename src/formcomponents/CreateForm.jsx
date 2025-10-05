@@ -20,7 +20,11 @@ export default function CreateForm() {
   const [formId, setFormId] = useState(null);
   const [forms, setForms] = useState([]);
   const [mtError, setMtError] = useState(false);
+  const [initialFormState, setInitialFormState] = useState(null); // NEW
   const manuscriptTitleRef = useRef(null);
+
+  const [currentPage, setCurrentPage] = useState(0);
+  const questionsPerPage = 5; // show 5 questions per page
 
   // Load all forms if Admin
   useEffect(() => {
@@ -59,6 +63,7 @@ export default function CreateForm() {
 
     setFormId(formData.id);
     setTitle(formData.title);
+    setCurrentPage(0); // Reset to first page when loading a form
 
     let loadedQuestions = formData.questions || [];
 
@@ -84,8 +89,9 @@ export default function CreateForm() {
         options: [],
       });
     }
-    if (!loadedQuestions.some(q => q.isAbstract)) {
-      loadedQuestions.splice(1, 0, { // Add it right after the title
+
+    if (!loadedQuestions.some((q) => q.isAbstract)) {
+      loadedQuestions.splice(1, 0, {
         id: "abstract",
         text: "Abstract",
         type: "textarea",
@@ -103,95 +109,116 @@ export default function CreateForm() {
         options: [],
       });
     }
-    
 
-    setQuestions(
-      loadedQuestions.map((q) => ({
-        ...q,
-        id: q.id || Date.now().toString() + Math.random(),
-        options: (q.options || []).map((o) => ({
-          id: o.id || Date.now().toString() + Math.random(),
-          value: o.value || o,
-        })),
-      }))
+    const mappedQuestions = loadedQuestions.map((q) => ({
+      ...q,
+      id: q.id || Date.now().toString() + Math.random(),
+      options: (q.options || []).map((o) => ({
+        id: o.id || Date.now().toString() + Math.random(),
+        value: o.value || o,
+      })),
+    }));
+
+    setQuestions(mappedQuestions);
+
+    // NEW: store initial state for cancel / change detection
+    setInitialFormState({
+      title: formData.title,
+      questions: mappedQuestions,
+    });
+  };
+
+  // NEW: Detect if form has changes
+  const hasChanges = () => {
+    if (!initialFormState) return true; // new form
+    return (
+      initialFormState.title !== title ||
+      JSON.stringify(initialFormState.questions) !== JSON.stringify(questions)
     );
   };
 
+  // NEW: Cancel changes
+const cancelChanges = () => {
+  if (!initialFormState) {
+    setTitle("");
+    setQuestions([]);
+    setFormId(null);
+  } else {
+    setTitle(initialFormState.title);
+    setQuestions(initialFormState.questions);
+    setCurrentPage(0); // Reset to first page
+    setMtError(false); // Clear any manuscript title error
+  }
+};
+
   // Questions CRUD
   const addQuestion = () => {
-    // Prevent adding another file type if it exists
-    if (!questions.some((q) => q.isManuscriptFile)) {
-      setQuestions([
-        ...questions,
-        {
-          id: Date.now().toString() + Math.random(),
-          text: "",
-          type: "text",
-          required: false,
-          options: [],
-        },
-      ]);
-    } else {
-      setQuestions([
-        ...questions,
-        {
-          id: Date.now().toString() + Math.random(),
-          text: "",
-          type: "text", // Cannot add another file
-          required: false,
-          options: [],
-        },
-      ]);
-    }
+    const newQuestion = {
+      id: Date.now().toString() + Math.random(),
+      text: "",
+      type: "text",
+      required: false,
+      options: [],
+    };
+
+    const updatedQuestions = [...questions, newQuestion];
+    setQuestions(updatedQuestions);
+
+    const lastPage = Math.floor((updatedQuestions.length - 1) / questionsPerPage);
+    setCurrentPage(lastPage);
   };
 
   const removeQuestion = (index) => {
-    if (questions[index].isManuscriptTitle || 
-        questions[index].isManuscriptFile || 
-        questions[index].isAbstract) {
-      return;
-    }
-    setQuestions(questions.filter((_, i) => i !== index));
+    if (
+      questions[index].isManuscriptTitle ||
+      questions[index].isManuscriptFile ||
+      questions[index].isAbstract
+    ) return;
+
+    const updatedQuestions = questions.filter((_, i) => i !== index);
+    setQuestions(updatedQuestions);
+
+    const lastPage = Math.max(
+      0,
+      Math.ceil(updatedQuestions.length / questionsPerPage) - 1
+    );
+    if (currentPage > lastPage) setCurrentPage(lastPage);
   };
 
   const updateQuestion = (index, field, value) => {
     const updated = [...questions];
     updated[index][field] = value;
-  
-    // Validate Manuscript Title
+
     if (updated[index].isManuscriptTitle && field === "text") {
       if (/manuscript title/i.test(value.trim())) setMtError(false);
     }
-  
-    // Validate Abstract
+
     if (updated[index].isAbstract && field === "text") {
-      if (value.trim() === "") {
-        // You can add error state for empty abstract if needed
-        console.log("Abstract cannot be empty");
-      }
+      if (value.trim() === "") console.log("Abstract cannot be empty");
     }
-  
-    // Prevent changing type for special fields
+
     if (field === "type") {
-      if (updated[index].isManuscriptTitle || 
-          updated[index].isManuscriptFile || 
-          updated[index].isAbstract) {
-        // Revert the type change for special fields
-        if (updated[index].isManuscriptTitle) updated[index].type = "text";
-        else if (updated[index].isManuscriptFile) updated[index].type = "file";
-        else if (updated[index].isAbstract) updated[index].type = "textarea";
+      if (
+        updated[index].isManuscriptTitle ||
+        updated[index].isManuscriptFile ||
+        updated[index].isAbstract
+      ) {
+        updated[index].type = updated[index].isManuscriptTitle
+          ? "text"
+          : updated[index].isManuscriptFile
+          ? "file"
+          : "textarea";
         return;
       }
     }
-  
-    // Reset options if type changes and is not choice type
+
     if (
-      field === "type" && 
+      field === "type" &&
       !["multiple", "radio", "checkbox", "select", "coauthors"].includes(value)
     ) {
       updated[index].options = [];
     }
-  
+
     setQuestions(updated);
   };
 
@@ -229,19 +256,16 @@ export default function CreateForm() {
   const saveForm = async (e) => {
     e.preventDefault();
 
-    // Validate form title
-    if (!title.trim()) return alert("Form title is required!");
-
-    // Find the manuscript title question
-    const manuscriptTitleQuestion = questions.find(q => q.isManuscriptTitle);
-    if (!manuscriptTitleQuestion || !manuscriptTitleQuestion.text.trim()) {
-      return alert("Manuscript Title field is required!");
+    if (!hasChanges()) {
+      alert("No changes to save.");
+      return;
     }
 
-    // Validate questions
+    if (!title.trim()) return alert("Form title is required!");
+    const manuscriptTitleQuestion = questions.find((q) => q.isManuscriptTitle);
+    if (!manuscriptTitleQuestion || !manuscriptTitleQuestion.text.trim())
+      return alert("Manuscript Title field is required!");
     if (questions.length === 0) return alert("Please add at least one question!");
-
-    // Check for empty question texts
     if (
       questions.some(
         (q) =>
@@ -252,14 +276,9 @@ export default function CreateForm() {
       )
     )
       return alert("All questions must have text!");
-
-    const abstractQuestion = questions.find(q => q.isAbstract);
-    if (!abstractQuestion || abstractQuestion.text.trim() === "") {
-      alert("Abstract is required and cannot be empty!");
-      return;
-    }
-  
-
+    const abstractQuestion = questions.find((q) => q.isAbstract);
+    if (!abstractQuestion || abstractQuestion.text.trim() === "")
+      return alert("Abstract is required and cannot be empty!");
     const mtQuestion = questions.find((q) => q.isManuscriptTitle);
     if (!mtQuestion || !/manuscript title/i.test(mtQuestion.text.trim())) {
       setMtError(true);
@@ -280,14 +299,13 @@ export default function CreateForm() {
         "All required choice questions must have at least one option!"
       );
 
-    // Ensure manuscript title field has the correct properties
-    const updatedQuestions = questions.map(q => {
+    const updatedQuestions = questions.map((q) => {
       if (q.isManuscriptTitle) {
         return {
           ...q,
-          type: 'text', // Ensure it's a text field
-          required: true, // Make it required
-          text: q.text.trim() || 'Manuscript Title' // Ensure it has a label
+          type: "text",
+          required: true,
+          text: q.text.trim() || "Manuscript Title",
         };
       }
       return q;
@@ -315,6 +333,12 @@ export default function CreateForm() {
         alert("Form saved successfully!");
         setForms([{ id: docRef.id, ...data }, ...forms]);
       }
+
+      // NEW: update initial state after save
+      setInitialFormState({
+        title,
+        questions: updatedQuestions,
+      });
     } catch (error) {
       console.error("Error saving form:", error);
       alert("Failed to save form. Please try again.");
@@ -345,18 +369,18 @@ export default function CreateForm() {
         options: [],
       },
       {
-        id: "manuscript-file",
-        text: "Upload Manuscript",
-        type: "file",
-        isManuscriptFile: true,
-        required: true,
-        options: [],
-      },
-      {
         id: "abstract",
         text: "Abstract",
         type: "textarea",
         isAbstract: true,
+        required: true,
+        options: [],
+      },
+      {
+        id: "manuscript-file",
+        text: "Upload Manuscript",
+        type: "file",
+        isManuscriptFile: true,
         required: true,
         options: [],
       },
@@ -367,6 +391,9 @@ export default function CreateForm() {
         options: [],
       },
     ]);
+
+    // reset initial state
+    setInitialFormState(null);
   };
 
   if (!isAdmin)
@@ -394,7 +421,7 @@ export default function CreateForm() {
                 setTitle("");
                 setQuestions([
                   {
-                    id: Date.now().toString(),
+                    id: "manuscript-title",
                     text: "Manuscript Title",
                     type: "text",
                     isManuscriptTitle: true,
@@ -410,13 +437,24 @@ export default function CreateForm() {
                     options: [],
                   },
                   {
+                    id: "abstract",
+                    text: "Abstract",
+                    type: "textarea",
+                    isAbstract: true,
+                    required: true,
+                    options: [],
+                  },
+                  {
                     id: "coauthors",
                     text: "Co-Authors / Tag Researchers",
                     type: "coauthors",
                     options: [],
                   },
                 ]);
-              } else loadForm(e.target.value);
+                setInitialFormState(null); // NEW
+              } else {
+                loadForm(e.target.value);
+              }
             }}
             className="w-full border rounded px-3 py-2 bg-[#f3f2ee]"
           >
@@ -450,144 +488,181 @@ export default function CreateForm() {
               ref={provided.innerRef}
               className="flex flex-col gap-6"
             >
-              {questions.map((q, index) => (
-                <Draggable key={q.id} draggableId={q.id} index={index}>
-                  {(provided) => (
-                    <div
-                      ref={provided.innerRef}
-                      {...provided.draggableProps}
-                      {...provided.dragHandleProps}
-                      className="bg-[#e0e0e0] rounded-xl p-4 flex flex-col gap-2"
-                    >
-                      {q.type === "coauthors" ? (
-                        <label className="font-semibold mb-1 block">
-                          {q.text} (Tagging disabled here)
-                        </label>
-                      ) : (
-                        <>
-                          <div className="flex flex-col gap-1">
-                            <input
-                              type="text"
-                              placeholder="Question text"
-                              value={q.text}
-                              onChange={(e) =>
-                                updateQuestion(index, "text", e.target.value)
-                              }
-                              className={`italic rounded-lg px-3 py-2 w-full bg-white text-base ${
-                                q.isManuscriptTitle && mtError
-                                  ? "border-2 border-red-500"
-                                  : "border-none"
-                              }`}
-                              ref={
-                                q.isManuscriptTitle ? manuscriptTitleRef : null
-                              }
-                            />
-                            {q.isManuscriptTitle && mtError && (
-                              <p className="text-sm text-red-600">
-                                This field must contain "Manuscript Title".
-                              </p>
-                            )}
-                          </div>
+              {questions
+                .slice(
+                  currentPage * questionsPerPage,
+                  (currentPage + 1) * questionsPerPage
+                )
+                .map((q, index) => {
+                  const globalIndex = currentPage * questionsPerPage + index;
+                  return (
+                    <Draggable key={q.id} draggableId={q.id} index={globalIndex}>
+                      {(provided) => (
+                        <div
+                          ref={provided.innerRef}
+                          {...provided.draggableProps}
+                          {...provided.dragHandleProps}
+                          className="bg-[#e0e0e0] rounded-xl p-4 flex flex-col gap-2"
+                        >
+                          {q.type === "coauthors" ? (
+                            <label className="font-semibold mb-1 block">
+                              {q.text} (Tagging disabled here)
+                            </label>
+                          ) : (
+                            <>
+                              <div className="flex flex-col gap-1">
+                                <input
+                                  type="text"
+                                  placeholder="Question text"
+                                  value={q.text}
+                                  onChange={(e) =>
+                                    updateQuestion(globalIndex, "text", e.target.value)
+                                  }
+                                  className={`italic rounded-lg px-3 py-2 w-full bg-white text-base ${
+                                    q.isManuscriptTitle && mtError
+                                      ? "border-2 border-red-500"
+                                      : "border-none"
+                                  }`}
+                                  ref={q.isManuscriptTitle ? manuscriptTitleRef : null}
+                                />
+                                {q.isManuscriptTitle && mtError && (
+                                  <p className="text-sm text-red-600">
+                                    This field must contain "Manuscript Title".
+                                  </p>
+                                )}
+                              </div>
 
-                          <select
-                            value={q.type}
-                            onChange={(e) => {
-                              const newType = e.target.value;
-                              if (newType === "file" && !q.isManuscriptFile) {
-                                alert(
-                                  "Only the Manuscript File question can be of type 'file'."
-                                );
-                                return;
-                              }
-                              updateQuestion(index, "type", newType);
-                            }}
-                            className="bg-[#f3f2ee] rounded-lg px-3 py-1 w-fit text-base font-medium border-none shadow-sm"
-                            disabled={q.isManuscriptTitle || q.isManuscriptFile}
-                          >
-                            <option value="text">Short Answer</option>
-                            <option value="textarea">Paragraph</option>
-                            <option value="multiple">Multiple Choice</option>
-                            <option value="radio">Radio</option>
-                            <option value="checkbox">Checkbox</option>
-                            <option value="select">Dropdown</option>
-                            <option value="number">Number</option>
-                            <option value="date">Date</option>
-                            {q.isManuscriptFile && <option value="file">File</option>}
-                          </select>
+                              <select
+                                value={q.type}
+                                onChange={(e) => {
+                                  const newType = e.target.value;
+                                  if (newType === "file" && !q.isManuscriptFile) {
+                                    alert(
+                                      "Only the Manuscript File question can be of type 'file'."
+                                    );
+                                    return;
+                                  }
+                                  updateQuestion(globalIndex, "type", newType);
+                                }}
+                                className="bg-[#f3f2ee] rounded-lg px-3 py-1 w-fit text-base font-medium border-none shadow-sm"
+                                disabled={q.isManuscriptTitle || q.isManuscriptFile}
+                              >
+                                <option value="text">Text</option>
+                                <option value="textarea">Paragraph</option>
+                                <option value="multiple">Multiple Choice</option>
+                                <option value="radio">Radio</option>
+                                <option value="checkbox">Checkbox</option>
+                                <option value="select">Dropdown</option>
+                                <option value="number">Number</option>
+                                <option value="date">Date</option>
+                                {q.isManuscriptFile && <option value="file">File</option>}
+                              </select>
 
-                          <label className="flex items-center gap-2 text-base">
-                            <input
-                              type="checkbox"
-                              checked={q.required || false}
-                              onChange={(e) =>
-                                updateQuestion(
-                                  index,
-                                  "required",
-                                  e.target.checked
-                                )
-                              }
-                              className="accent-[#4CC97B] scale-110"
-                            />
-                            Required
-                          </label>
+                              <label className="flex items-center gap-2 text-base">
+                                <input
+                                  type="checkbox"
+                                  checked={q.required || false}
+                                  onChange={(e) =>
+                                    updateQuestion(globalIndex, "required", e.target.checked)
+                                  }
+                                  className="accent-[#4CC97B] scale-110"
+                                />
+                                Required
+                              </label>
 
-                          {(q.type === "multiple" ||
-                            q.type === "radio" ||
-                            q.type === "checkbox" ||
-                            q.type === "select") && (
-                            <div className="flex flex-col gap-2 mt-2">
-                              {q.options?.map((opt, oIndex) => (
-                                <div key={opt.id} className="flex gap-2">
-                                  <input
-                                    type="text"
-                                    value={opt.value}
-                                    onChange={(e) =>
-                                      updateOption(
-                                        index,
-                                        oIndex,
-                                        e.target.value
-                                      )
-                                    }
-                                    className="rounded-lg px-3 py-1 flex-1 bg-white border-none"
-                                  />
+                              {(q.type === "multiple" ||
+                                q.type === "radio" ||
+                                q.type === "checkbox" ||
+                                q.type === "select") && (
+                                <div className="flex flex-col gap-2 mt-2">
+                                  {q.options?.map((opt, oIndex) => (
+                                    <div key={opt.id} className="flex gap-2">
+                                      <input
+                                        type="text"
+                                        value={opt.value}
+                                        onChange={(e) =>
+                                          updateOption(globalIndex, oIndex, e.target.value)
+                                        }
+                                        className="rounded-lg px-3 py-1 flex-1 bg-white border-none"
+                                      />
+                                      <button
+                                        onClick={() => removeOption(globalIndex, oIndex)}
+                                        className="bg-[#7B2E19] text-white rounded-md px-3 font-bold"
+                                      >
+                                        Remove
+                                      </button>
+                                    </div>
+                                  ))}
                                   <button
-                                    onClick={() => removeOption(index, oIndex)}
-                                    className="bg-[#7B2E19] text-white rounded-md px-3 font-bold"
+                                    onClick={() => addOption(globalIndex)}
+                                    className="bg-[#6B6B6B] text-white rounded-md px-4 py-1 font-bold mt-1 w-fit"
                                   >
-                                    Remove
+                                    Add Option
                                   </button>
                                 </div>
-                              ))}
-                              
-                              <button
-                                onClick={() => addOption(index)}
-                                className="bg-[#6B6B6B] text-white rounded-md px-4 py-1 font-bold mt-1 w-fit"
-                              >
-                                Add Option
-                              </button>
-                            </div>
-                          )}
+                              )}
 
-                          {!q.isManuscriptTitle && !q.isManuscriptFile && !q.isAbstract &&(
-                            <button
-                              onClick={() => removeQuestion(index)}
-                              className="bg-[#7B2E19] text-white rounded-md px-4 py-2 font-bold mt-2 w-fit"
-                            >
-                              Remove Question
-                            </button>
+                              {!q.isManuscriptTitle &&
+                                !q.isManuscriptFile &&
+                                !q.isAbstract && (
+                                  <button
+                                    onClick={() => removeQuestion(globalIndex)}
+                                    className="bg-[#7B2E19] text-white rounded-md px-4 py-2 font-bold mt-2 w-fit"
+                                  >
+                                    Remove Question
+                                  </button>
+                                )}
+                            </>
                           )}
-                        </>
+                        </div>
                       )}
-                    </div>
-                  )}
-                </Draggable>
-              ))}
+                    </Draggable>
+                  );
+                })}
+
               {provided.placeholder}
             </div>
           )}
         </Droppable>
       </DragDropContext>
 
+     {/* Pagination Controls */}
+<div className="flex justify-between items-center mt-4">
+  <button
+    onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 0))}
+    disabled={currentPage === 0}
+    className={`px-4 py-2 rounded-lg ${
+      currentPage === 0 ? "bg-gray-300 cursor-not-allowed" : "bg-[#6B6B6B] text-white"
+    }`}
+  >
+    Previous
+  </button>
+
+  <span className="text-base font-medium">
+    Page {currentPage + 1} of {Math.ceil(questions.length / questionsPerPage)}
+  </span>
+
+  <button
+    onClick={() =>
+      setCurrentPage((prev) =>
+        prev < Math.ceil(questions.length / questionsPerPage) - 1
+          ? prev + 1
+          : prev
+      )
+    }
+    disabled={currentPage >= Math.ceil(questions.length / questionsPerPage) - 1}
+    className={`px-4 py-2 rounded-lg ${
+      currentPage >= Math.ceil(questions.length / questionsPerPage) - 1
+        ? "bg-gray-300 cursor-not-allowed"
+        : "bg-[#6B6B6B] text-white"
+    }`}
+  >
+    Next
+  </button>
+</div>
+
+
+      
       {/* Buttons */}
       <div className="flex gap-4 mt-8 justify-between">
         <button
@@ -606,12 +681,21 @@ export default function CreateForm() {
           </button>
 
           {formId && (
-            <button
-              onClick={deleteForm}
-              className="bg-red-600 text-white text-base rounded-lg px-[22px] h-[38px] font-medium"
-            >
-              Delete Form
-            </button>
+            <>
+              <button
+                onClick={cancelChanges} // NEW
+                className="bg-gray-500 text-white text-base rounded-lg px-[22px] h-[38px] font-medium"
+              >
+                Cancel Changes
+              </button>
+
+              <button
+                onClick={deleteForm}
+                className="bg-red-600 text-white text-base rounded-lg px-[22px] h-[38px] font-medium"
+              >
+                Delete Form
+              </button>
+            </>
           )}
         </div>
       </div>

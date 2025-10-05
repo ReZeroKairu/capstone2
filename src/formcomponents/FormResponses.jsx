@@ -719,23 +719,32 @@ setTotalResponses((prev) => Math.max(0, prev - 1));
                       : "");
 
                   return (
-                    <tr key={res.id} className="border-b border-[#7B2E19]/30">
-                      <td className="px-4 py-2">
-                        {highlightText(res.email || "")}
-                      </td>
-                      <td className="px-4 py-2">{highlightText(fullName)}</td>
-                      <td className="px-4 py-2 text-gray-600 text-sm">
-                        {submittedAtText}
-                      </td>
-                      <td className="px-4 py-2">
-                        <button
-                          onClick={() => setSelectedResponse(res)}
-                          className="text-[#7B2E19] underline font-medium text-sm"
-                        >
-                          View Response
-                        </button>
-                      </td>
-                    </tr>
+                   <tr key={res.id} className="border-b border-[#7B2E19]/30">
+ <td className="px-4 py-2">
+  {res.userId ? (
+    <button
+      onClick={() => navigate(`/profile/${res.userId}`)}
+      className="text-red-800 underline cursor-pointer hover:text-red-900 active:text-red-950 transition-colors"
+    >
+      {highlightText(res.email || "")}
+    </button>
+  ) : (
+    highlightText(res.email || "")
+  )}
+</td>
+
+  <td className="px-4 py-2">{highlightText(fullName)}</td>
+  <td className="px-4 py-2 text-gray-600 text-sm">{submittedAtText}</td>
+  <td className="px-4 py-2">
+    <button
+      onClick={() => setSelectedResponse(res)}
+      className="text-[#7B2E19] underline font-medium text-sm"
+    >
+      View Response
+    </button>
+  </td>
+</tr>
+
                   );
                 })
               )}

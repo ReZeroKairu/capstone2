@@ -354,20 +354,25 @@ const downloadFileCandidate = async (candidate, suggestedName) => {
           </div>
         </div>
 
-        {/* Author & meta */}
-        <div className="mt-2 text-sm sm:text-base text-gray-600 break-words space-y-0.5">
-          <p>
-            By{" "}
-            <span className="font-semibold">
-              {firstName || "Unknown"}{" "}
-              {middleName ? middleName.charAt(0) + "." : ""} {lastName || ""}
-            </span>{" "}
-            ({userRole || "N/A"})
-          </p>
-          {email && <p>Email: {email}</p>}
-          {submittedAt && <p>Submitted: {formatDate(submittedAt)}</p>}
-          {acceptedAt && <p>Accepted: {formatDate(acceptedAt)}</p>}
-        </div>
+  
+       {/* Author & meta */}
+<div className="mt-2 text-sm sm:text-base text-gray-600 break-words space-y-0.5">
+  <p>
+    By{" "}
+    <span
+      className="font-semibold text-red-800 cursor-pointer hover:text-red-900 active:text-red-950 transition-colors hover:underline"
+      onClick={() => navigate(`/profile/${manuscript.submitterId || manuscript.id}`)}
+      title="View Profile"
+    >
+      {firstName || "Unknown"} {middleName ? middleName.charAt(0) + "." : ""} {lastName || ""}
+    </span>{" "}
+    ({userRole || "N/A"})
+  </p>
+  {email && <p>Email: {email}</p>}
+  {submittedAt && <p>Submitted: {formatDate(submittedAt)}</p>}
+  {acceptedAt && <p>Accepted: {formatDate(acceptedAt)}</p>}
+</div>
+
 
         {/* Assigned reviewers */}
         {/* Assigned Reviewers with Invitation Status */}

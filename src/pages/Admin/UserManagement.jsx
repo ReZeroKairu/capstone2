@@ -264,102 +264,77 @@ function UserManagement() {
                 key={user.id}
                 className={`bg-white hover:bg-gray-100 border-b border-red-800 sm:border-none`}
               >
-                {/* Mobile view */}
-                <div className="flex flex-col sm:hidden p-3 gap-1 text-base">
-                  <span>
-                    <strong>Email:</strong>{" "}
-                    <span
-                      className="text-blue-600 cursor-pointer hover:underline"
-                      onClick={() => navigate(`/profile/${user.id}`)}
-                    >
-                      {user.email}
-                    </span>
-                  </span>
-                  <span>
-                    <strong>First:</strong>{" "}
-                    <span
-                      className="text-blue-600 cursor-pointer hover:underline"
-                      onClick={() => navigate(`/profile/${user.id}`)}
-                    >
-                      {user.firstName}
-                    </span>
-                  </span>
-                  <span>
-                    <strong>Middle:</strong> {user.middleName || "N/A"}
-                  </span>
-                  <span>
-                    <strong>Last:</strong>{" "}
-                    <span
-                      className="text-blue-600 cursor-pointer hover:underline"
-                      onClick={() => navigate(`/profile/${user.id}`)}
-                    >
-                      {user.lastName}
-                    </span>
-                  </span>
-                  <span>
-                    <strong>Role:</strong> {user.role}
-                  </span>
-                  <div className="flex flex-row gap-2 mt-2">
-                    <button
-                      className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 text-sm"
-                      onClick={() => handleEdit(user)}
-                    >
-                      Edit
-                    </button>
-                    <button
-                      className="bg-red-700 text-white px-4 py-2 rounded hover:bg-red-800 text-sm"
-                      onClick={() => handleDeleteConfirmation(user.id)}
-                    >
-                      Delete
-                    </button>
-                  </div>
-                </div>
+               {/* Mobile view */}
+<div className="flex flex-col sm:hidden p-3 gap-1 text-base">
+  <span>
+    <strong>Email:</strong>{" "}
+    <span
+      className="text-red-800 cursor-pointer hover:underline active:text-red-900 transition-colors"
+      onClick={() => navigate(`/profile/${user.id}`)}
+    >
+      {user.email}
+    </span>
+  </span>
+  <span>
+    <strong>First:</strong> {user.firstName}
+  </span>
+  <span>
+    <strong>Middle:</strong> {user.middleName || "N/A"}
+  </span>
+  <span>
+    <strong>Last:</strong> {user.lastName}
+  </span>
+  <span>
+    <strong>Role:</strong> {user.role}
+  </span>
+  <div className="flex flex-row gap-2 mt-2">
+    <button
+      className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 text-sm"
+      onClick={() => handleEdit(user)}
+    >
+      Edit
+    </button>
+    <button
+      className="bg-red-700 text-white px-4 py-2 rounded hover:bg-red-800 text-sm"
+      onClick={() => handleDeleteConfirmation(user.id)}
+    >
+      Delete
+    </button>
+  </div>
+</div>
 
-                {/* Desktop view */}
-                <div
-                  className={`hidden sm:grid grid-cols-6 items-center p-3 text-center text-base ${
-                    idx < currentUsers.length - 1
-                      ? "border-b border-red-800"
-                      : ""
-                  }`}
-                >
-                  <span
-                    className="text-red-800 cursor-pointer hover:underline"
-                    onClick={() => navigate(`/profile/${user.id}`)}
-                  >
-                    {user.email}
-                  </span>
-                  <span
-                    className="text-red-800 cursor-pointer hover:underline"
-                    onClick={() => navigate(`/profile/${user.id}`)}
-                  >
-                    {user.firstName}
-                  </span>
-                  <span className="text-red-800">
-                    {user.middleName || "N/A"}
-                  </span>
-                  <span
-                    className="text-red-800 cursor-pointer hover:underline"
-                    onClick={() => navigate(`/profile/${user.id}`)}
-                  >
-                    {user.lastName}
-                  </span>
-                  <span className="text-red-800">{user.role}</span>
-                  <div className="flex flex-col sm:flex-row justify-center items-center gap-2">
-                    <button
-                      className="bg-blue-500 text-white px-6 py-2 rounded-sm hover:bg-blue-600 text-sm"
-                      onClick={() => handleEdit(user)}
-                    >
-                      Edit
-                    </button>
-                    <button
-                      className="bg-red-700 text-white px-4 py-2 rounded-sm hover:bg-red-800 text-sm"
-                      onClick={() => handleDeleteConfirmation(user.id)}
-                    >
-                      Delete
-                    </button>
-                  </div>
-                </div>
+              {/* Desktop view */}
+<div
+  className={`hidden sm:grid grid-cols-6 items-center p-3 text-center text-base ${
+    idx < currentUsers.length - 1 ? "border-b border-red-800" : ""
+  }`}
+>
+  <span
+    className="text-red-800 cursor-pointer hover:underline hover:text-red-900 active:text-red-950 transition-colors"
+    onClick={() => navigate(`/profile/${user.id}`)}
+  >
+    {user.email}
+  </span>
+  <span className="text-black">{user.firstName}</span>
+  <span className="text-black">{user.middleName || "N/A"}</span>
+  <span className="text-black">{user.lastName}</span>
+  <span className="text-black">{user.role}</span>
+  <div className="flex flex-col sm:flex-row justify-center items-center gap-2">
+    <button
+      className="bg-blue-500 text-white px-6 py-2 rounded-sm hover:bg-blue-600 text-sm"
+      onClick={() => handleEdit(user)}
+    >
+      Edit
+    </button>
+    <button
+      className="bg-red-700 text-white px-4 py-2 rounded-sm hover:bg-red-800 text-sm"
+      onClick={() => handleDeleteConfirmation(user.id)}
+    >
+      Delete
+    </button>
+  </div>
+</div>
+
               </div>
             ))}
 
