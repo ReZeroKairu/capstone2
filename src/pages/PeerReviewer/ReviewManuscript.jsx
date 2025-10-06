@@ -210,18 +210,20 @@ export default function ReviewManuscript() {
     const msRef = doc(db, "manuscripts", manuscriptId);
     await logReviewerHistory(msRef, reviewerId, decision);
 
-    await updateDoc(msRef, {
-      [`reviewerDecisionMeta.${reviewerId}`]: updatedDecisions[reviewerId],
-      status: "Back to Admin",
-      reviewerSubmissions: arrayUnion({
-        reviewerId,
-        comment: review.comment,
-        status: "Completed",
-        completedAt: new Date(),
-        reviewFileUrl: fileUrl,
-        reviewFileName: fileName || null,
-      }),
-    });
+   await updateDoc(msRef, {
+  [`reviewerDecisionMeta.${reviewerId}`]: updatedDecisions[reviewerId],
+  status: "Back to Admin",
+  [`assignedReviewersMeta.${reviewerId}.respondedAt`]: new Date(), // ✅ add this
+  reviewerSubmissions: arrayUnion({
+    reviewerId,
+    comment: review.comment,
+    status: "Completed",
+    completedAt: new Date(),
+    reviewFileUrl: fileUrl,
+    reviewFileName: fileName || null,
+  }),
+});
+
 
     const manuscriptTitle = selected.manuscriptTitle || selected.title || "Untitled";
 
@@ -304,9 +306,12 @@ const downloadFileCandidate = async (file) => {
             (userRole === "Peer Reviewer" && ((m.assignedReviewers || []).includes(reviewerId) || myDecision === "reject"));
           if (!canSeeManuscript) return null;
 
-          const invitedMeta = m.assignedReviewersMeta?.[reviewerId] || {};
-          const invitedById = invitedMeta?.assignedBy || invitedMeta?.invitedBy || null;
-          const invitedAt = invitedMeta?.assignedAt || invitedMeta?.invitedAt || null;
+      const invitedMeta = m.assignedReviewersMeta?.[reviewerId] || {};
+const invitedById = invitedMeta?.assignedBy || invitedMeta?.invitedBy || null;
+const invitedAt = invitedMeta?.assignedAt || invitedMeta?.invitedAt || null;
+const acceptedAt = invitedMeta?.respondedAt || null; // ✅ this is correct
+
+
           const inviter =
             invitedById && users[invitedById] ? `${users[invitedById].firstName || ""} ${users[invitedById].lastName || ""}`.trim() : invitedMeta?.assignedByName || invitedMeta?.invitedByName || "Unknown";
 
@@ -317,7 +322,7 @@ const downloadFileCandidate = async (file) => {
               <div>
                 <div className="text-lg font-semibold">{getManuscriptDisplayTitle(m)}</div>
                 <div className="text-xs text-gray-500 mt-1">
-                  Invited by {inviter} • Invited: {formatFirestoreDate(invitedAt)} • Status: <span className="font-medium">{m.status}</span>
+          Invited by {inviter} • Invited: {formatFirestoreDate(invitedAt)} • Accepted: {acceptedAt ? formatFirestoreDate(acceptedAt) : "—"} • Status: <span className="font-medium">{m.status}</span>
                 </div>
               </div>
               <div className="flex items-center gap-3">

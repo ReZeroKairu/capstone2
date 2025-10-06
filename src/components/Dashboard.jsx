@@ -14,6 +14,8 @@ import { db } from "../firebase/firebase";
 import Progressbar from "./Progressbar.jsx";
 import { useNavigate } from "react-router-dom";
 import PaginationControls from "./PaginationControls";
+import { useParams } from "react-router-dom";
+
 
 const IN_PROGRESS_STATUSES = [
   "Pending",
@@ -52,294 +54,250 @@ const Dashboard = ({ sidebarOpen }) => {
   const [currentPage, setCurrentPage] = useState(1);
   const [manuscriptsPerPage, setManuscriptsPerPage] = useState(5);
   const navigate = useNavigate();
+  const { userId } = useParams(); // ✅ ADDED — get the target userId from the URL
+  const [targetUser, setTargetUser] = useState(null); // ✅ optional: store the viewed user info
 
-  // --- Fetch manuscripts ---
-  useEffect(() => {
-    const auth = getAuth();
-    let unsubscribes = [];
+// --- Fetch manuscripts ---
+useEffect(() => {
+  const auth = getAuth();
+  let unsubscribes = [];
 
-    const unsubscribeAuth = auth.onAuthStateChanged(async (currentUser) => {
-      if (!currentUser) {
-        setUser(null);
-        setRole(null);
-        setManuscripts([]);
+  const unsubscribeAuth = auth.onAuthStateChanged(async (currentUser) => {
+    if (!currentUser) {
+      setUser(null);
+      setRole(null);
+      setManuscripts([]);
+      setLoading(false);
+      return;
+    }
+
+    setUser(currentUser);
+
+    try {
+      const targetUserId = userId || currentUser.uid; // ✅ if no param, show own dashboard
+      const userRef = doc(db, "Users", targetUserId);
+      const docSnap = await getDoc(userRef);
+      const userRole = docSnap.exists() ? docSnap.data().role : "Researcher";
+      setRole(userRole);
+
+      // ✅ Added — fetch target user's info if viewing someone else's dashboard
+      if (userId && userId !== currentUser.uid) {
+        const targetSnap = await getDoc(doc(db, "Users", userId));
+        if (targetSnap.exists()) {
+          setTargetUser(targetSnap.data());
+        }
+      }
+
+      const manuscriptsRef = collection(db, "manuscripts");
+
+      // --- Admin ---
+      if (userRole === "Admin") {
+        const q = query(manuscriptsRef, orderBy("submittedAt", "desc"));
+        const unsub = onSnapshot(q, (snapshot) => {
+          setManuscripts(snapshot.docs.map((d) => ({ id: d.id, ...d.data() })));
+        });
+        unsubscribes.push(unsub);
         setLoading(false);
         return;
       }
 
-      setUser(currentUser);
+      // --- Peer Reviewer ---
+      if (userRole === "Peer Reviewer") {
+        const q = query(manuscriptsRef, orderBy("submittedAt", "desc"));
+        const unsub = onSnapshot(q, (snapshot) => {
+          const allManuscripts = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+          const filtered = allManuscripts.filter((m) => {
+            const myId = targetUserId;
+            const myDecision = m.reviewerDecisionMeta?.[myId]?.decision;
+            const isAssigned =
+              (m.assignedReviewers || []).includes(myId) ||
+              (m.originalAssignedReviewers || []).includes(myId);
+            const hasSubmitted = m.reviewerSubmissions?.some((s) => s.reviewerId === myId);
+            const wasInvolved = isAssigned || hasSubmitted || myDecision;
 
-      try {
-        const userRef = doc(db, "Users", currentUser.uid);
-        const docSnap = await getDoc(userRef);
-        const userRole = docSnap.exists() ? docSnap.data().role : "Researcher";
-        setRole(userRole);
-
-        const manuscriptsRef = collection(db, "manuscripts");
-
-        // Admin
-        if (userRole === "Admin") {
-          const q = query(manuscriptsRef, orderBy("submittedAt", "desc"));
-          const unsub = onSnapshot(q, (snapshot) => {
-            setManuscripts(
-              snapshot.docs.map((d) => ({ id: d.id, ...d.data() }))
-            );
+            if (!wasInvolved) return false;
+            if (m.status === "For Publication") return myDecision === "publication";
+            if (["Rejected", "Peer Reviewer Rejected"].includes(m.status))
+              return myDecision === "reject";
+            return true;
           });
-          unsubscribes.push(unsub);
-          setLoading(false);
-          return;
-        }
-
-        if (userRole === "Peer Reviewer") {
-          const q = query(manuscriptsRef, orderBy("submittedAt", "desc"));
-          const unsub = onSnapshot(q, (snapshot) => {
-            const allManuscripts = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
-            
-            // Filter manuscripts where peer reviewer is involved, matching the Manuscripts component logic
-            const filteredManuscripts = allManuscripts.filter((m) => {
-              const myId = currentUser.uid;
-              const myDecision = m.reviewerDecisionMeta?.[myId]?.decision; // "publication" or "reject"
-              const isAssigned = (m.assignedReviewers || []).includes(myId) || 
-                               (m.originalAssignedReviewers || []).includes(myId);
-              const hasSubmitted = m.reviewerSubmissions?.some(s => s.reviewerId === myId);
-
-              // Show manuscripts they are involved in OR were previously involved with
-              const wasInvolved = isAssigned || hasSubmitted || myDecision || 
-                               (m.originalAssignedReviewers || []).includes(myId);
-              
-              if (!wasInvolved) return false;
-
-              // If there's a final decision, only show if it matches the reviewer's decision
-              if (m.status === "For Publication") {
-                return myDecision === "publication";
-              } else if (m.status === "Rejected" || m.status === "Peer Reviewer Rejected") {
-                return myDecision === "reject";
-              }
-              
-              // For all other statuses (including For Revision), show the manuscript
-              // if they were ever involved with it
-              return true;
-            });
-            
-            setManuscripts(filteredManuscripts);
-          });
-          unsubscribes.push(unsub);
-          setLoading(false);
-          return;
-        }
-
-        // Researcher logic
-        const localMap = new Map();
-        const mergeAndSet = () => {
-          const merged = Array.from(localMap.values());
-          merged.sort(
-            (a, b) =>
-              (b.submittedAt?.seconds || 0) - (a.submittedAt?.seconds || 0)
-          );
-          setManuscripts(merged);
-        };
-
-        // Query for manuscripts where user is the owner (userId matches)
-        const qOwn = query(
-          manuscriptsRef,
-          where("userId", "==", currentUser.uid),
-          orderBy("submittedAt", "desc")
-        );
-        
-        // Query for manuscripts where user is the submitter (submitterId matches)
-        const qSubmitter = query(
-          manuscriptsRef,
-          where("submitterId", "==", currentUser.uid),
-          orderBy("submittedAt", "desc")
-        );
-        
-        // Query for manuscripts where user is an assigned reviewer
-        const qAssigned = query(
-          manuscriptsRef,
-          where("assignedReviewers", "array-contains", currentUser.uid),
-          orderBy("submittedAt", "desc")
-        );
-        
-        // --- ADDED: Query for manuscripts where user is a co-author via coAuthorsIds ---
-        const qCoAuthor = query(
-          manuscriptsRef,
-          where("coAuthorsIds", "array-contains", currentUser.uid),
-          orderBy("submittedAt", "desc")
-        );
-        
-        // Query for recent manuscripts (used for co-author detection)
-        const qRecent = query(
-          manuscriptsRef,
-          orderBy("submittedAt", "desc"),
-          limit(50)
-        );
-
-        const unsubOwn = onSnapshot(qOwn, (snap) => {
-          snap.docs.forEach((d) =>
-            localMap.set(d.id, { id: d.id, ...d.data() })
-          );
-          mergeAndSet();
+          setManuscripts(filtered);
         });
-
-        const unsubSubmitter = onSnapshot(qSubmitter, (snap) => {
-          snap.docs.forEach((d) =>
-            localMap.set(d.id, { id: d.id, ...d.data() })
-          );
-          mergeAndSet();
-        });
-
-        const unsubAssigned = onSnapshot(qAssigned, (snap) => {
-          snap.docs.forEach((d) =>
-            localMap.set(d.id, { id: d.id, ...d.data() })
-          );
-          mergeAndSet();
-        });
-
-        // --- ADDED: Listener for the new co-author query ---
-        const unsubCoAuthor = onSnapshot(qCoAuthor, (snap) => {
-          snap.docs.forEach((d) =>
-            localMap.set(d.id, { id: d.id, ...d.data() })
-          );
-          mergeAndSet();
-        });
-
-        const unsubRecent = onSnapshot(qRecent, (snap) => {
-          const email = currentUser.email || "";
-          const name =
-            currentUser.displayName ||
-            `${currentUser.firstName || ""} ${
-              currentUser.lastName || ""
-            }`.trim();
-
-          snap.docs.forEach((d) => {
-            const data = { id: d.id, ...d.data() };
-            if (localMap.has(d.id)) return;
-
-            const isCoAuthor =
-              data.coAuthors?.some?.((c) => c.id === currentUser.uid) ||
-              data.answeredQuestions?.some((q) => {
-                if (q.type !== "coauthors") return false;
-                if (Array.isArray(q.answer)) {
-                  return q.answer.some(
-                    (a) =>
-                      typeof a === "string" &&
-                      ((email && a.includes(email)) ||
-                        (name && a.includes(name)))
-                  );
-                } else if (typeof q.answer === "string") {
-                  return (
-                    (email && q.answer.includes(email)) ||
-                    (name && q.answer.includes(name))
-                  );
-                }
-                return false;
-              });
-
-            if (isCoAuthor) localMap.set(d.id, data);
-          });
-          mergeAndSet();
-        });
-
-        // --- UPDATED: Added the new unsubCoAuthor to the cleanup array ---
-        unsubscribes.push(unsubOwn, unsubSubmitter, unsubAssigned, unsubCoAuthor, unsubRecent);
-
-      } catch (err) {
-        console.error("Error fetching manuscripts:", err);
-      } finally {
+        unsubscribes.push(unsub);
         setLoading(false);
+        return;
       }
-    });
 
-    return () => {
-      unsubscribeAuth();
-      unsubscribes.forEach((u) => u && u());
-    };
-  }, []);
+      // --- Researcher ---
+      const localMap = new Map();
+      const mergeAndSet = () => {
+        const merged = Array.from(localMap.values());
+        merged.sort(
+          (a, b) => (b.submittedAt?.seconds || 0) - (a.submittedAt?.seconds || 0)
+        );
+        setManuscripts(merged);
+      };
+
+      const qOwn = query(
+        manuscriptsRef,
+        where("userId", "==", targetUserId),
+        orderBy("submittedAt", "desc")
+      );
+      const qSubmitter = query(
+        manuscriptsRef,
+        where("submitterId", "==", targetUserId),
+        orderBy("submittedAt", "desc")
+      );
+      const qAssigned = query(
+        manuscriptsRef,
+        where("assignedReviewers", "array-contains", targetUserId),
+        orderBy("submittedAt", "desc")
+      );
+      const qCoAuthor = query(
+        manuscriptsRef,
+        where("coAuthorsIds", "array-contains", targetUserId),
+        orderBy("submittedAt", "desc")
+      );
+      const qRecent = query(manuscriptsRef, orderBy("submittedAt", "desc"), limit(50));
+
+      const unsubOwn = onSnapshot(qOwn, (snap) => {
+        snap.docs.forEach((d) => localMap.set(d.id, { id: d.id, ...d.data() }));
+        mergeAndSet();
+      });
+      const unsubSubmitter = onSnapshot(qSubmitter, (snap) => {
+        snap.docs.forEach((d) => localMap.set(d.id, { id: d.id, ...d.data() }));
+        mergeAndSet();
+      });
+      const unsubAssigned = onSnapshot(qAssigned, (snap) => {
+        snap.docs.forEach((d) => localMap.set(d.id, { id: d.id, ...d.data() }));
+        mergeAndSet();
+      });
+      const unsubCoAuthor = onSnapshot(qCoAuthor, (snap) => {
+        snap.docs.forEach((d) => localMap.set(d.id, { id: d.id, ...d.data() }));
+        mergeAndSet();
+      });
+      const unsubRecent = onSnapshot(qRecent, (snap) => {
+        const email = currentUser.email || "";
+        const name =
+          currentUser.displayName ||
+          `${currentUser.firstName || ""} ${currentUser.lastName || ""}`.trim();
+        snap.docs.forEach((d) => {
+          const data = { id: d.id, ...d.data() };
+          if (localMap.has(d.id)) return;
+          const isCoAuthor =
+            data.coAuthors?.some?.((c) => c.id === currentUser.uid) ||
+            data.answeredQuestions?.some((q) => {
+              if (q.type !== "coauthors") return false;
+              if (Array.isArray(q.answer)) {
+                return q.answer.some(
+                  (a) =>
+                    typeof a === "string" &&
+                    ((email && a.includes(email)) || (name && a.includes(name)))
+                );
+              } else if (typeof q.answer === "string") {
+                return (
+                  (email && q.answer.includes(email)) ||
+                  (name && q.answer.includes(name))
+                );
+              }
+              return false;
+            });
+          if (isCoAuthor) localMap.set(d.id, data);
+        });
+        mergeAndSet();
+      });
+
+      unsubscribes.push(unsubOwn, unsubSubmitter, unsubAssigned, unsubCoAuthor, unsubRecent);
+      setLoading(false);
+    } catch (err) {
+      console.error("Error fetching manuscripts:", err);
+      setLoading(false);
+    }
+  });
+
+  return () => {
+    unsubscribeAuth();
+    unsubscribes.forEach((u) => u && u());
+  };
+}, [userId]);
+
 
   // --- Summary Counts ---
-  const summaryCounts = useMemo(() => {
-    if (!user || !manuscripts) return [];
+const summaryCounts = useMemo(() => {
+  if (!user || !manuscripts) return [];
 
-    const rejectedStatuses = ["Rejected", "Peer Reviewer Rejected"];
-    const counts = [];
+  const targetUserId = userId || user.uid; // ✅ the viewed user (not always current)
+  const rejectedStatuses = ["Rejected", "Peer Reviewer Rejected"];
+  const counts = [];
 
-    // Role-specific total merged into summary
-    if (role === "Admin") {
-      counts.push({ label: "Total Manuscripts", count: manuscripts.length });
-    } else if (role === "Peer Reviewer") {
-      const reviewedCount = manuscripts.filter((m) => {
-        // Include if they are assigned, were assigned, made a decision, or submitted a review
-        const currentlyAssigned = (m.assignedReviewers || []).includes(user.uid);
-        const originallyAssigned = (m.originalAssignedReviewers || []).includes(user.uid);
-        const hasDecision = m.reviewerDecisionMeta && m.reviewerDecisionMeta[user.uid];
-        const hasSubmission = m.reviewerSubmissions && m.reviewerSubmissions.some(s => s.reviewerId === user.uid);
-        
-        // For final decisions, only count if their decision matches
-        if (["For Publication", "Peer Reviewer Rejected"].includes(m.status)) {
-          if (hasDecision) {
-            const decision = m.reviewerDecisionMeta[user.uid].decision;
-            return (m.status === "For Publication" && decision === "publication") || 
-                   (m.status === "Peer Reviewer Rejected" && decision === "reject");
-          }
-          return false;
+  // --- Role-based totals ---
+  if (role === "Admin") {
+    counts.push({ label: "Total Manuscripts", count: manuscripts.length });
+  } else if (role === "Peer Reviewer") {
+    const reviewedCount = manuscripts.filter((m) => {
+      const currentlyAssigned = (m.assignedReviewers || []).includes(targetUserId);
+      const originallyAssigned = (m.originalAssignedReviewers || []).includes(targetUserId);
+      const hasDecision = m.reviewerDecisionMeta?.[targetUserId];
+      const hasSubmission = m.reviewerSubmissions?.some(
+        (s) => s.reviewerId === targetUserId
+      );
+
+      if (["For Publication", "Peer Reviewer Rejected"].includes(m.status)) {
+        if (hasDecision) {
+          const decision = m.reviewerDecisionMeta[targetUserId].decision;
+          return (
+            (m.status === "For Publication" && decision === "publication") ||
+            (m.status === "Peer Reviewer Rejected" && decision === "reject")
+          );
         }
-        
-        // For all other statuses, include if they were ever involved
-        return currentlyAssigned || originallyAssigned || hasDecision || hasSubmission;
-      }).length;
-      
-      counts.push({ label: "Total Manuscripts Reviewed", count: reviewedCount });
-    } else if (role === "Researcher") {
-      const submittedCount = manuscripts.filter((m) => {
-          const isOwner = m.userId === user.uid;
-          const isSubmitter = m.submitterId === user.uid;
-          const isCoAuthor =
-            m.coAuthors?.some((c) => c.id === user.uid) ||
-            m.coAuthorsIds?.includes(user.uid);
-          return isOwner || isSubmitter || isCoAuthor;
-      }).length;
-      counts.push({
-        label: "Total Manuscripts Submitted",
-        count: submittedCount,
-      });
-    }
-
-    // Other counts
-    counts.push(
-      {
-        label: "Pending",
-        count: manuscripts.filter((m) => m.status === "Pending").length,
-      },
-      {
-        label: "In Progress",
-        count: manuscripts.filter((m) => IN_PROGRESS_STATUSES.includes(m.status)).length,
-      },
-      {
-        label: "For Revision",
-        count: manuscripts.filter((m) =>
-          ["For Revision (Minor)", "For Revision (Major)"].includes(m.status)
-        ).length,
-      },
-      {
-        label: "For Revision (Minor)",
-        count: manuscripts.filter((m) => m.status === "For Revision (Minor)").length,
-      },
-      {
-        label: "For Revision (Major)",
-        count: manuscripts.filter((m) => m.status === "For Revision (Major)").length,
-      },
-      {
-        label: "For Publication",
-        count: manuscripts.filter((m) => m.status === "For Publication").length,
-      },
-      {
-        label: "Rejected",
-        count: manuscripts.filter((m) => rejectedStatuses.includes(m.status)).length,
+        return false;
       }
-    );
 
-    return counts;
-  }, [manuscripts, user, role]);
+      return currentlyAssigned || originallyAssigned || hasDecision || hasSubmission;
+    }).length;
+
+    counts.push({ label: "Total Manuscripts Reviewed", count: reviewedCount });
+  } else if (role === "Researcher") {
+    const submittedCount = manuscripts.filter((m) => {
+      const isOwner = m.userId === targetUserId;
+      const isSubmitter = m.submitterId === targetUserId;
+      const isCoAuthor =
+        m.coAuthors?.some((c) => c.id === targetUserId) ||
+        m.coAuthorsIds?.includes(targetUserId);
+      return isOwner || isSubmitter || isCoAuthor;
+    }).length;
+
+    counts.push({
+      label: "Total Manuscripts Submitted",
+      count: submittedCount,
+    });
+  }
+
+  // --- Status counts ---
+  counts.push(
+    { label: "Pending", count: manuscripts.filter((m) => m.status === "Pending").length },
+    {
+      label: "In Progress",
+      count: manuscripts.filter((m) => IN_PROGRESS_STATUSES.includes(m.status)).length,
+    },
+    {
+      label: "For Revision",
+      count: manuscripts.filter((m) =>
+        ["For Revision (Minor)", "For Revision (Major)"].includes(m.status)
+      ).length,
+    },
+    {
+      label: "For Publication",
+      count: manuscripts.filter((m) => m.status === "For Publication").length,
+    },
+    {
+      label: "Rejected",
+      count: manuscripts.filter((m) => rejectedStatuses.includes(m.status)).length,
+    }
+  );
+
+  return counts;
+}, [manuscripts, user, role, userId]);
 
   // --- Filtered manuscripts ---
   const displayedManuscripts = useMemo(() => {
@@ -401,9 +359,13 @@ const Dashboard = ({ sidebarOpen }) => {
     >
       {/* Welcome Header */}
       <div className="mb-10 flex flex-col sm:flex-row justify-between items-center">
-        <h1 className="text-4xl font-bold text-gray-800">
-          Hello, {user.displayName || "User"}!
-        </h1>
+       <h1 className="text-4xl font-bold text-gray-800">
+  {userId && userId !== user?.uid
+    ? `Viewing Dashboard of ${targetUser ? `${targetUser.firstName || ""} ${targetUser.lastName || ""}`.trim() : "User"}`
+    : `Hello, ${user?.displayName || user?.firstName || "User"}!`}
+</h1>
+
+
         <span className="text-gray-500 font-medium mt-2 sm:mt-0">
           Role: {role}
         </span>

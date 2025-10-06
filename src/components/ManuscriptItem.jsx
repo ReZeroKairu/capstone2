@@ -357,20 +357,43 @@ const downloadFileCandidate = async (candidate, suggestedName) => {
   
        {/* Author & meta */}
 <div className="mt-2 text-sm sm:text-base text-gray-600 break-words space-y-0.5">
-  <p>
-    By{" "}
-    <span
-      className="font-semibold text-red-800 cursor-pointer hover:text-red-900 active:text-red-950 transition-colors hover:underline"
-      onClick={() => navigate(`/profile/${manuscript.submitterId || manuscript.id}`)}
-      title="View Profile"
-    >
-      {firstName || "Unknown"} {middleName ? middleName.charAt(0) + "." : ""} {lastName || ""}
-    </span>{" "}
-    ({userRole || "N/A"})
-  </p>
-  {email && <p>Email: {email}</p>}
-  {submittedAt && <p>Submitted: {formatDate(submittedAt)}</p>}
-  {acceptedAt && <p>Accepted: {formatDate(acceptedAt)}</p>}
+  {role !== "Peer Reviewer" ? (
+    <>
+      <p>
+        By{" "}
+        <span
+          className="font-semibold text-red-800 cursor-pointer hover:text-red-900 active:text-red-950 transition-colors hover:underline"
+          onClick={() => navigate(`/profile/${manuscript.submitterId || manuscript.id}`)}
+          title="View Profile"
+        >
+          {firstName || "Unknown"} {middleName ? middleName.charAt(0) + "." : ""} {lastName || ""}
+        </span>{" "}
+        ({userRole || "N/A"})
+      </p>
+      {email && <p>Email: {email}</p>}
+      {submittedAt && <p>Submitted: {formatDate(submittedAt)}</p>}
+      {acceptedAt && <p>Accepted: {formatDate(acceptedAt)}</p>}
+    </>
+  ) : (
+    <>
+      {/* For Peer Reviewers, only show their assignment time */}
+     {manuscript.assignedReviewersMeta?.[currentUserId] && (
+  <>
+    {manuscript.assignedReviewersMeta[currentUserId].assignedAt && (
+      <p>
+        Invited: {formatDate(manuscript.assignedReviewersMeta[currentUserId].assignedAt)}
+      </p>
+    )}
+    {manuscript.assignedReviewersMeta[currentUserId].respondedAt && (
+      <p>
+        Accepted: {formatDate(manuscript.assignedReviewersMeta[currentUserId].respondedAt)}
+      </p>
+    )}
+  </>
+)}
+
+    </>
+  )}
 </div>
 
 

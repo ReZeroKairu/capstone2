@@ -122,6 +122,7 @@ function App() {
                 <Route path="/createform" element={<CreateForm />} />
                 <Route path="/formresponses" element={<FormResponses />} />
                 <Route path="/dashboard" element={<Dashboard />} />
+                <Route path="/dashboard/:userId" element={<Dashboard />} />
                 <Route path="/profile/:userId" element={<Profile />} />
                 <Route path="/peer-reviewers" element={<PeerReviewerList />} />
                 <Route

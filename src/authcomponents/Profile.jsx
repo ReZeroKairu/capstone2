@@ -6,6 +6,8 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faUser, faEdit } from "@fortawesome/free-solid-svg-icons";
 import { logProfileUpdate } from "../utils/logger"; // updated logger
 import { useParams } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
+
 
 function Profile() {
   const { userId } = useParams(); // <- dynamic user ID
@@ -17,11 +19,13 @@ function Profile() {
   const [messageTimeout, setMessageTimeout] = useState(null);
   const [showFullMiddle, setShowFullMiddle] = useState(false);
   const [selectedFile, setSelectedFile] = useState(null);
+const [loading, setLoading] = useState(true);
 
   const messageRef = useRef(null);
   const firstNameRef = useRef(null);
   const lastNameRef = useRef(null);
   const originalPhotoRef = useRef(null); // store original Base64 photo
+const navigate = useNavigate();
 
   const getInitials = (firstName, middleName, lastName) =>
     (
@@ -98,53 +102,57 @@ const [researcherInfo, setResearcherInfo] = useState({
   }, [userId, currentUser]);
 
   const fetchProfile = async (userId) => {
-    try {
-      const userDoc = await getDoc(doc(db, "Users", userId));
-      if (userDoc.exists()) {
-        const userData = userDoc.data();
+  try {
+    const userDoc = await getDoc(doc(db, "Users", userId));
+    if (userDoc.exists()) {
+      const userData = userDoc.data();
 
-        // Unified photo selection logic
-        const profilePhoto =
-          userData.photoURL || userData.externalPhotoURL || userData.photo || null;
+      // Unified photo selection logic
+      const profilePhoto =
+        userData.photoURL || userData.externalPhotoURL || userData.photo || null;
 
-        setProfile({
-          id: userDoc.id,
-          ...userData,
-          photoURL: profilePhoto,
+      setProfile({
+        id: userDoc.id,
+        ...userData,
+        photoURL: profilePhoto,
+      });
+
+      originalPhotoRef.current = profilePhoto;
+
+      setOriginalFirstName(userData.firstName);
+      setOriginalMiddleName(userData.middleName || "");
+      setOriginalLastName(userData.lastName);
+
+      if (userData.role === "Peer Reviewer") {
+        setPeerReviewerInfo({
+          affiliation: userData.affiliation || "",
+          expertise: userData.expertise || "",
+          interests: userData.interests || "",
+          education: userData.education || "",
+          specialty: userData.specialty || "",
         });
-
-        originalPhotoRef.current = profilePhoto;
-
-        setOriginalFirstName(userData.firstName);
-        setOriginalMiddleName(userData.middleName || "");
-        setOriginalLastName(userData.lastName);
-
-if (userData.role === "Peer Reviewer") {
-  setPeerReviewerInfo({
-    affiliation: userData.affiliation || "",
-    expertise: userData.expertise || "",
-    interests: userData.interests || "",
-    education: userData.education || "",
-    specialty: userData.specialty || "",
-  });
-} else if (userData.role === "Researcher") {
-  setResearcherInfo({
-    institution: userData.institution || "",
-    fieldOfStudy: userData.fieldOfStudy || "",
-    education: userData.education || "",
-    researchInterests: userData.researchInterests || "",
-  });
-}
-
-      } else {
-        showMessage("Profile not found.", "error");
-        setProfile(null);
+      } else if (userData.role === "Researcher") {
+        setResearcherInfo({
+          institution: userData.institution || "",
+          fieldOfStudy: userData.fieldOfStudy || "",
+          education: userData.education || "",
+          researchInterests: userData.researchInterests || "",
+        });
       }
-    } catch (error) {
-      console.error("Error fetching profile:", error);
-      showMessage("Failed to fetch profile.", "error");
+
+    } else {
+      showMessage("Profile not found.", "error");
+      setProfile(null);
     }
-  };
+  } catch (error) {
+    console.error("Error fetching profile:", error);
+    showMessage("Failed to fetch profile.", "error");
+  } finally {
+    // ✅ This ensures the loading spinner stops no matter what
+    setLoading(false);
+  }
+};
+
 
   useEffect(() => {
     if (isEditing) smoothScrollTo(firstNameRef.current, 300);
@@ -540,7 +548,29 @@ const handleUpdateProfile = async () => {
                 </button>
               </div>
             )}
-            {!isEditing && <div className="mt-10 h-10"></div>}
+           {!isEditing && (
+  <div className="mt-10 flex flex-col items-center space-y-4">
+    {/* Go to Dashboard Button */}
+    {!loading && profile && (
+      <button
+        onClick={() => {
+          if (userId) {
+            navigate(`/dashboard/${userId}`);
+          } else if (currentUser) {
+            navigate(`/dashboard/${currentUser.uid}`);
+          }
+        }}
+        className="px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700 active:bg-blue-800 transition-all duration-200"
+      >
+        Go to Dashboard
+      </button>
+    )}
+
+    {/* Spacer for consistent layout */}
+    <div className="h-10"></div>
+  </div>
+)}
+
           </div>
         ) : (
           <p className="text-center text-gray-100">Loading profile...</p>
