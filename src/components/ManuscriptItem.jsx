@@ -361,13 +361,19 @@ const downloadFileCandidate = async (candidate, suggestedName) => {
     <>
       <p>
         By{" "}
-        <span
-          className="font-semibold text-red-800 cursor-pointer hover:text-red-900 active:text-red-950 transition-colors hover:underline"
-          onClick={() => navigate(`/profile/${manuscript.submitterId || manuscript.id}`)}
-          title="View Profile"
-        >
-          {firstName || "Unknown"} {middleName ? middleName.charAt(0) + "." : ""} {lastName || ""}
-        </span>{" "}
+        {role === "Admin" ? (
+          <span
+            className="font-semibold text-red-800 cursor-pointer hover:text-red-900 active:text-red-950 transition-colors hover:underline"
+            onClick={() => navigate(`/profile/${manuscript.submitterId || manuscript.id}`)}
+            title="View Profile"
+          >
+            {firstName || "Unknown"} {middleName ? middleName.charAt(0) + "." : ""} {lastName || ""}
+          </span>
+        ) : (
+          <span className="font-semibold text-gray-800">
+            {firstName || "Unknown"} {middleName ? middleName.charAt(0) + "." : ""} {lastName || ""}
+          </span>
+        )}{" "}
         ({userRole || "N/A"})
       </p>
       {email && <p>Email: {email}</p>}
@@ -377,25 +383,23 @@ const downloadFileCandidate = async (candidate, suggestedName) => {
   ) : (
     <>
       {/* For Peer Reviewers, only show their assignment time */}
-     {manuscript.assignedReviewersMeta?.[currentUserId] && (
-  <>
-    {manuscript.assignedReviewersMeta[currentUserId].assignedAt && (
-      <p>
-        Invited: {formatDate(manuscript.assignedReviewersMeta[currentUserId].assignedAt)}
-      </p>
-    )}
-    {manuscript.assignedReviewersMeta[currentUserId].respondedAt && (
-      <p>
-        Accepted: {formatDate(manuscript.assignedReviewersMeta[currentUserId].respondedAt)}
-      </p>
-    )}
-  </>
-)}
-
+      {manuscript.assignedReviewersMeta?.[currentUserId] && (
+        <>
+          {manuscript.assignedReviewersMeta[currentUserId].assignedAt && (
+            <p>
+              Invited: {formatDate(manuscript.assignedReviewersMeta[currentUserId].assignedAt)}
+            </p>
+          )}
+          {manuscript.assignedReviewersMeta[currentUserId].respondedAt && (
+            <p>
+              Accepted: {formatDate(manuscript.assignedReviewersMeta[currentUserId].respondedAt)}
+            </p>
+          )}
+        </>
+      )}
     </>
   )}
 </div>
-
 
         {/* Assigned reviewers */}
         {/* Assigned Reviewers with Invitation Status */}
