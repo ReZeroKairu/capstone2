@@ -11,6 +11,7 @@ import {
   FaWpforms,
   FaInbox,
   FaEnvelope,
+  FaClock, 
 } from "react-icons/fa";
 import { Link, useLocation } from "react-router-dom";
 
@@ -66,6 +67,12 @@ const Sidebar = ({ role, isOpen, toggleSidebar }) => {
       path: "/formresponses",
       icon: <FaInbox className="text-xl" />,
     },
+    {
+  name: "Deadline Settings",
+  path: "/admin/deadline-settings",
+  icon: <FaClock className="text-xl" />,
+},
+
   ];
 
   const researcherLinks = [

@@ -23,6 +23,14 @@ const STATUS_COLORS = {
   "Peer Reviewer Rejected": "bg-red-100 text-red-800",
   Rejected: "bg-red-100 text-red-800",
 };
+const statusToDeadlineField = {
+  "Assigning Peer Reviewer": "invitationDeadline",
+  "Peer Reviewer Assigned": "reviewDeadline",
+  "For Revision (Minor)": "revisionDeadline",
+  "For Revision (Major)": "revisionDeadline",
+  "Back to Admin": "finalizationDeadline",
+};
+
 
 const decisionLabels = {
   minor: "Accepted with Minor Revision",
@@ -601,24 +609,59 @@ const downloadFileCandidate = async (candidate, suggestedName) => {
             </button>
           )}
 
-          {showAssignButton &&
-            (!hasReviewer ? (
-              <button
-                onClick={() =>
-                  navigate(`/admin/reviewer-list?manuscriptId=${id}`)
-                }
-                className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition font-medium text-sm sm:text-base"
-              >
-                Assign Reviewer
-              </button>
-            ) : (
-              <button
-                onClick={() => unassignReviewer(id)}
-                className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition font-medium text-sm sm:text-base"
-              >
-                Unassign Reviewer
-              </button>
-            ))}
+      {showAssignButton &&
+  (!hasReviewer ? (
+    <button
+      onClick={async () => {
+        try {
+          // 🔹 Fetch default deadline days from Firestore
+          const settingsRef = doc(db, "deadlineSettings", "deadlines");
+          const settingsSnap = await getDoc(settingsRef);
+
+       let defaultDays = 30; // fallback
+if (settingsSnap.exists()) {
+  const settings = settingsSnap.data();
+  const field = statusToDeadlineField[manuscript.status];
+  if (field && settings[field]) {
+    defaultDays = settings[field];
+  }
+}
+
+
+          // 🔹 Compute deadline
+         const today = new Date();
+const deadlineDate = new Date(today);
+deadlineDate.setDate(today.getDate() + defaultDays);
+
+// Save it to Firestore
+await updateDoc(doc(db, "manuscripts", manuscript.id), {
+  deadline: deadlineDate,
+});
+
+          // 🔹 Go to reviewer list with deadline in URL
+          navigate(
+            `/admin/reviewer-list?manuscriptId=${id}&deadline=${encodeURIComponent(
+              deadlineDate.toISOString()
+            )}`
+          );
+        } catch (error) {
+          console.error("Failed to load default deadline:", error);
+          alert("Could not load default deadline. Please check settings.");
+        }
+      }}
+      className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition font-medium text-sm sm:text-base"
+    >
+      Assign Reviewer
+    </button>
+  ) : (
+    <button
+      onClick={() => unassignReviewer(id)}
+      className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition font-medium text-sm sm:text-base"
+    >
+      Unassign Reviewer
+    </button>
+  ))}
+
         </div>
 
         {/* --- Back to Admin Section --- */}
@@ -753,7 +796,7 @@ const downloadFileCandidate = async (candidate, suggestedName) => {
               {userRole || "N/A"} | <strong>Submitted at:</strong>{" "}
               {formatDate(submittedAt)}
             </div>
-
+            
 <div className="space-y-4 mb-4">
   {answeredQuestions
     .filter(

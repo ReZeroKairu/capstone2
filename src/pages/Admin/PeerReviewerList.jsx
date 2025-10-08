@@ -25,17 +25,14 @@ export default function PeerReviewerList() {
   const navigate = useNavigate();
   const params = new URLSearchParams(location.search);
   const manuscriptId = params.get("manuscriptId");
+  const deadlineParam = params.get("deadline"); // from URL if provided
 
   const getPageNumbers = (current, total) => {
     const delta = 2;
     const range = [];
     const rangeWithDots = [];
     for (let i = 1; i <= total; i++) {
-      if (
-        i === 1 ||
-        i === total ||
-        (i >= current - delta && i <= current + delta)
-      )
+      if (i === 1 || i === total || (i >= current - delta && i <= current + delta))
         range.push(i);
     }
     let prev = null;
@@ -82,76 +79,105 @@ export default function PeerReviewerList() {
   }, []);
 
   const handleAssign = async (reviewerId) => {
-  if (!manuscriptId) {
-    alert("No manuscript selected for invitation.");
-    return;
-  }
-
-  try {
-    const auth = getAuth();
-    const currentUser = auth.currentUser;
-    if (!currentUser) throw new Error("Not signed in");
-
-    const msRef = doc(db, "manuscripts", manuscriptId);
-    const msSnap = await getDoc(msRef);
-    if (!msSnap.exists()) {
-      alert("Manuscript not found.");
+    if (!manuscriptId) {
+      alert("No manuscript selected for invitation.");
       return;
     }
 
-    const msData = msSnap.data();
-    const assigned = [...(msData.assignedReviewers || [])];
-    const assignedMeta = { ...(msData.assignedReviewersMeta || {}) };
+    try {
+      const auth = getAuth();
+      const currentUser = auth.currentUser;
+      if (!currentUser) throw new Error("Not signed in");
 
-    if (!assigned.includes(reviewerId)) {
-      const invitedAt = serverTimestamp();
+      const msRef = doc(db, "manuscripts", manuscriptId);
+      const msSnap = await getDoc(msRef);
+      if (!msSnap.exists()) {
+        alert("Manuscript not found.");
+        return;
+      }
 
-      // Update manuscript metadata
-      const newMeta = {
-        ...(assignedMeta[reviewerId] || {}),
-        assignedAt: serverTimestamp(),
-        assignedBy: currentUser.uid,
-        invitationStatus: "pending",
-        invitedAt: invitedAt,
-        respondedAt: null,
-        decision: null
-      };
+      const msData = msSnap.data();
+      const assigned = [...(msData.assignedReviewers || [])];
+      const assignedMeta = { ...(msData.assignedReviewersMeta || {}) };
 
-      const updatedAssigned = [...assigned, reviewerId];
-      const updatedMeta = {
-        ...assignedMeta,
-        [reviewerId]: newMeta
-      };
+      if (!assigned.includes(reviewerId)) {
+        const invitedAt = serverTimestamp();
 
-      await updateDoc(msRef, {
-        assignedReviewers: updatedAssigned,
-        assignedReviewersMeta: updatedMeta,
-      });
+        // 🔹 Determine deadline dynamically
+        let deadlineDate = deadlineParam ? new Date(deadlineParam) : null;
 
-      // Send notification
-      const notificationRef = collection(db, "Users", reviewerId, "Notifications");
-      await addDoc(notificationRef, {
-        type: "reviewer_invitation",
-        manuscriptId: manuscriptId,
-        manuscriptTitle: msData.title || "Untitled Manuscript",
-        status: "pending",
-        timestamp: serverTimestamp(),
-        seen: false,
-        title: "Invitation to Review Manuscript",
-        message: `You have been invited to review "${msData.title || "Untitled Manuscript"}"`,
-        actionUrl: `/reviewer-invitations`,  // <-- redirect here when clicked
-        invitedAt: invitedAt
-      });
+if (!deadlineDate) {
+  const settingsRef = doc(db, "deadlineSettings", "deadlines");
+  const settingsSnap = await getDoc(settingsRef);
 
-      fetchReviewers();
-      alert("Reviewer successfully invited!");
+  let defaultDays = 30; // fallback
+  if (settingsSnap.exists()) {
+    const settings = settingsSnap.data();
+    console.log("Settings loaded:", settings);
+    console.log("Manuscript status:", msData.status);
+
+    const statusToDeadlineField = {
+      "Assigning Peer Reviewer": "invitationDeadline",
+      "Peer Reviewer Assigned": "reviewDeadline",
+      "For Revision (Minor)": "revisionDeadline",
+      "For Revision (Major)": "revisionDeadline",
+      "Back to Admin": "finalizationDeadline",
+    };
+    const field = statusToDeadlineField[msData.status];
+    if (field && settings[field] != null) {
+      defaultDays = settings[field];
+      console.log(`Using ${defaultDays} days from field ${field}`);
     }
-  } catch (err) {
-    console.error("Error assigning reviewer:", err);
-    alert("Failed to invite reviewer.");
   }
-};
 
+  deadlineDate = new Date();
+  deadlineDate.setDate(deadlineDate.getDate() + defaultDays);
+}
+
+        // Build reviewer metadata
+        const newMeta = {
+          ...(assignedMeta[reviewerId] || {}),
+          assignedAt: serverTimestamp(),
+          assignedBy: currentUser.uid,
+          invitationStatus: "pending",
+          invitedAt,
+          respondedAt: null,
+          decision: null,
+          deadline: deadlineDate,
+        };
+
+        // Update Firestore
+        const updatedAssigned = [...assigned, reviewerId];
+        const updatedMeta = { ...assignedMeta, [reviewerId]: newMeta };
+
+        await updateDoc(msRef, {
+          assignedReviewers: updatedAssigned,
+          assignedReviewersMeta: updatedMeta,
+        });
+
+        // Send notification
+        const notificationRef = collection(db, "Users", reviewerId, "Notifications");
+        await addDoc(notificationRef, {
+          type: "reviewer_invitation",
+          manuscriptId: manuscriptId,
+          manuscriptTitle: msData.title || "Untitled Manuscript",
+          status: "pending",
+          timestamp: serverTimestamp(),
+          seen: false,
+          title: "Invitation to Review Manuscript",
+          message: `You have been invited to review "${msData.title || "Untitled Manuscript"}"`,
+          actionUrl: `/reviewer-invitations`,
+          invitedAt,
+        });
+
+        fetchReviewers();
+        alert("Reviewer successfully invited!");
+      }
+    } catch (err) {
+      console.error("Error assigning reviewer:", err);
+      alert("Failed to invite reviewer.");
+    }
+  };
 
   const filteredReviewers = reviewers.filter((r) => {
     if (!searchQuery) return true;
@@ -366,7 +392,8 @@ export default function PeerReviewerList() {
             disabled={
               currentPage === Math.ceil(filteredReviewers.length / itemsPerPage)
             }
-            className="px-3 py-1 mr-1 bg-yellow-400 text-red-900 rounded-md border border-red-900 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-3 py-1 mr-1 bg-yellow-400
+            text-red-900 rounded-md border border-red-900 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Last
           </button>

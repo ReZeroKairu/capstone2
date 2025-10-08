@@ -15,6 +15,8 @@ import {
   handleReviewCompletion,
 } from "../../utils/manuscriptHelpers";
 import { useUserLogs } from "../../hooks/useUserLogs";
+import { getDeadlineColor, getRemainingDays } from "../../utils/deadlineUtils";
+import { Timestamp } from "firebase/firestore";
 
 // --------------------------
 // Hook to resolve file URLs
@@ -210,10 +212,20 @@ export default function ReviewManuscript() {
     const msRef = doc(db, "manuscripts", manuscriptId);
     await logReviewerHistory(msRef, reviewerId, decision);
 
-   await updateDoc(msRef, {
+ const respondedAt = new Date();
+const reviewDeadline = Timestamp.fromDate(
+  new Date(respondedAt.getTime() + 4 * 24 * 60 * 60 * 1000)
+);
+
+
+await updateDoc(msRef, {
+  [`assignedReviewersMeta.${reviewerId}.deadline`]: reviewDeadline, // ✅ store as Firestore Timestamp
+});
+await updateDoc(msRef, {
   [`reviewerDecisionMeta.${reviewerId}`]: updatedDecisions[reviewerId],
   status: "Back to Admin",
-  [`assignedReviewersMeta.${reviewerId}.respondedAt`]: new Date(), // ✅ add this
+  [`assignedReviewersMeta.${reviewerId}.respondedAt`]: respondedAt,
+  [`assignedReviewersMeta.${reviewerId}.deadline`]: reviewDeadline, // ✅ set deadline here
   reviewerSubmissions: arrayUnion({
     reviewerId,
     comment: review.comment,
@@ -223,6 +235,7 @@ export default function ReviewManuscript() {
     reviewFileName: fileName || null,
   }),
 });
+
 
 
     const manuscriptTitle = selected.manuscriptTitle || selected.title || "Untitled";
@@ -309,7 +322,11 @@ const downloadFileCandidate = async (file) => {
       const invitedMeta = m.assignedReviewersMeta?.[reviewerId] || {};
 const invitedById = invitedMeta?.assignedBy || invitedMeta?.invitedBy || null;
 const invitedAt = invitedMeta?.assignedAt || invitedMeta?.invitedAt || null;
-const acceptedAt = invitedMeta?.respondedAt || null; // ✅ this is correct
+          const acceptedAt = invitedMeta?.respondedAt || null; // ✅ this is correct
+          const deadline = m.assignedReviewersMeta?.[reviewerId]?.deadline
+  ? new Date(m.assignedReviewersMeta[reviewerId].deadline.toDate?.() || m.assignedReviewersMeta[reviewerId].deadline)
+  : null;
+
 
 
           const inviter =
@@ -318,13 +335,42 @@ const acceptedAt = invitedMeta?.respondedAt || null; // ✅ this is correct
           const abstract = m.answeredQuestions?.find(q => q.question?.toLowerCase().includes("abstract"))?.answer || m.abstract || "—";
 
           return (
-            <li key={m.id} className="p-4 border rounded bg-white shadow-sm flex items-center justify-between">
-              <div>
-                <div className="text-lg font-semibold">{getManuscriptDisplayTitle(m)}</div>
-                <div className="text-xs text-gray-500 mt-1">
-          Invited by {inviter} • Invited: {formatFirestoreDate(invitedAt)} • Accepted: {acceptedAt ? formatFirestoreDate(acceptedAt) : "—"} • Status: <span className="font-medium">{m.status}</span>
-                </div>
-              </div>
+           <li key={m.id} className="p-4 border rounded bg-white shadow-sm flex items-center justify-between">
+  <div>
+    {/* 🕒 Deadline badge above title */}
+    {deadline && (
+      (() => {
+        const colorClass = getDeadlineColor(invitedAt, deadline);
+        const remaining = getRemainingDays(deadline);
+        return (
+          <div
+            className={`inline-block px-3 py-1 mb-2 rounded-lg text-xs font-medium transition-colors duration-300 ${colorClass}`}
+          >
+            Deadline:{" "}
+            {deadline.toLocaleDateString("en-US", {
+              year: "numeric",
+              month: "long",
+              day: "numeric",
+            })}{" "}
+            {remaining > 0
+              ? `(${remaining} day${remaining > 1 ? "s" : ""} left)`
+              : "⚠️ Past Deadline"}
+          </div>
+        );
+      })()
+    )}
+
+    {/* 📄 Manuscript Title */}
+    <div className="text-lg font-semibold">{getManuscriptDisplayTitle(m)}</div>
+
+    {/* 👤 Meta Info */}
+    <div className="text-xs text-gray-500 mt-1">
+      Invited by {inviter} • Invited: {formatFirestoreDate(invitedAt)} • Accepted:{" "}
+      {acceptedAt ? formatFirestoreDate(acceptedAt) : "—"} • Status:{" "}
+      <span className="font-medium">{m.status}</span>
+    </div>
+  </div>
+
               <div className="flex items-center gap-3">
                 <span className="px-2 py-1 rounded text-xs bg-gray-100 text-gray-800">{myDecisionLabel}</span>
                 <button
@@ -422,9 +468,47 @@ const acceptedAt = invitedMeta?.respondedAt || null; // ✅ this is correct
                       </div>
 
                       {/* Review submission UI */}
-                      {myDecision === "pending" && !hasSubmittedReview && (
-                        <div className="border-t pt-4">
-                          <p className="font-medium mb-2">Reviewer Actions</p>
+                     {/* Review submission UI */}
+{myDecision === "pending" && !hasSubmittedReview && (
+  <div className="border-t pt-4">
+    {deadline && (
+      <div className="mb-3">
+        {(() => {
+         // Utility to safely parse Firestore Timestamp or JS Date
+const parseDate = (d) => {
+  if (!d) return null;
+  if (d.toDate) return d.toDate();           // Firestore Timestamp
+  if (typeof d === "string") return new Date(d); // string
+  return new Date(d);                        // already JS Date
+};
+
+const startDate = parseDate(acceptedAt) || parseDate(invitedAt) || new Date();
+const endDate = parseDate(deadline);
+const colorClass = getDeadlineColor(startDate, endDate);
+const remaining = getRemainingDays(endDate, startDate);
+
+
+
+          return (
+            <div
+              className={`inline-block px-3 py-1 rounded-lg text-sm font-medium transition-colors duration-300 ${colorClass}`}
+            >
+              Deadline:{" "}
+              {deadline.toLocaleDateString("en-US", {
+                year: "numeric",
+                month: "long",
+                day: "numeric",
+              })}{" "}
+              {remaining > 0
+                ? `(${remaining} day${remaining > 1 ? "s" : ""} left)`
+                : "⚠️ Past Deadline"}
+            </div>
+          );
+        })()}
+      </div>
+    )}
+
+    <p className="font-medium mb-2">Reviewer Actions</p>
 
                           {/* Decision buttons - always visible so reviewer can choose */}
                           <div className="flex gap-2 mb-3">
@@ -487,6 +571,7 @@ const acceptedAt = invitedMeta?.respondedAt || null; // ✅ this is correct
                                   Cancel Decision
                                 </button>
                               </div>
+                            
                             </div>
                           )}
                         </div>

@@ -2,15 +2,23 @@ import React, { useState } from "react";
 import { doc, updateDoc } from "firebase/firestore";
 import { db } from "../firebase/firebase";
 
+// Define all deadline types available
+const DEADLINE_TYPES = [
+  { key: "invitationDeadline", label: "Invitation Deadline" },
+  { key: "reviewDeadline", label: "Review Deadline" },
+  { key: "revisionDeadline", label: "Revision Deadline" },
+  { key: "finalizationDeadline", label: "Finalization Deadline" },
+];
+
 const SetDeadlineModal = ({
   show,
   onClose,
   manuscriptId,
   reviewerId,
-  currentDeadline,
   onDeadlineSet
 }) => {
-  const [deadline, setDeadline] = useState(currentDeadline || "");
+  const [deadlineType, setDeadlineType] = useState("reviewDeadline");
+  const [deadline, setDeadline] = useState("");
   const [enableReminder, setEnableReminder] = useState(true);
   const [reminderDays, setReminderDays] = useState(3);
   const [loading, setLoading] = useState(false);
@@ -19,11 +27,15 @@ const SetDeadlineModal = ({
   const handleSave = async () => {
     setError("");
 
+    // Validation checks
+    if (!deadlineType) {
+      setError("Please select a deadline type.");
+      return;
+    }
     if (!deadline) {
       setError("Please select a deadline.");
       return;
     }
-
     if (enableReminder && reminderDays < 1) {
       setError("Reminder days must be at least 1.");
       return;
@@ -33,7 +45,7 @@ const SetDeadlineModal = ({
     try {
       const reviewerMetaRef = doc(db, "manuscripts", manuscriptId);
 
-      // Convert to proper Date object
+      // Convert to Date
       const deadlineDate = new Date(deadline);
       if (isNaN(deadlineDate.getTime())) {
         setError("Invalid date format.");
@@ -41,8 +53,9 @@ const SetDeadlineModal = ({
         return;
       }
 
+      // Save to Firestore
       await updateDoc(reviewerMetaRef, {
-        [`assignedReviewersMeta.${reviewerId}.deadline`]: deadlineDate,
+        [`assignedReviewersMeta.${reviewerId}.${deadlineType}`]: deadlineDate,
         [`assignedReviewersMeta.${reviewerId}.reminderEnabled`]: enableReminder,
         [`assignedReviewersMeta.${reviewerId}.reminderDaysBefore`]: reminderDays
       });
@@ -50,7 +63,7 @@ const SetDeadlineModal = ({
       onDeadlineSet?.();
       onClose();
     } catch (err) {
-      console.error(err);
+      console.error("Error updating deadline:", err);
       setError("Failed to set deadline. Please try again.");
     } finally {
       setLoading(false);
@@ -61,32 +74,50 @@ const SetDeadlineModal = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/30"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
       onClick={onClose}
       aria-modal="true"
       role="dialog"
     >
       <div
-        className="bg-white rounded-md p-6 w-full max-w-md"
+        className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md"
         onClick={(e) => e.stopPropagation()}
       >
-        <h3 className="text-lg font-semibold mb-4">Set Deadline</h3>
+        <h3 className="text-xl font-semibold mb-4 text-gray-800">
+          Set Reviewer Deadline
+        </h3>
 
-        {error && (
-          <div className="mb-4 text-red-600 font-medium">{error}</div>
-        )}
+        {/* Error message */}
+        {error && <div className="mb-4 text-red-600 font-medium">{error}</div>}
 
-        <label htmlFor="deadline" className="block mb-2 font-medium">
-          Deadline:
+        {/* Deadline Type Selection */}
+        <label className="block mb-2 font-medium text-gray-700">
+          Deadline Type:
+        </label>
+        <select
+          value={deadlineType}
+          onChange={(e) => setDeadlineType(e.target.value)}
+          className="w-full border rounded-md px-3 py-2 mb-4 bg-gray-50 focus:ring-2 focus:ring-blue-400"
+        >
+          {DEADLINE_TYPES.map((type) => (
+            <option key={type.key} value={type.key}>
+              {type.label}
+            </option>
+          ))}
+        </select>
+
+        {/* Deadline Picker */}
+        <label className="block mb-2 font-medium text-gray-700">
+          Deadline Date & Time:
         </label>
         <input
-          id="deadline"
           type="datetime-local"
           value={deadline}
           onChange={(e) => setDeadline(e.target.value)}
-          className="w-full border rounded px-3 py-2 mb-4"
+          className="w-full border rounded-md px-3 py-2 mb-4 focus:ring-2 focus:ring-blue-400"
         />
 
+        {/* Reminder Section */}
         <div className="flex items-center mb-4">
           <input
             id="enableReminder"
@@ -95,36 +126,38 @@ const SetDeadlineModal = ({
             onChange={(e) => setEnableReminder(e.target.checked)}
             className="mr-2"
           />
-          <label htmlFor="enableReminder">Enable automatic reminder</label>
+          <label htmlFor="enableReminder" className="text-gray-700">
+            Enable automatic reminder
+          </label>
         </div>
 
         {enableReminder && (
           <div className="mb-4">
-            <label htmlFor="reminderDays" className="block mb-1">
+            <label className="block mb-1 text-gray-700">
               Remind me X days before:
             </label>
             <input
-              id="reminderDays"
               type="number"
               min={1}
               value={reminderDays}
               onChange={(e) => setReminderDays(Number(e.target.value))}
-              className="w-20 border rounded px-2 py-1"
+              className="w-24 border rounded-md px-2 py-1 focus:ring-2 focus:ring-blue-400"
             />
           </div>
         )}
 
-        <div className="flex justify-end gap-2">
+        {/* Buttons */}
+        <div className="flex justify-end gap-3 mt-6">
           <button
             onClick={onClose}
-            className="px-4 py-2 bg-gray-300 rounded hover:bg-gray-400"
+            className="px-4 py-2 bg-gray-300 text-gray-800 rounded-md hover:bg-gray-400 transition"
           >
             Cancel
           </button>
           <button
             onClick={handleSave}
-            className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
             disabled={loading}
+            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition disabled:opacity-70"
           >
             {loading ? "Saving..." : "Save"}
           </button>

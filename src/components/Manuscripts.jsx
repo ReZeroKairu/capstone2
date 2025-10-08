@@ -13,7 +13,8 @@ import {
   startAfter,
   deleteDoc,
   serverTimestamp,
-  onSnapshot
+  onSnapshot,
+  deleteField  // <-- add this
 } from "firebase/firestore";
 import { db } from "../firebase/firebase";
 import { app } from "../firebase/firebase"; // added to get storageBucket

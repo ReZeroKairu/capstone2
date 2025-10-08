@@ -38,6 +38,7 @@ import FormResponses from "./formcomponents/FormResponses";
 import Dashboard from "./components/Dashboard";
 import ReviewManuscript from "./pages/PeerReviewer/ReviewManuscript";
 import ReviewerInvitations from './pages/PeerReviewer/ReviewerInvitations';
+import DeadlineSettings from "./pages/Admin/DeadlineSettings";
 
 // ⬇️ New admin pages
 import Deadlines from "./pages/Admin/Deadlines";
@@ -131,6 +132,14 @@ function App() {
     <ProtectedRoute allowedRoles={["Peer Reviewer"]}>
       <ReviewManuscript />
     </ProtectedRoute>
+  }
+                />
+                <Route
+  path="/admin/deadline-settings"
+  element={
+    <AdminRoute>
+      <DeadlineSettings />
+    </AdminRoute>
   }
 />
                   <Route
