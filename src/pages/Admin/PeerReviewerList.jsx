@@ -134,17 +134,20 @@ if (!deadlineDate) {
   deadlineDate.setDate(deadlineDate.getDate() + defaultDays);
 }
 
-        // Build reviewer metadata
-        const newMeta = {
-          ...(assignedMeta[reviewerId] || {}),
-          assignedAt: serverTimestamp(),
-          assignedBy: currentUser.uid,
-          invitationStatus: "pending",
-          invitedAt,
-          respondedAt: null,
-          decision: null,
-          deadline: deadlineDate,
-        };
+
+       // ✅ Build reviewer metadata (admin-side)
+const newMeta = {
+  ...(assignedMeta[reviewerId] || {}),
+  assignedAt: serverTimestamp(),
+  assignedBy: currentUser.displayName || currentUser.email || "Admin",
+  assignedById: currentUser.uid,
+  invitationStatus: "pending",
+  invitedAt,
+  respondedAt: null,
+  decision: null,
+  deadline: deadlineDate, // 👈 Key field for reviewer + admin display
+};
+
 
         // Update Firestore
         const updatedAssigned = [...assigned, reviewerId];

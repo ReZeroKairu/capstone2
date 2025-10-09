@@ -249,7 +249,7 @@ function UserManagement() {
       ) : (
         <div className="overflow-x-auto max-h-[400px]">
           {/* Table header (desktop only) */}
-          <div className="hidden sm:grid bg-yellow-400 text-red-800 rounded-t-md p-3 grid-cols-6 text-center font-semibold text-base">
+        <div className="hidden sm:grid bg-yellow-400 text-red-800 rounded-t-md p-3 grid-cols-[2fr_1fr_1fr_1fr_1fr_1.2fr] text-center font-semibold text-base">
             <span>Email</span>
             <span>First</span>
             <span>Middle</span>
@@ -305,16 +305,20 @@ function UserManagement() {
 
               {/* Desktop view */}
 <div
-  className={`hidden sm:grid grid-cols-6 items-center p-3 text-center text-base ${
-    idx < currentUsers.length - 1 ? "border-b border-red-800" : ""
-  }`}
+ className={`hidden sm:grid grid-cols-[2fr_1fr_1fr_1fr_1fr_1.2fr] items-center p-3 text-center text-base ${
+  idx < currentUsers.length - 1 ? "border-b border-red-800" : ""
+}`}
+
 >
-  <span
-    className="text-red-800 cursor-pointer hover:underline hover:text-red-900 active:text-red-950 transition-colors"
-    onClick={() => navigate(`/profile/${user.id}`)}
-  >
-    {user.email}
-  </span>
+<span
+  className="text-red-800 cursor-pointer hover:underline hover:text-red-900 active:text-red-950 transition-colors overflow-hidden text-ellipsis whitespace-nowrap"
+  style={{ display: "inline-block", maxWidth: "100%" }}
+  title={user.email}
+  onClick={() => navigate(`/profile/${user.id}`)}
+>
+  {user.email}
+</span>
+
   <span className="text-black">{user.firstName}</span>
   <span className="text-black">{user.middleName || "N/A"}</span>
   <span className="text-black">{user.lastName}</span>

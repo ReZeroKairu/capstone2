@@ -346,20 +346,30 @@ const downloadFileCandidate = async (candidate, suggestedName) => {
             {manuscriptTitle}
           </p>
           <div className="flex items-center gap-2">
-            {hasRejection &&
-              (status === "Back to Admin" || status === "Rejected") && (
-                <span className="px-3 py-1 rounded-full text-xs sm:text-sm font-semibold shadow-sm bg-red-100 text-red-800">
-                  Rejected by Peer Reviewer
-                </span>
-              )}
-            <span
-              className={`px-3 py-1 rounded-full text-xs sm:text-sm font-semibold shadow-sm ${
-                STATUS_COLORS[status] || "bg-gray-100 text-gray-800"
-              }`}
-            >
-              {status}
-            </span>
-          </div>
+  {hasRejection &&
+    (status === "Back to Admin" || status === "Rejected") && (
+      <span className="px-3 py-1 rounded-full text-xs sm:text-sm font-semibold shadow-sm bg-red-100 text-red-800">
+        Rejected by Peer Reviewer
+      </span>
+    )}
+  
+  {/* Status badge */}
+  <span
+    className={`px-3 py-1 rounded-full text-xs sm:text-sm font-semibold shadow-sm ${
+      STATUS_COLORS[status] || "bg-gray-100 text-gray-800"
+    }`}
+  >
+    {status}
+  </span>
+
+  {/* Deadline badge */}
+  {manuscript.deadline && (
+    <span className="px-3 py-1 rounded-full text-xs sm:text-sm font-semibold shadow-sm bg-pink-100 text-pink-800">
+      Deadline: {formatDate(manuscript.deadline)}
+    </span>
+  )}
+</div>
+
         </div>
 
   
@@ -404,7 +414,13 @@ const downloadFileCandidate = async (candidate, suggestedName) => {
             </p>
           )}
         </>
-      )}
+                )}
+                {manuscript.assignedReviewersMeta?.[currentUserId]?.deadline && (
+  <p className="text-pink-700 font-medium">
+    Deadline: {formatDate(manuscript.assignedReviewersMeta[currentUserId].deadline)}
+  </p>
+)}
+
     </>
   )}
 </div>
@@ -461,9 +477,16 @@ const downloadFileCandidate = async (candidate, suggestedName) => {
 
 
 
-                        <div className="text-xs text-gray-500 mt-1">
-                          Assigned: {formatDate(reviewer.assignedAt)} by {assignedByName}
-                        </div>
+                       <div className="text-xs text-gray-500 mt-1">
+  Assigned: {formatDate(reviewer.assignedAt)} by {assignedByName}
+  
+  {manuscript.assignedReviewersMeta?.[reviewer.id]?.deadline && (
+    <div className="text-pink-700 font-medium">
+      Deadline: {formatDate(manuscript.assignedReviewersMeta[reviewer.id].deadline)}
+    </div>
+  )}
+</div>
+
                       </div>
 
                       <span
@@ -609,8 +632,8 @@ const downloadFileCandidate = async (candidate, suggestedName) => {
             </button>
           )}
 
-      {showAssignButton &&
-  (!hasReviewer ? (
+     {showAssignButton && (
+  !hasReviewer ? (
     <button
       onClick={async () => {
         try {
@@ -618,27 +641,21 @@ const downloadFileCandidate = async (candidate, suggestedName) => {
           const settingsRef = doc(db, "deadlineSettings", "deadlines");
           const settingsSnap = await getDoc(settingsRef);
 
-       let defaultDays = 30; // fallback
-if (settingsSnap.exists()) {
-  const settings = settingsSnap.data();
-  const field = statusToDeadlineField[manuscript.status];
-  if (field && settings[field]) {
-    defaultDays = settings[field];
-  }
-}
-
+          let defaultDays = 30; // fallback
+          if (settingsSnap.exists()) {
+            const settings = settingsSnap.data();
+            const field = statusToDeadlineField[manuscript.status];
+            if (field && settings[field]) {
+              defaultDays = settings[field];
+            }
+          }
 
           // 🔹 Compute deadline
-         const today = new Date();
-const deadlineDate = new Date(today);
-deadlineDate.setDate(today.getDate() + defaultDays);
+          const today = new Date();
+          const deadlineDate = new Date(today);
+          deadlineDate.setDate(today.getDate() + defaultDays);
 
-// Save it to Firestore
-await updateDoc(doc(db, "manuscripts", manuscript.id), {
-  deadline: deadlineDate,
-});
-
-          // 🔹 Go to reviewer list with deadline in URL
+          // 🔹 Just navigate to reviewer list with computed deadline
           navigate(
             `/admin/reviewer-list?manuscriptId=${id}&deadline=${encodeURIComponent(
               deadlineDate.toISOString()
@@ -660,7 +677,8 @@ await updateDoc(doc(db, "manuscripts", manuscript.id), {
     >
       Unassign Reviewer
     </button>
-  ))}
+  )
+)}
 
         </div>
 

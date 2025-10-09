@@ -175,14 +175,16 @@ const reviewDeadline = Timestamp.fromDate(
 const updateData = {
   [`assignedReviewersMeta.${currentUser.uid}`]: {
     ...invitation.meta,
-    invitationStatus: "responded",
+    invitationStatus: decision ? "accepted" : "rejected",
+    acceptedAt: decision ? respondedAt : null, // ✅ add this line
     respondedAt: respondedAt,
     decision: decision ? "accepted" : "rejected",
     invitedAt: safeInvitedAt,
-    deadline: reviewDeadline, // ✅ Firestore Timestamp
+    deadline: invitation.meta.deadline || reviewDeadline, // keep existing or set new
   },
   ...(decision && { status: "Peer Reviewer Assigned" }),
 };
+
 
 await updateDoc(msRef, updateData);
 
