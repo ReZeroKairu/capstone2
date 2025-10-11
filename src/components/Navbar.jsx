@@ -351,10 +351,10 @@ const Navbar = ({ onLogout }) => {
               {/* Left Side Contact Information */}
               <div className="flex flex-col mb-4 md:mb-0 flex-grow">
                 <p className="text-yellow-200 ml-2 md:ml-20 font-bold">
-                Publication Officer 
+                  Publication Officer
                 </p>
                 <p className="text-gray-200 ml-2 md:ml-20">
-                Ms. Leilani G. Pimentel
+                  Ms. Leilani G. Pimentel
                 </p>
                 <br />
                 <p className="text-yellow-200 ml-2 md:ml-20 mt-3 font-bold">
@@ -383,7 +383,7 @@ const Navbar = ({ onLogout }) => {
                 </p>
               </div>
 
-              {/* Logo Section */}
+              {/* Logo Section 
               <div className="flex items-start text-gray-200 flex-grow">
                 <img
                   src="/liceo.png" // Adjust the filename if necessary
@@ -391,6 +391,7 @@ const Navbar = ({ onLogout }) => {
                   className="h-24 w-24 md:h-40 md:w-40 mr-10 mt-5"
                 />
               </div>
+              */}
             </div>
           </div>
         </div>
