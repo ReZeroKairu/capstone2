@@ -73,12 +73,10 @@ export default function Deadlines() {
       if (selectedFilter === "Pending") return m.assignedReviewers?.length > 0;
       if (selectedFilter === "Overdue") {
         return m.assignedReviewers?.some((rId) => {
-          const deadlineTs = m.assignedReviewersMeta?.[rId]?.reviewDeadline;
+          const deadlineTs = m.assignedReviewersMeta?.[rId]?.deadline;
           if (!deadlineTs) return false;
-          const startDate = m.assignedAt || m.submittedAt;
-          const parsedStart = startDate?.toDate ? startDate.toDate() : new Date(startDate);
           const parsedDeadline = deadlineTs?.toDate ? deadlineTs.toDate() : new Date(deadlineTs);
-          const remaining = getRemainingDays(parsedDeadline, parsedStart);
+          const remaining = getRemainingDays(parsedDeadline);
           return remaining <= 0;
         });
       }
@@ -135,15 +133,15 @@ export default function Deadlines() {
                 <ul className="ml-4 mt-2 space-y-2">
                   {assignedManuscripts.map((m) => {
                     const reviewerMeta = m.assignedReviewersMeta?.[reviewer.id];
-                    const deadlineTs = reviewerMeta?.reviewDeadline;
+                    const deadlineTs = reviewerMeta?.deadline;
                     if (!deadlineTs) return null;
 
-                    const startDate = m.assignedAt || m.submittedAt;
-                    const parsedStart = startDate?.toDate ? startDate.toDate() : new Date(startDate);
+                    const acceptedAt = reviewerMeta?.acceptedAt || reviewerMeta?.assignedAt;
+                    const parsedStart = acceptedAt?.toDate ? acceptedAt.toDate() : new Date(acceptedAt || Date.now());
                     const parsedDeadline = deadlineTs?.toDate ? deadlineTs.toDate() : new Date(deadlineTs);
 
                     const colorClass = getDeadlineColor(parsedStart, parsedDeadline);
-                    const remaining = getRemainingDays(parsedDeadline, parsedStart);
+                    const remaining = getRemainingDays(parsedDeadline);
 
                     return (
                       <li key={m.id} className="text-sm flex flex-col gap-1">

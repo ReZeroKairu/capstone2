@@ -33,6 +33,7 @@ import UserLog from "./pages/Admin/UserLog";
 import NotFound from "./pages/NotFound";
 import Manuscripts from "./components/Manuscripts";
 import SubmitManuscript from "./pages/Researcher/SubmitManuscript";
+import ResubmitManuscript from "./pages/Researcher/ResubmitManuscript";
 import CreateForm from "./formcomponents/CreateForm";
 import FormResponses from "./formcomponents/FormResponses";
 import Dashboard from "./components/Dashboard";
@@ -155,6 +156,14 @@ function App() {
                   element={
                     <ProtectedRoute allowedRoles={["Admin", "Researcher"]}>
                       <SubmitManuscript />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/researcher/resubmit/:manuscriptId"
+                  element={
+                    <ProtectedRoute allowedRoles={["Researcher"]}>
+                      <ResubmitManuscript />
                     </ProtectedRoute>
                   }
                 />

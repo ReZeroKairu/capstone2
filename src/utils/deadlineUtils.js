@@ -30,10 +30,11 @@ export function getDeadlineColor(startDate, endDate) {
 
 /**
  * Utility to get remaining days (rounded)
- * startDate defaults to now if not provided, but you should pass acceptedAt when available
+ * Calculates days remaining from NOW to the endDate
  */
-export function getRemainingDays(endDate, startDate = new Date()) {
+export function getRemainingDays(endDate) {
   if (!endDate) return null;
-  const diff = (endDate - startDate) / (1000 * 60 * 60 * 24);
+  const now = new Date();
+  const diff = (endDate - now) / (1000 * 60 * 60 * 24);
   return Math.ceil(diff);
 }

@@ -9,6 +9,7 @@ import {
   doc,
   serverTimestamp,
   onSnapshot,
+  getDoc
 } from "firebase/firestore";
 import { db } from "../../firebase/firebase";
 import { getAuth } from "firebase/auth";
@@ -46,14 +47,17 @@ const ReviewerInvitations = () => {
             querySnapshot.docs.map(async (docRef) => {
               try {
                 const data = docRef.data();
-                const meta = data.assignedReviewersMeta?.[currentUser.uid] || {};
+                const meta =
+                  data.assignedReviewersMeta?.[currentUser.uid] || {};
 
-                if (meta.invitationStatus === "responded") return null;
+                // Filter out invitations that have been responded to (accepted or declined)
+                // BUT include re-review invitations (isReReview: true) even if previously accepted
+                const isReReview = meta.isReReview === true;
+                if (!isReReview && (meta.invitationStatus === "accepted" || meta.invitationStatus === "declined")) return null;
 
                 const abstractAnswer =
-                  data.answeredQuestions?.find(
-                    (q) => q.question === "Abstract"
-                  )?.answer || "No abstract available";
+                  data.answeredQuestions?.find((q) => q.question === "Abstract")
+                    ?.answer || "No abstract available";
 
                 // Dates
                 const invitedAt = meta.invitedAt;
@@ -84,28 +88,31 @@ const ReviewerInvitations = () => {
                 }
 
                 // ✅ Handle deadline
-               let deadline = null;
-if (meta.deadline) {
-  // Firestore Timestamp
-  if (meta.deadline.toDate) {
-    deadline = meta.deadline.toDate();
-  } 
-  // If seconds/milliseconds object
-  else if (meta.deadline.seconds) {
-    deadline = new Date(meta.deadline.seconds * 1000);
-  } 
-  // If already a string or Date-like
-  else {
-    deadline = new Date(meta.deadline);
-  }
-}
+                let deadline = null;
+                if (meta.deadline) {
+                  // Firestore Timestamp
+                  if (meta.deadline.toDate) {
+                    deadline = meta.deadline.toDate();
+                  }
+                  // If seconds/milliseconds object
+                  else if (meta.deadline.seconds) {
+                    deadline = new Date(meta.deadline.seconds * 1000);
+                  }
+                  // If already a string or Date-like
+                  else {
+                    deadline = new Date(meta.deadline);
+                  }
+                }
 
-// Optional sanity check
-if (isNaN(deadline)) {
-  console.warn("Invalid deadline for manuscript", docRef.id, meta.deadline);
-  deadline = null;
-}
-
+                // Optional sanity check
+                if (isNaN(deadline)) {
+                  console.warn(
+                    "Invalid deadline for manuscript",
+                    docRef.id,
+                    meta.deadline
+                  );
+                  deadline = null;
+                }
 
                 return {
                   id: docRef.id,
@@ -118,6 +125,10 @@ if (isNaN(deadline)) {
                   status: meta.invitationStatus || "pending",
                   deadline: deadline,
                   meta,
+                  isReReview: meta.isReReview || false,
+                  versionNumber: data.versionNumber || 1,
+                  previousReviewVersion: meta.previousReviewVersion || null,
+                  reReviewInvitedAt: meta.reReviewInvitedAt || null,
                 };
               } catch (err) {
                 console.error("Error processing document:", err);
@@ -146,71 +157,146 @@ if (isNaN(deadline)) {
 
     return () => unsubscribe();
   }, [currentUser]);
+  // 🧩 Update reviewer invitation status (accepted / declined)
+  const updateStatus = async (manuscriptId, reviewerId, status) => {
+    try {
+      const msRef = doc(db, "manuscripts", manuscriptId);
+      const msSnap = await getDoc(msRef);
 
-  const handleDecision = async (manuscriptId, decision) => {
+      if (!msSnap.exists()) {
+        console.error("Manuscript not found:", manuscriptId);
+        return;
+      }
+
+      const msData = msSnap.data();
+      const meta = msData.assignedReviewersMeta || {};
+      const reviewerMeta = meta[reviewerId] || {};
+
+      const updateFields = {
+        ...reviewerMeta,
+        invitationStatus: status,
+        respondedAt: serverTimestamp(),
+        acceptedAt:
+          status === "accepted" ? serverTimestamp() : reviewerMeta.acceptedAt,
+        declinedAt:
+          status === "declined" ? serverTimestamp() : reviewerMeta.declinedAt,
+      };
+
+      meta[reviewerId] = updateFields;
+
+      await updateDoc(msRef, { assignedReviewersMeta: meta });
+
+      console.log(`Reviewer ${status} status updated successfully.`);
+    } catch (error) {
+      console.error("Error updating reviewer status:", error);
+    }
+  };
+
+  const handleDecision = async (manuscriptId, isAccepted) => {
     if (!currentUser || !manuscriptId) return;
 
     setProcessingId(manuscriptId);
     setError(null);
 
     try {
-      const invitation = invitations.find((inv) => inv.id === manuscriptId);
-      if (!invitation) throw new Error("Invitation not found.");
-
       const msRef = doc(db, "manuscripts", manuscriptId);
+      const msSnap = await getDoc(msRef);
+      const msData = msSnap.data();
 
-      const safeInvitedAt =
-        invitation.originalInvitedAt ||
-        invitation.meta?.invitedAt ||
-        serverTimestamp();
+      const meta = msData.assignedReviewersMeta || {};
+      const reviewerMeta = meta[currentUser.uid] || {};
 
-      const respondedAt = new Date();
+      // Fetch review deadline from settings if accepting
+      // Replace invitation deadline with review deadline
+      let deadline = reviewerMeta.deadline;
+      if (isAccepted) {
+        try {
+          const settingsRef = doc(db, "deadlineSettings", "deadlines");
+          const settingsSnap = await getDoc(settingsRef);
+          if (settingsSnap.exists()) {
+            const settings = settingsSnap.data();
 
+            // Use shorter deadline for re-reviews since reviewer already knows the manuscript
+            const isReReview = reviewerMeta.isReReview === true;
+            const reviewDeadlineDays = isReReview ?
+              (settings.reReviewDeadline || settings.reviewDeadline || 2) : // 2 days for re-reviews
+              (settings.reviewDeadline || 4); // 4 days for new reviews
 
-const reviewDeadline = Timestamp.fromDate(
-  new Date(respondedAt.getTime() + 4 * 24 * 60 * 60 * 1000)
-);
-
-
-const updateData = {
-  [`assignedReviewersMeta.${currentUser.uid}`]: {
-    ...invitation.meta,
-    invitationStatus: decision ? "accepted" : "rejected",
-    acceptedAt: decision ? respondedAt : null, // ✅ add this line
-    respondedAt: respondedAt,
-    decision: decision ? "accepted" : "rejected",
-    invitedAt: safeInvitedAt,
-    deadline: invitation.meta.deadline || reviewDeadline, // keep existing or set new
-  },
-  ...(decision && { status: "Peer Reviewer Assigned" }),
-};
-
-
-await updateDoc(msRef, updateData);
-
-
-      let adminIds = await NotificationService.getAdminUserIds();
-
-      if (!Array.isArray(adminIds)) {
-        console.warn("adminIds was not an array, converting to array", adminIds);
-        adminIds = adminIds ? [adminIds] : [];
+            const deadlineDate = new Date();
+            deadlineDate.setDate(deadlineDate.getDate() + reviewDeadlineDays);
+            deadline = deadlineDate;
+            console.log(`Setting ${isReReview ? 're-review' : 'review'} deadline: ${reviewDeadlineDays} days from now`);
+          } else {
+            console.warn("Deadline settings document not found, using fallback");
+            const isReReview = reviewerMeta.isReReview === true;
+            const fallbackDays = isReReview ? 2 : 4;
+            const deadlineDate = new Date();
+            deadlineDate.setDate(deadlineDate.getDate() + fallbackDays);
+            deadline = deadlineDate;
+          }
+        } catch (err) {
+          console.error("Error fetching deadline settings:", err);
+          // Fallback with different deadlines for re-reviews
+          const isReReview = reviewerMeta.isReReview === true;
+          const fallbackDays = isReReview ? 2 : 4;
+          const deadlineDate = new Date();
+          deadlineDate.setDate(deadlineDate.getDate() + fallbackDays);
+          deadline = deadlineDate;
+        }
       }
+
+      // Check if this is a re-review invitation
+      const isReReview = reviewerMeta.isReReview === true;
+
+      // update the timestamps and status
+      const updateFields = {
+        ...reviewerMeta,
+        invitationStatus: isAccepted ? "accepted" : "declined",
+        respondedAt: serverTimestamp(),
+        acceptedAt: isAccepted ? serverTimestamp() : reviewerMeta.acceptedAt,
+        declinedAt: !isAccepted ? serverTimestamp() : reviewerMeta.declinedAt,
+        ...(isAccepted && deadline && { deadline: deadline }),
+        // Clear re-review flag after responding
+        ...(isReReview && { isReReview: false, reReviewRespondedAt: serverTimestamp() }),
+      };
+
+      meta[currentUser.uid] = updateFields;
+      
+      // Update status to "Peer Reviewer Assigned" if this is an acceptance
+      // and at least one reviewer has accepted
+      const hasAcceptedReviewer = Object.values(meta).some(
+        m => m.invitationStatus === "accepted"
+      );
+      
+      const updateData = {
+        assignedReviewersMeta: meta,
+      };
+      
+      // Only update status if accepting and there's at least one accepted reviewer
+      if (isAccepted && hasAcceptedReviewer) {
+        updateData.status = "Peer Reviewer Assigned";
+      }
+      
+      await updateDoc(msRef, updateData);
+
+      // Notify admins
+      let adminIds = await NotificationService.getAdminUserIds();
+      if (!Array.isArray(adminIds)) adminIds = adminIds ? [adminIds] : [];
 
       if (adminIds.length > 0) {
         await NotificationService.notifyPeerReviewerDecision(
           manuscriptId,
-          invitation.title,
+          msData.title,
           currentUser.uid,
           adminIds,
-          decision
+          isAccepted
         );
       }
 
-      setInvitations((prev) =>
-        prev.filter((inv) => inv.id !== manuscriptId)
-      );
+      // Update UI state
+      setInvitations((prev) => prev.filter((inv) => inv.id !== manuscriptId));
 
-      if (decision) {
+      if (isAccepted) {
         navigate(`/review-manuscript?manuscriptId=${manuscriptId}`);
       }
     } catch (err) {
@@ -227,7 +313,7 @@ await updateDoc(msRef, updateData);
   // 🧩 Updated Modal — now includes Deadline + Overdue highlight
   const AbstractModal = ({ isOpen, onClose, invitation }) => {
     if (!isOpen || !invitation) return null;
-    const { title, abstract, keywords, invitedAt, deadline } = invitation;
+    const { title, abstract, keywords, invitedAt, deadline, isReReview, versionNumber, previousReviewVersion } = invitation;
 
     const isOverdue = deadline && new Date() > new Date(deadline);
 
@@ -251,9 +337,24 @@ await updateDoc(msRef, updateData);
           <div className="inline-block align-bottom bg-white rounded-lg px-4 pt-5 pb-4 text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-2xl sm:w-full sm:p-6">
             <div>
               <div className="mt-3 text-center sm:mt-0 sm:text-left">
-                <h3 className="text-lg leading-6 font-medium text-gray-900">
-                  {title}
-                </h3>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-lg leading-6 font-medium text-gray-900">
+                    {title}
+                  </h3>
+                  {isReReview && (
+                    <span className="px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800">
+                      Re-Review v{versionNumber}
+                    </span>
+                  )}
+                </div>
+                {isReReview && (
+                  <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded">
+                    <p className="text-sm text-blue-800">
+                      📝 <strong>Re-Review Request:</strong> You previously reviewed version {previousReviewVersion} of this manuscript. 
+                      The author has submitted a revised version (v{versionNumber}). Please review the changes and provide feedback on the revisions.
+                    </p>
+                  </div>
+                )}
                 <div className="mt-2">
                   <div className="mt-4 text-sm text-gray-500">
                     <span className="font-medium">Invited: </span>
@@ -267,36 +368,44 @@ await updateDoc(msRef, updateData);
                     })}
                   </div>
 
-                 {deadline && (
-  <div className="mt-3">
-    {(() => {
-const startDate = parseDate(inv.acceptedAt) || parseDate(inv.invitedAt) || new Date();
-const endDate = parseDate(inv.deadline);
-const colorClass = getDeadlineColor(startDate, endDate);
-const remaining = getRemainingDays(endDate, startDate);
+                  {deadline && (
+                    <div className="mt-3">
+                      {(() => {
+                        const startDate =
+                          invitation.acceptedAt ||
+                          invitation.invitedAt ||
+                          new Date();
+                        const parsedStart =
+                          startDate?.toDate?.() ?? new Date(startDate);
+                        const parsedEnd =
+                          deadline?.toDate?.() ?? new Date(deadline);
 
+                        const colorClass = getDeadlineColor(
+                          parsedStart,
+                          parsedEnd
+                        );
+                        const remaining = getRemainingDays(parsedEnd);
 
-
-      return (
-      <div
-  className={`inline-block px-3 py-1 rounded-lg text-sm font-medium transition-colors duration-300 ${colorClass}`}
->
-
-          Deadline:{" "}
-          {new Date(deadline).toLocaleDateString("en-US", {
-            year: "numeric",
-            month: "long",
-            day: "numeric",
-          })}{" "}
-          {remaining > 0
-            ? `(${remaining} day${remaining > 1 ? "s" : ""} left)`
-            : "⚠️ Past Deadline"}
-        </div>
-      );
-    })()}
-  </div>
-)}
-
+                        return (
+                          <div
+                            className={`inline-block px-3 py-1 rounded-lg text-sm font-medium transition-colors duration-300 ${colorClass}`}
+                          >
+                            Deadline:{" "}
+                            {parsedEnd.toLocaleDateString("en-US", {
+                              year: "numeric",
+                              month: "long",
+                              day: "numeric",
+                            })}{" "}
+                            {remaining > 0
+                              ? `(${remaining} day${
+                                  remaining > 1 ? "s" : ""
+                                } left)`
+                              : "⚠️ Past Deadline"}
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  )}
 
                   <div className="mt-4">
                     <h4 className="text-sm font-medium text-gray-700">
@@ -379,7 +488,7 @@ const remaining = getRemainingDays(endDate, startDate);
           </div>
         ) : (
           invitations.map((inv) => {
-            const { id, title, abstract, keywords, invitedAt, deadline } = inv;
+            const { id, title, abstract, keywords, invitedAt, deadline, isReReview, versionNumber, previousReviewVersion } = inv;
             const isOverdue = deadline && new Date() > new Date(deadline);
 
             return (
@@ -389,11 +498,28 @@ const remaining = getRemainingDays(endDate, startDate);
               >
                 <div className="px-6 py-5">
                   <div className="flex items-center justify-between">
-                    <h3 className="text-lg font-medium text-gray-900">{title}</h3>
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-lg font-medium text-gray-900">
+                        {title}
+                      </h3>
+                      {isReReview && (
+                        <span className="px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800">
+                          Re-Review v{versionNumber}
+                        </span>
+                      )}
+                    </div>
                     <span className="px-2 py-1 text-xs font-semibold rounded-full bg-yellow-100 text-yellow-800">
                       Pending Response
                     </span>
                   </div>
+                  {isReReview && (
+                    <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded">
+                      <p className="text-sm text-blue-800">
+                        📝 <strong>Re-Review Request:</strong> You previously reviewed version {previousReviewVersion} of this manuscript. 
+                        The author has submitted a revised version (v{versionNumber}). Please review the changes.
+                      </p>
+                    </div>
+                  )}
                   <p className="mt-2 text-sm text-gray-600 line-clamp-2">
                     {abstract}
                   </p>
@@ -408,35 +534,43 @@ const remaining = getRemainingDays(endDate, startDate);
                     })}
                   </div>
 
-                 {deadline && (
-  <div className="mt-3">
-    {(() => {
-      const startDate = inv.acceptedAt || inv.invitedAt; 
-const parsedStartDate = startDate?.toDate ? startDate.toDate() : new Date(startDate);
-const parsedDeadline = deadline?.toDate ? deadline.toDate() : new Date(deadline);
+                  {deadline && (
+                    <div className="mt-3">
+                      {(() => {
+                        const startDate = inv.acceptedAt || inv.invitedAt;
+                        const parsedStartDate = startDate?.toDate
+                          ? startDate.toDate()
+                          : new Date(startDate);
+                        const parsedDeadline = deadline?.toDate
+                          ? deadline.toDate()
+                          : new Date(deadline);
 
-const colorClass = getDeadlineColor(parsedStartDate, parsedDeadline);
-const remaining = getRemainingDays(parsedDeadline, parsedStartDate);
+                        const colorClass = getDeadlineColor(
+                          parsedStartDate,
+                          parsedDeadline
+                        );
+                        const remaining = getRemainingDays(parsedDeadline);
 
-
-      return (
-        <div
-          className={`inline-block px-3 py-1 rounded-lg text-sm font-medium ${colorClass}`}
-        >
-          Deadline:{" "}
-          {new Date(deadline).toLocaleDateString("en-US", {
-            year: "numeric",
-            month: "long",
-            day: "numeric",
-          })}{" "}
-          {remaining > 0
-            ? `(${remaining} day${remaining > 1 ? "s" : ""} left)`
-            : "⚠️ Past Deadline"}
-        </div>
-      );
-    })()}
-  </div>
-)}
+                        return (
+                          <div
+                            className={`inline-block px-3 py-1 rounded-lg text-sm font-medium ${colorClass}`}
+                          >
+                            Deadline:{" "}
+                            {new Date(deadline).toLocaleDateString("en-US", {
+                              year: "numeric",
+                              month: "long",
+                              day: "numeric",
+                            })}{" "}
+                            {remaining > 0
+                              ? `(${remaining} day${
+                                  remaining > 1 ? "s" : ""
+                                } left)`
+                              : "⚠️ Past Deadline"}
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  )}
 
                   <div className="mt-3 flex flex-wrap gap-2">
                     {keywords.slice(0, 3).map((kw, idx) => (

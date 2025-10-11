@@ -276,6 +276,87 @@ const Manuscripts = () => {
             rejectedManuscripts: (r.rejectedManuscripts || 0) + 1,
           });
         });
+      } else if (newStatus === "For Revision (Minor)") {
+        // Minor Revision: Clear all reviewers, goes back to Admin for reassignment
+        await updateDoc(msRef, {
+          status: newStatus,
+          assignedReviewers: [],
+          assignedReviewersMeta: {},
+          originalAssignedReviewers: ms.assignedReviewers || [],
+          originalAssignedReviewersMeta: ms.assignedReviewersMeta || {},
+          reviewerSubmissions: ms.reviewerSubmissions || [],
+          finalDecisionAt: new Date(),
+          finalDecisionBy: userId,
+        });
+        
+        // Update local state and exit
+        setManuscripts((prev) =>
+          prev.map((m) =>
+            m.id === manuscriptId
+              ? {
+                  ...m,
+                  status: newStatus,
+                  assignedReviewers: [],
+                  assignedReviewersMeta: {},
+                  originalAssignedReviewers: ms.assignedReviewers || [],
+                  originalAssignedReviewersMeta: ms.assignedReviewersMeta || {},
+                  finalDecisionAt: new Date(),
+                  finalDecisionBy: userId,
+                }
+              : m
+          )
+        );
+        return;
+      } else if (newStatus === "For Revision (Major)") {
+        // Major Revision: Keep only reviewers who accepted (exclude rejecters)
+        const reviewerObjects = (ms.assignedReviewers || []).map(id => ({ id }));
+        const acceptedReviewerObjects = filterAcceptedReviewers(
+          ms.reviewerDecisionMeta,
+          reviewerObjects
+        );
+        
+        updatedAssignedReviewers = (ms.assignedReviewersData || []).filter(r => 
+          acceptedReviewerObjects.some(accepted => accepted.id === r.id)
+        );
+  
+        const newMeta = {};
+        updatedAssignedReviewers.forEach((r) => {
+          newMeta[r.id] = ms.assignedReviewersMeta?.[r.id] || {
+            assignedAt: r.assignedAt,
+            assignedBy: r.assignedBy,
+          };
+        });
+        updatedAssignedMeta = newMeta;
+        
+        await updateDoc(msRef, {
+          status: newStatus,
+          assignedReviewers: updatedAssignedReviewers.map((r) => r.id),
+          assignedReviewersMeta: updatedAssignedMeta,
+          reviewerSubmissions: ms.reviewerSubmissions || [],
+          originalAssignedReviewers: ms.assignedReviewers || [],
+          originalAssignedReviewersMeta: ms.assignedReviewersMeta || {},
+          finalDecisionAt: new Date(),
+          finalDecisionBy: userId,
+        });
+        
+        // Update local state and exit
+        setManuscripts((prev) =>
+          prev.map((m) =>
+            m.id === manuscriptId
+              ? {
+                  ...m,
+                  status: newStatus,
+                  assignedReviewers: updatedAssignedReviewers.map((r) => r.id),
+                  assignedReviewersMeta: updatedAssignedMeta,
+                  originalAssignedReviewers: ms.assignedReviewers || [],
+                  originalAssignedReviewersMeta: ms.assignedReviewersMeta || {},
+                  finalDecisionAt: new Date(),
+                  finalDecisionBy: userId,
+                }
+              : m
+          )
+        );
+        return;
       }
   
       // Prepare update data

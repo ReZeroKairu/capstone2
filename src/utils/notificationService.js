@@ -140,6 +140,24 @@ static async createBulkNotifications(userIds, type, title, message, metadata = {
     );
   }
 
+  static async notifyReviewerResubmission(manuscriptId, manuscriptTitle, reviewerIds, versionNumber) {
+    const message = `A revised version (v${versionNumber}) of the manuscript "${manuscriptTitle}" you previously reviewed has been resubmitted. Please review the changes.`;
+    await this.createBulkNotifications(
+      reviewerIds,
+      "manuscript_resubmission",
+      "Revised Manuscript Ready for Re-Review",
+      message,
+      { 
+        manuscriptId, 
+        manuscriptTitle, 
+        versionNumber,
+        isReReview: true,
+        actionUrl: "/reviewer-invitations", 
+        userRole: "Peer Reviewer" 
+      }
+    );
+  }
+
   // ----------------- Peer Reviewer Decisions -----------------
 
 // ----------------- Peer Reviewer Decisions -----------------

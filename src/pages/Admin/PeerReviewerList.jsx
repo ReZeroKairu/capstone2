@@ -21,6 +21,8 @@ export default function PeerReviewerList() {
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(5);
+  const [manuscriptData, setManuscriptData] = useState(null);
+  const [previousReviewers, setPreviousReviewers] = useState([]);
   const location = useLocation();
   const navigate = useNavigate();
   const params = new URLSearchParams(location.search);
@@ -76,7 +78,46 @@ export default function PeerReviewerList() {
 
   useEffect(() => {
     fetchReviewers();
-  }, []);
+    if (manuscriptId) {
+      fetchManuscriptData();
+    }
+  }, [manuscriptId]);
+
+  const fetchManuscriptData = async () => {
+    try {
+      const msRef = doc(db, "manuscripts", manuscriptId);
+      const msSnap = await getDoc(msRef);
+      if (msSnap.exists()) {
+        const data = msSnap.data();
+        setManuscriptData(data);
+        
+        // Get previous reviewers from submission history
+        if (data.submissionHistory && data.submissionHistory.length > 1) {
+          // Get reviewers from the most recent previous version
+          const previousVersion = data.submissionHistory[data.submissionHistory.length - 2];
+          const prevReviewerIds = previousVersion.reviewers || [];
+          
+          // Fetch reviewer details
+          if (prevReviewerIds.length > 0) {
+            const usersSnap = await getDocs(collection(db, "Users"));
+            const allUsers = usersSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+            const prevReviewerData = allUsers.filter(u => prevReviewerIds.includes(u.id));
+            
+            // Add their previous decisions
+            const reviewersWithDecisions = prevReviewerData.map(reviewer => ({
+              ...reviewer,
+              previousDecision: previousVersion.reviewerDecisionMeta?.[reviewer.id]?.decision,
+              previousComment: previousVersion.reviewerDecisionMeta?.[reviewer.id]?.comment,
+            }));
+            
+            setPreviousReviewers(reviewersWithDecisions);
+          }
+        }
+      }
+    } catch (err) {
+      console.error("Error fetching manuscript data:", err);
+    }
+  };
 
   const handleAssign = async (reviewerId) => {
     if (!manuscriptId) {
@@ -144,8 +185,10 @@ const newMeta = {
   invitationStatus: "pending",
   invitedAt,
   respondedAt: null,
+  acceptedAt: null, // ✅ will be filled when reviewer accepts
+  declinedAt: null, // ✅ will be filled when reviewer declines
   decision: null,
-  deadline: deadlineDate, // 👈 Key field for reviewer + admin display
+  deadline: deadlineDate,
 };
 
 
@@ -153,9 +196,18 @@ const newMeta = {
         const updatedAssigned = [...assigned, reviewerId];
         const updatedMeta = { ...assignedMeta, [reviewerId]: newMeta };
 
+        // Determine status: should remain "Assigning Peer Reviewer" until reviewers accept
+        // Only change to "Peer Reviewer Assigned" if at least one reviewer has accepted
+        const hasAcceptedReviewer = Object.values(updatedMeta).some(
+          meta => meta.invitationStatus === "accepted"
+        );
+        
+        const newStatus = hasAcceptedReviewer ? "Peer Reviewer Assigned" : "Assigning Peer Reviewer";
+
         await updateDoc(msRef, {
           assignedReviewers: updatedAssigned,
           assignedReviewersMeta: updatedMeta,
+          status: newStatus,
         });
 
         // Send notification
@@ -206,6 +258,70 @@ const newMeta = {
       <h2 className="text-2xl sm:text-3xl font-bold text-center mb-6 sm:mb-10 text-gray-800">
         Select Peer Reviewer
       </h2>
+
+      {/* Previous Reviewers Section */}
+      {previousReviewers.length > 0 && (
+        <div className="mb-6 p-4 bg-blue-50 border-2 border-blue-300 rounded-lg">
+          <h3 className="text-lg font-semibold text-blue-900 mb-3">
+            📋 Previous Reviewers (Version {manuscriptData?.versionNumber - 1 || 1})
+          </h3>
+          <p className="text-sm text-blue-800 mb-3">
+            These reviewers reviewed the previous version of this manuscript. Consider re-inviting them for consistency.
+          </p>
+          <div className="space-y-2">
+            {previousReviewers.map((reviewer) => {
+              const decisionLabels = {
+                minor: "Minor Revision",
+                major: "Major Revision",
+                publication: "For Publication",
+                reject: "Rejected",
+              };
+              const decisionColors = {
+                minor: "bg-yellow-100 text-yellow-800 border-yellow-300",
+                major: "bg-orange-100 text-orange-800 border-orange-300",
+                publication: "bg-green-100 text-green-800 border-green-300",
+                reject: "bg-red-100 text-red-800 border-red-300",
+              };
+              
+              return (
+                <div key={reviewer.id} className="bg-white p-3 rounded border border-blue-200 flex justify-between items-center">
+                  <div className="flex-1">
+                    <p className="font-medium text-gray-900">
+                      {reviewer.firstName} {reviewer.lastName}
+                    </p>
+                    <p className="text-sm text-gray-600">{reviewer.email}</p>
+                    {reviewer.previousDecision && (
+                      <span className={`inline-block mt-1 px-2 py-0.5 text-xs font-medium rounded border ${decisionColors[reviewer.previousDecision] || "bg-gray-100 text-gray-800"}`}>
+                        Previous: {decisionLabels[reviewer.previousDecision] || reviewer.previousDecision}
+                      </span>
+                    )}
+                  </div>
+                  <button
+                    className="ml-3 bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 text-sm font-medium"
+                    onClick={() => handleAssign(reviewer.id)}
+                  >
+                    Re-Invite
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Manuscript Info */}
+      {manuscriptData && (
+        <div className="mb-4 p-3 bg-gray-100 border border-gray-300 rounded">
+          <p className="text-sm text-gray-700">
+            <strong>Manuscript:</strong> {manuscriptData.title || "Untitled"} 
+            {manuscriptData.versionNumber > 1 && (
+              <span className="ml-2 px-2 py-0.5 bg-blue-100 text-blue-800 text-xs rounded">
+                Version {manuscriptData.versionNumber}
+              </span>
+            )}
+          </p>
+        </div>
+      )}
 
       {/* Search */}
       <div className="relative mb-4 w-full sm:w-72 mx-auto">
