@@ -1,6 +1,7 @@
 // src/components/Manuscripts/ManuscriptModal.jsx
 import React, { useContext } from "react";
 import { AuthContext } from "../../authcontext/AuthContext";
+import ManuscriptStatusBadge from "../ManuscriptStatusBadge";
 const ManuscriptModal = ({
   manuscript,
   onClose,
@@ -19,7 +20,28 @@ const ManuscriptModal = ({
     answeredQuestions = [],
     status,
     assignedReviewersMeta = {},
+    revisionDeadline,
+    finalizationDeadline,
+    revisionRequestedAt,
+    finalizationStartedAt
   } = manuscript;
+
+  // Format date for display
+  const formatDateString = (date) => {
+    if (!date) return 'N/A';
+    try {
+      const d = date.toDate ? date.toDate() : new Date(date);
+      return d.toLocaleDateString('en-US', { 
+        year: 'numeric', 
+        month: 'short', 
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    } catch (e) {
+      return 'Invalid date';
+    }
+  };
 
   // Move handleFileDownload inside the component
   const handleFileDownload = (file, fileName, fileIndex) => {
@@ -132,8 +154,45 @@ const ManuscriptModal = ({
             })}
         </div>
 
-        <div className="mb-4 text-sm font-semibold">
-          Status: <span className="font-normal">{status}</span>
+        <div className="mb-4 space-y-3">
+          <div className="flex items-center">
+            <span className="text-sm font-semibold mr-2">Status:</span>
+            <ManuscriptStatusBadge 
+              status={status} 
+              revisionDeadline={revisionDeadline}
+              finalizationDeadline={finalizationDeadline}
+            />
+          </div>
+
+          {/* Revision Deadline */}
+          {(status === 'For Revision (Minor)' || status === 'For Revision (Major)') && revisionDeadline && (
+            <div className="pl-2 border-l-4 border-blue-200">
+              <div className="text-sm font-medium text-gray-600">Revision Deadline</div>
+              <div className="text-sm text-gray-800">
+                {formatDateString(revisionDeadline)}
+                {revisionRequestedAt && (
+                  <div className="text-xs text-gray-500">
+                    Requested on: {formatDateString(revisionRequestedAt)}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Finalization Deadline */}
+          {status === 'In Finalization' && finalizationDeadline && (
+            <div className="pl-2 border-l-4 border-green-200">
+              <div className="text-sm font-medium text-gray-600">Finalization Deadline</div>
+              <div className="text-sm text-gray-800">
+                {formatDateString(finalizationDeadline)}
+                {finalizationStartedAt && (
+                  <div className="text-xs text-gray-500">
+                    Started on: {formatDateString(finalizationStartedAt)}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="flex justify-end">

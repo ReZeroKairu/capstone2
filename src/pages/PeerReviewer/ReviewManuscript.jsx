@@ -135,59 +135,64 @@ const ReviewModal = ({
   const myDecision = myMeta?.decision || "pending";
   const hasSubmittedReview = manuscript.reviewerSubmissions?.some(
     (r) => r.reviewerId === reviewerId
-    
   );
-// Add this right before the handleFileDownload function
-console.log('manuscriptFileUrls:', JSON.stringify(manuscriptFileUrls, null, 2));
-console.log('Current manuscript ID:', manuscript.id);
+  // Add this right before the handleFileDownload function
+  console.log(
+    "manuscriptFileUrls:",
+    JSON.stringify(manuscriptFileUrls, null, 2)
+  );
+  console.log("Current manuscript ID:", manuscript.id);
   // Add this function inside the ReviewModal component
-const handleFileDownload = (file, fileName, fileIndex) => {
-  console.log('handleFileDownload called with:', {
-    file,
-    fileName,
-    fileIndex,
-    manuscriptId: manuscript.id,
-    urls: manuscriptFileUrls,
-    submissionHistory: manuscript.submissionHistory?.[fileIndex]
-  });
-
-  // Try multiple ways to get the file URL
-  const fileUrl = 
-    // Try from manuscriptFileUrls with manuscript ID
-    manuscriptFileUrls?.[manuscript.id]?.[fileIndex] ||
-    // Try from manuscriptFileUrls directly with index
-    manuscriptFileUrls?.[fileIndex] ||
-    // Try from the file object
-    file?.url || 
-    file?.downloadURL ||
-    // Try from submission history
-    manuscript.submissionHistory?.[fileIndex]?.fileUrl ||
-    manuscript.submissionHistory?.[fileIndex]?.file?.url ||
-    // Last resort, use the file directly
-    file;
-
-  console.log('Resolved file URL:', fileUrl);
-  
-  if (!fileUrl) {
-    console.error('No file URL found for download', { 
-      file, 
-      fileIndex, 
+  const handleFileDownload = (file, fileName, fileIndex) => {
+    console.log("handleFileDownload called with:", {
+      file,
+      fileName,
+      fileIndex,
       manuscriptId: manuscript.id,
-      allUrls: manuscriptFileUrls,
-      submission: manuscript.submissionHistory?.[fileIndex]
+      urls: manuscriptFileUrls,
+      submissionHistory: manuscript.submissionHistory?.[fileIndex],
     });
-    alert('Could not find the file to download. The file may have been moved or deleted.');
-    return;
-  }
-  
-  // Ensure we have a valid file name
-  const downloadName = fileName || 
-                      file?.name || 
-                      `manuscript-file-${fileIndex + 1}.${fileUrl.split('.').pop()}`;
-  
-  console.log('Downloading:', { fileUrl, downloadName });
-  downloadFileCandidate(fileUrl, downloadName);
-};
+
+    // Try multiple ways to get the file URL
+    const fileUrl =
+      // Try from manuscriptFileUrls with manuscript ID
+      manuscriptFileUrls?.[manuscript.id]?.[fileIndex] ||
+      // Try from manuscriptFileUrls directly with index
+      manuscriptFileUrls?.[fileIndex] ||
+      // Try from the file object
+      file?.url ||
+      file?.downloadURL ||
+      // Try from submission history
+      manuscript.submissionHistory?.[fileIndex]?.fileUrl ||
+      manuscript.submissionHistory?.[fileIndex]?.file?.url ||
+      // Last resort, use the file directly
+      file;
+
+    console.log("Resolved file URL:", fileUrl);
+
+    if (!fileUrl) {
+      console.error("No file URL found for download", {
+        file,
+        fileIndex,
+        manuscriptId: manuscript.id,
+        allUrls: manuscriptFileUrls,
+        submission: manuscript.submissionHistory?.[fileIndex],
+      });
+      alert(
+        "Could not find the file to download. The file may have been moved or deleted."
+      );
+      return;
+    }
+
+    // Ensure we have a valid file name
+    const downloadName =
+      fileName ||
+      file?.name ||
+      `manuscript-file-${fileIndex + 1}.${fileUrl.split(".").pop()}`;
+
+    console.log("Downloading:", { fileUrl, downloadName });
+    downloadFileCandidate(fileUrl, downloadName);
+  };
   const versionNumber = manuscript.submissionHistory?.length || 1;
   const handleDecisionSubmitWrapper = async (manuscriptId, versionNumber) => {
     if (submitting) return;
@@ -242,7 +247,7 @@ const handleFileDownload = (file, fileName, fileIndex) => {
   };
 
   return (
-    <div 
+    <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
       onClick={handleOverlayClick}
     >
@@ -355,29 +360,31 @@ const handleFileDownload = (file, fileName, fileIndex) => {
                                   </p>
                                 )}
                             </div>
-                           <button
-  onClick={() => handleFileDownload(
-    submission.file, 
-    submission.fileName || `File ${idx + 1}`,
-    idx
-  )}
-  className="ml-3 px-3 py-1 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 flex items-center"
->
-  <svg
-    className="w-4 h-4 mr-1"
-    fill="none"
-    stroke="currentColor"
-    viewBox="0 0 24 24"
-  >
-    <path
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth={2}
-      d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
-    />
-  </svg>
-  Download
-</button>
+                            <button
+                              onClick={() =>
+                                handleFileDownload(
+                                  submission.file,
+                                  submission.fileName || `File ${idx + 1}`,
+                                  idx
+                                )
+                              }
+                              className="ml-3 px-3 py-1 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 flex items-center"
+                            >
+                              <svg
+                                className="w-4 h-4 mr-1"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+                                />
+                              </svg>
+                              Download
+                            </button>
                           </div>
                         </div>
                       )

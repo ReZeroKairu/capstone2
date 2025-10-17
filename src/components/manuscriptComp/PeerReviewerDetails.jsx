@@ -118,9 +118,14 @@ const PeerReviewDetails = ({
         }
 
         return (
-          <div key={reviewerKey} className="bg-white rounded-lg border shadow-sm p-3">
+          <div
+            key={reviewerKey}
+            className="bg-white rounded-lg border shadow-sm p-3"
+          >
             <div className="flex justify-between items-center mb-2">
-              <h3 className="font-medium text-gray-800 text-sm">{reviewerName}</h3>
+              <h3 className="font-medium text-gray-800 text-sm">
+                {reviewerName}
+              </h3>
               {role === "Admin" && (
                 <span className="text-xs text-gray-500">
                   {lastReview.status || "Completed"}
@@ -158,24 +163,44 @@ const PeerReviewDetails = ({
                     )}
 
                   {/* Review file download (visible to Admin + Researcher) */}
-                  {(role === "Admin" || role === "Researcher") &&
+                  {(role === "Admin" ||
+                    role === "Researcher" ||
+                    (role === "Peer Reviewer" &&
+                      reviewerKey === currentUserId)) &&
                     (review.reviewFileUrl ||
                       review.reviewFile ||
                       review.reviewFilePath) && (
-                      <button
-                        onClick={() =>
-                          downloadFileCandidate(
-                            review.reviewFileUrl ||
-                              review.reviewFile ||
-                              review.reviewFilePath,
-                            review.fileName ||
-                              `review_v${review.manuscriptVersionNumber || "1"}.pdf`
-                          )
-                        }
-                        className="text-blue-600 hover:text-blue-800 text-xs mt-1"
-                      >
-                        Download Review File
-                      </button>
+                      <div className="mt-1">
+                        <button
+                          onClick={() =>
+                            downloadFileCandidate(
+                              review.reviewFileUrl ||
+                                review.reviewFile ||
+                                review.reviewFilePath,
+                              review.fileName ||
+                                `review_v${
+                                  review.manuscriptVersionNumber || "1"
+                                }.pdf`
+                            )
+                          }
+                          className="text-blue-600 hover:text-blue-800 text-xs flex items-center"
+                        >
+                          <svg
+                            className="w-4 h-4 mr-1"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+                            />
+                          </svg>
+                          Download Review File
+                        </button>
+                      </div>
                     )}
                 </div>
               );

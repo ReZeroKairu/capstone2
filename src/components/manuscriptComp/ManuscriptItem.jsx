@@ -14,18 +14,7 @@ import {
 } from "../../utils/manuscriptHelpers";
 import PeerReviewerDetails from "./PeerReviewerDetails";
 
-const STATUS_COLORS = {
-  Pending: "bg-gray-100 text-gray-800",
-  "Assigning Peer Reviewer": "bg-yellow-100 text-yellow-800",
-  "Peer Reviewer Assigned": "bg-blue-100 text-blue-800",
-  "Peer Reviewer Reviewing": "bg-indigo-100 text-indigo-800",
-  "Back to Admin": "bg-purple-100 text-purple-800",
-  "For Revision (Minor)": "bg-yellow-100 text-yellow-800",
-  "For Revision (Major)": "bg-orange-100 text-orange-800",
-  "For Publication": "bg-green-100 text-green-800",
-  "Peer Reviewer Rejected": "bg-red-100 text-red-800",
-  Rejected: "bg-red-100 text-red-800",
-};
+import ManuscriptStatusBadge from "../ManuscriptStatusBadge";
 
 const statusToDeadlineField = {
   "Assigning Peer Reviewer": "invitationDeadline",
@@ -305,14 +294,11 @@ const ManuscriptItem = ({
                 Rejected by Peer Reviewer
               </span>
             )}
-
-          <span
-            className={`px-3 py-1 rounded-full text-xs sm:text-sm font-semibold shadow-sm ${
-              STATUS_COLORS[status] || "bg-gray-100 text-gray-800"
-            }`}
-          >
-            {status}
-          </span>
+          <ManuscriptStatusBadge 
+            status={status} 
+            revisionDeadline={manuscript.revisionDeadline}
+            finalizationDeadline={manuscript.finalizationDeadline}
+          />
 
           {manuscript.deadline &&
             !["For Publication", "Rejected", "Peer Reviewer Rejected"].includes(
