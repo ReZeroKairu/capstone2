@@ -5,22 +5,28 @@ import {
   updateDoc,
   doc,
   arrayUnion,
+  arrayRemove,
+  deleteField,
   getDocs,
   getDoc,
   Timestamp,
 } from "firebase/firestore";
+
 import {
   ref as storageRef,
   uploadBytes,
   getDownloadURL,
 } from "firebase/storage";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
+
 import {
   handlePeerReviewerDecision,
   handleReviewCompletion,
 } from "../../utils/manuscriptHelpers";
 import { useUserLogs } from "../../hooks/useUserLogs";
 import { getDeadlineColor, getRemainingDays } from "../../utils/deadlineUtils";
+import { parseDateSafe } from "../../utils/dateUtils";
+import { recalcManuscriptStatus } from "../../utils/recalcManuscriptStatus";
 
 // --------------------------
 // REST URL fallback helper
@@ -42,29 +48,12 @@ const buildRestUrlSafe = (rawPath) => {
 // --------------------------
 // Helper: Safe file download
 // --------------------------
-const downloadFileCandidate = async (file) => {
-  if (!file) return;
-
-  let url = null;
-  if (typeof file === "string" && file.startsWith("http")) url = file;
-  else if (file.url || file.fileUrl) url = file.url || file.fileUrl;
-  else {
-    const path = file.path || file.storagePath || file;
-    try {
-      url = await getDownloadURL(storageRef(storage, path));
-    } catch {
-      url = buildRestUrlSafe(path);
-    }
-  }
-
-  if (!url) return;
+const downloadFileCandidate = (fileUrl, fileName = "file") => {
+  if (!fileUrl) return;
 
   const link = document.createElement("a");
-  link.href = url;
-  link.download =
-    file?.name ||
-    file?.fileName ||
-    (typeof file === "string" ? file.split("/").pop() : "file");
+  link.href = fileUrl;
+  link.download = fileName;
   link.target = "_blank";
   document.body.appendChild(link);
   link.click();
@@ -96,6 +85,34 @@ const DeadlineBadge = ({ startDate, endDate }) => {
   );
 };
 
+const assignReviewer = async (manuscriptId, reviewerId) => {
+  const msRef = doc(db, "manuscripts", manuscriptId);
+
+  await updateDoc(msRef, {
+    assignedReviewers: arrayUnion(reviewerId),
+    [`assignedReviewersMeta.${reviewerId}`]: {
+      assignedBy: "adminId",
+      assignedAt: new Date(),
+      invitationStatus: "pending",
+    },
+  });
+
+  // ✅ Automatically recalc status after assignment
+  await recalcManuscriptStatus(manuscriptId);
+};
+
+const unassignReviewer = async (manuscriptId, reviewerId) => {
+  const msRef = doc(db, "manuscripts", manuscriptId);
+
+  await updateDoc(msRef, {
+    assignedReviewers: arrayRemove(reviewerId),
+    [`assignedReviewersMeta.${reviewerId}`]: deleteField(),
+  });
+
+  // ✅ Automatically recalc status after unassignment
+  await recalcManuscriptStatus(manuscriptId);
+};
+
 // --------------------------
 // Modal component
 // --------------------------
@@ -111,12 +128,80 @@ const ReviewModal = ({
   setReviewFiles,
   handleDecisionSubmit,
   closeModal,
+  manuscriptFileUrls, // ✅ RECEIVE IT
 }) => {
+  const [submitting, setSubmitting] = useState(false);
   const myMeta = manuscript.reviewerDecisionMeta?.[reviewerId];
   const myDecision = myMeta?.decision || "pending";
   const hasSubmittedReview = manuscript.reviewerSubmissions?.some(
     (r) => r.reviewerId === reviewerId
+    
   );
+// Add this right before the handleFileDownload function
+console.log('manuscriptFileUrls:', JSON.stringify(manuscriptFileUrls, null, 2));
+console.log('Current manuscript ID:', manuscript.id);
+  // Add this function inside the ReviewModal component
+const handleFileDownload = (file, fileName, fileIndex) => {
+  console.log('handleFileDownload called with:', {
+    file,
+    fileName,
+    fileIndex,
+    manuscriptId: manuscript.id,
+    urls: manuscriptFileUrls,
+    submissionHistory: manuscript.submissionHistory?.[fileIndex]
+  });
+
+  // Try multiple ways to get the file URL
+  const fileUrl = 
+    // Try from manuscriptFileUrls with manuscript ID
+    manuscriptFileUrls?.[manuscript.id]?.[fileIndex] ||
+    // Try from manuscriptFileUrls directly with index
+    manuscriptFileUrls?.[fileIndex] ||
+    // Try from the file object
+    file?.url || 
+    file?.downloadURL ||
+    // Try from submission history
+    manuscript.submissionHistory?.[fileIndex]?.fileUrl ||
+    manuscript.submissionHistory?.[fileIndex]?.file?.url ||
+    // Last resort, use the file directly
+    file;
+
+  console.log('Resolved file URL:', fileUrl);
+  
+  if (!fileUrl) {
+    console.error('No file URL found for download', { 
+      file, 
+      fileIndex, 
+      manuscriptId: manuscript.id,
+      allUrls: manuscriptFileUrls,
+      submission: manuscript.submissionHistory?.[fileIndex]
+    });
+    alert('Could not find the file to download. The file may have been moved or deleted.');
+    return;
+  }
+  
+  // Ensure we have a valid file name
+  const downloadName = fileName || 
+                      file?.name || 
+                      `manuscript-file-${fileIndex + 1}.${fileUrl.split('.').pop()}`;
+  
+  console.log('Downloading:', { fileUrl, downloadName });
+  downloadFileCandidate(fileUrl, downloadName);
+};
+  const versionNumber = manuscript.submissionHistory?.length || 1;
+  const handleDecisionSubmitWrapper = async (manuscriptId, versionNumber) => {
+    if (submitting) return;
+    setSubmitting(true);
+
+    try {
+      await handleDecisionSubmit(manuscriptId, versionNumber); // pass versionNumber
+    } catch (err) {
+      console.error("Submission failed:", err);
+      alert("Submission failed. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   const invitedMeta = manuscript.assignedReviewersMeta?.[reviewerId] || {};
   const invitedById = invitedMeta?.assignedBy || invitedMeta?.invitedBy || null;
@@ -143,21 +228,24 @@ const ReviewModal = ({
     manuscript.abstract ||
     "—";
 
-  const parseDateSafe = (d) => {
-    if (!d) return null;
-    if (d.toDate) return d.toDate();
-    if (typeof d === "string") return new Date(d);
-    return new Date(d);
-  };
-
   const startDate =
     myDecision === "pending" && !hasSubmittedReview
       ? new Date()
       : parseDateSafe(acceptedAt) || parseDateSafe(invitedAt);
   const endDate = parseDateSafe(deadline);
 
+  // Close modal when clicking outside
+  const handleOverlayClick = (e) => {
+    if (e.target === e.currentTarget) {
+      closeModal();
+    }
+  };
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+    <div 
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+      onClick={handleOverlayClick}
+    >
       <div
         className="bg-white rounded-2xl p-6 w-[90%] max-w-3xl shadow-xl overflow-auto max-h-[85vh]"
         onClick={(e) => e.stopPropagation()}
@@ -218,96 +306,102 @@ const ReviewModal = ({
                 <p className="font-medium mb-2">
                   Manuscript Submission History
                 </p>
-                {manuscript.submissionHistory &&
-                manuscript.submissionHistory.length > 0 ? (
+                {(manuscript.submissionHistory || []).length > 0 ? (
                   <div className="space-y-2">
-                    {manuscript.submissionHistory.map((submission, idx) => (
-                      <div
-                        key={idx}
-                        className="bg-gray-50 p-3 rounded border border-gray-200"
-                      >
-                        <div className="flex justify-between items-start">
-                          <div className="flex-1">
-                            <p className="text-sm font-medium text-gray-800">
-                              Version {submission.versionNumber || idx + 1}
-                              {idx ===
-                                manuscript.submissionHistory.length - 1 && (
-                                <span className="ml-2 px-2 py-0.5 bg-blue-100 text-blue-700 text-xs rounded">
-                                  Current
-                                </span>
-                              )}
-                              {idx === 0 && (
-                                <span className="ml-2 px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded">
-                                  Original
-                                </span>
-                              )}
-                            </p>
-                            <p className="text-xs text-gray-600 mt-1">
-                              {submission.fileName || "Manuscript file"}
-                            </p>
-                            <p className="text-xs text-gray-500 mt-1">
-                              Submitted:{" "}
-                              {submission.submittedAt?.toDate
-                                ? submission.submittedAt
-                                    .toDate()
-                                    .toLocaleString()
-                                : new Date(
-                                    submission.submittedAt
-                                  ).toLocaleString()}
-                            </p>
-                            {submission.revisionNotes &&
-                              submission.revisionNotes !==
-                                "Initial submission" && (
-                                <p className="text-xs text-gray-700 italic mt-2 bg-yellow-50 p-2 rounded border border-yellow-200">
-                                  <span className="font-medium">
-                                    Revision Notes:
-                                  </span>{" "}
-                                  {submission.revisionNotes}
-                                </p>
-                              )}
+                    {(manuscript.submissionHistory || []).map(
+                      (submission, idx) => (
+                        <div
+                          key={idx}
+                          className="bg-gray-50 p-3 rounded border border-gray-200"
+                        >
+                          <div className="flex justify-between items-start">
+                            <div className="flex-1">
+                              <p className="text-sm font-medium text-gray-800">
+                                Version {submission.versionNumber || idx + 1}
+                                {idx ===
+                                  (manuscript.submissionHistory || []).length -
+                                    1 && (
+                                  <span className="ml-2 px-2 py-0.5 bg-blue-100 text-blue-700 text-xs rounded">
+                                    Current
+                                  </span>
+                                )}
+                                {idx === 0 && (
+                                  <span className="ml-2 px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded">
+                                    Original
+                                  </span>
+                                )}
+                              </p>
+                              <p className="text-xs text-gray-600 mt-1">
+                                {submission.fileName || "Manuscript file"}
+                              </p>
+                              <p className="text-xs text-gray-500 mt-1">
+                                Submitted:{" "}
+                                {submission.submittedAt?.toDate
+                                  ? submission.submittedAt
+                                      .toDate()
+                                      .toLocaleString()
+                                  : new Date(
+                                      submission.submittedAt
+                                    ).toLocaleString()}
+                              </p>
+                              {submission.revisionNotes &&
+                                submission.revisionNotes !==
+                                  "Initial submission" && (
+                                  <p className="text-xs text-gray-700 italic mt-2 bg-yellow-50 p-2 rounded border border-yellow-200">
+                                    <span className="font-medium">
+                                      Revision Notes:
+                                    </span>{" "}
+                                    {submission.revisionNotes}
+                                  </p>
+                                )}
+                            </div>
+                           <button
+  onClick={() => handleFileDownload(
+    submission.file, 
+    submission.fileName || `File ${idx + 1}`,
+    idx
+  )}
+  className="ml-3 px-3 py-1 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 flex items-center"
+>
+  <svg
+    className="w-4 h-4 mr-1"
+    fill="none"
+    stroke="currentColor"
+    viewBox="0 0 24 24"
+  >
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth={2}
+      d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+    />
+  </svg>
+  Download
+</button>
                           </div>
-                          <button
-                            onClick={() => downloadFileCandidate(submission)}
-                            className="ml-3 px-3 py-1 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 flex items-center"
-                          >
-                            <svg
-                              className="w-4 h-4 mr-1"
-                              fill="none"
-                              stroke="currentColor"
-                              viewBox="0 0 24 24"
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
-                              />
-                            </svg>
-                            Download
-                          </button>
                         </div>
-                      </div>
-                    ))}
+                      )
+                    )}
                   </div>
                 ) : (
                   // Fallback to answeredQuestions if no submission history
                   <div>
                     {(manuscript.answeredQuestions || [])
-                      .filter((q) => q.type === "file" && q.answer)
+                      .filter((q) => q?.type === "file" && q?.answer)
                       .flatMap((q) =>
                         Array.isArray(q.answer) ? q.answer : [q.answer]
                       )
                       .map((file, idx) => {
-                        const name =
-                          file?.fileName ||
-                          file?.name ||
-                          (typeof file === "string"
-                            ? file.split("/").pop()
-                            : `File ${idx + 1}`);
+                        const url = manuscriptFileUrls[manuscript.id]?.[idx]; // resolved URL
+                        if (!url) return null;
+
+                        const fileName =
+                          file?.fileName || file?.name || `File ${idx + 1}`;
+
                         return (
                           <button
                             key={idx}
-                            onClick={() => downloadFileCandidate(file)}
+                            onClick={() => downloadFileCandidate(url, fileName)}
                             className="text-blue-600 hover:text-blue-800 underline flex items-center mb-1"
                           >
                             <svg
@@ -323,7 +417,7 @@ const ReviewModal = ({
                                 d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
                               />
                             </svg>
-                            {name}
+                            {fileName}
                           </button>
                         );
                       })}
@@ -411,11 +505,22 @@ const ReviewModal = ({
                   )}
                   <div className="flex gap-2">
                     <button
-                      onClick={() => handleDecisionSubmit(manuscript.id)}
-                      className="px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700 text-sm"
+                      onClick={() =>
+                        handleDecisionSubmitWrapper(
+                          manuscript.id,
+                          versionNumber
+                        )
+                      }
+                      disabled={submitting}
+                      className={`px-3 py-1 rounded text-white text-sm ${
+                        submitting
+                          ? "bg-green-300 cursor-not-allowed"
+                          : "bg-green-600 hover:bg-green-700"
+                      }`}
                     >
-                      Submit Review
+                      {submitting ? "Submitting..." : "Submit Review"}
                     </button>
+
                     <button
                       onClick={() =>
                         setActiveDecision((prev) => ({
@@ -434,24 +539,70 @@ const ReviewModal = ({
           )}
 
           {/* Display submitted review */}
-          {myMeta?.comment && (
-            <div>
-              <p className="font-medium">Your Submitted Review</p>
-              <p className="whitespace-pre-wrap">{myMeta.comment}</p>
-              {myMeta.reviewFileUrl && (
-                <p className="mt-1">
-                  <a
-                    href={myMeta.reviewFileUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-blue-600 underline"
-                  >
-                    Download Your Review File
-                  </a>
-                </p>
-              )}
-            </div>
-          )}
+          {/* Display all reviews for this reviewer */}
+          {(manuscript.reviewerSubmissions || [])
+            .filter(
+              (s) => s.reviewerId === reviewerId && s.status === "Completed"
+            )
+            .sort((a, b) => new Date(a.completedAt) - new Date(b.completedAt))
+            .map((submission, idx) => (
+              <div
+                key={idx}
+                className="border-t pt-2 mt-2 first:mt-0 first:pt-0 first:border-0"
+              >
+                <div className="flex justify-between items-center">
+                  <span className="text-xs font-semibold text-gray-800">
+                    Reviewer:{" "}
+                    {users[submission.reviewerId]?.firstName || "Unknown"}{" "}
+                    {users[submission.reviewerId]?.lastName || ""} • Version{" "}
+                    {idx + 1}{" "}
+                    {idx ===
+                      manuscript.reviewerSubmissions.filter(
+                        (s) => s.reviewerId === reviewerId
+                      ).length -
+                        1 && "(Latest)"}
+                    <span className="ml-2 text-indigo-700 font-normal">
+                      For Manuscript Version{" "}
+                      {submission.manuscriptVersionNumber || idx + 1}
+                    </span>
+                  </span>
+
+                  <span className="text-xs text-gray-500">
+                    {new Date(submission.completedAt).toLocaleString()}
+                  </span>
+                </div>
+
+                {submission.comment && (
+                  <div className="mb-2">
+                    <p className="text-xs text-gray-700 italic mt-1">
+                      "{submission.comment}"
+                    </p>
+                  </div>
+                )}
+
+                {(submission.reviewFileUrl ||
+                  submission.reviewFile ||
+                  submission.reviewFilePath) && (
+                  <p className="mt-1">
+                    <button
+                      onClick={() =>
+                        downloadFileCandidate(
+                          submission.reviewFileUrl ||
+                            submission.reviewFile ||
+                            submission.reviewFilePath,
+                          submission.reviewFileName ||
+                            submission.fileName ||
+                            `File ${idx + 1}`
+                        )
+                      }
+                      className="text-blue-600 underline text-xs"
+                    >
+                      Download Review File
+                    </button>
+                  </p>
+                )}
+              </div>
+            ))}
         </div>
       </div>
     </div>
@@ -551,9 +702,13 @@ export default function ReviewManuscript() {
   }, []);
 
   // Resolve manuscript files
+
   useEffect(() => {
+    if (!manuscripts.length) return;
+
     const resolveAllFiles = async () => {
       const urlsMap = {};
+
       for (const m of manuscripts) {
         const files = (m.answeredQuestions || [])
           .filter((q) => q.type === "file" && q.answer)
@@ -562,28 +717,31 @@ export default function ReviewManuscript() {
         urlsMap[m.id] = await Promise.all(
           files.map(async (file) => {
             if (!file) return null;
-            if (typeof file === "object" && (file.url || file.fileUrl))
-              return file.url || file.fileUrl;
-            if (typeof file === "string") {
-              try {
-                return await getDownloadURL(storageRef(storage, file));
-              } catch {
-                return buildRestUrlSafe(file);
-              }
-            }
-            const path = file.path || file.storagePath || null;
+
+            // Already a full URL
+            if (typeof file === "string" && file.startsWith("http"))
+              return file;
+            if (file.url || file.fileUrl) return file.url || file.fileUrl;
+
+            // Otherwise, get from storage path
+            const path = file.path || file.storagePath || file;
             if (!path) return null;
+
             try {
               return await getDownloadURL(storageRef(storage, path));
             } catch {
-              return buildRestUrlSafe(path);
+              return buildRestUrlSafe(path); // Fallback
             }
           })
         );
       }
+
       setManuscriptFileUrls(urlsMap);
     };
-    if (manuscripts.length) resolveAllFiles();
+
+    resolveAllFiles().catch((err) =>
+      console.error("Failed to resolve manuscript files:", err)
+    );
   }, [manuscripts]);
 
   // Log reviewer history
@@ -597,7 +755,7 @@ export default function ReviewManuscript() {
   };
 
   // Submit decision
-  const handleDecisionSubmit = async (manuscriptId) => {
+  const handleDecisionSubmit = async (manuscriptId, versionNumber) => {
     const selected = manuscripts.find((m) => m.id === manuscriptId);
     if (!selected) return;
 
@@ -646,17 +804,14 @@ export default function ReviewManuscript() {
 
     const respondedAt = new Date();
 
-    let manuscriptVersion = null;
-    if (selected.submissionHistory && selected.submissionHistory.length > 0) {
-      const last =
-        selected.submissionHistory[selected.submissionHistory.length - 1];
-      manuscriptVersion =
-        last.versionNumber || selected.submissionHistory.length;
-    }
+    // Use the version passed from the modal
+    const manuscriptVersion = versionNumber || 1;
 
+    // --------------------------
+    // Update review meta and submission
+    // --------------------------
     await updateDoc(msRef, {
       [`reviewerDecisionMeta.${reviewerId}`]: updatedDecisions[reviewerId],
-      status: "Back to Admin",
       [`assignedReviewersMeta.${reviewerId}.respondedAt`]: respondedAt,
       reviewerSubmissions: arrayUnion({
         reviewerId,
@@ -669,6 +824,14 @@ export default function ReviewManuscript() {
       }),
     });
 
+    // --------------------------
+    // Recalculate status for all assigned reviewers
+    // --------------------------
+    await recalcManuscriptStatus(manuscriptId);
+
+    // --------------------------
+    // Peer reviewer hooks
+    // --------------------------
     await handlePeerReviewerDecision(
       manuscriptId,
       selected.manuscriptTitle || selected.title || "Untitled",
@@ -686,13 +849,17 @@ export default function ReviewManuscript() {
       decision
     );
 
+    // --------------------------
+    // Update local state
+    // --------------------------
     setManuscripts((prev) =>
       prev.map((m) =>
         m.id === manuscriptId
           ? {
               ...m,
               reviewerDecisionMeta: updatedDecisions,
-              status: "Back to Admin",
+              // Optional: only update status locally if all completed
+              status: m.status, // recalcManuscriptStatus handles Firestore update
             }
           : m
       )
@@ -717,20 +884,22 @@ export default function ReviewManuscript() {
     )?.answer ||
     "Untitled";
 
-  if (loading) return <p className="pt-28 px-6">Loading manuscripts...</p>;
-  const visibleManuscripts = manuscripts.filter((m) => {
-    const myMeta = m.reviewerDecisionMeta?.[reviewerId];
-    const myDecision = myMeta?.decision || "pending";
-    // replicate canSeeManuscript logic
-    if (userRole === "Admin") return true;
-    if (userRole === "Peer Reviewer") {
-      return (
-        (m.assignedReviewers || []).includes(reviewerId) ||
-        myDecision === "reject"
-      );
-    }
-    return true;
-  });
+  const visibleManuscripts = useMemo(() => {
+    return manuscripts.filter((m) => {
+      const myMeta = m.reviewerDecisionMeta?.[reviewerId];
+      const myDecision = myMeta?.decision || "pending";
+      if (userRole === "Admin") return true;
+      if (userRole === "Peer Reviewer") {
+        return (
+          (m.assignedReviewers || []).includes(reviewerId) ||
+          myDecision === "reject"
+        );
+      }
+      return true;
+    });
+  }, [manuscripts, reviewerId, userRole]);
+
+  if (loading) return <p>Loading manuscripts...</p>;
   if (!visibleManuscripts.length)
     return (
       <div className="pt-28 px-6 text-center text-gray-600">
@@ -772,31 +941,22 @@ export default function ReviewManuscript() {
                     "For Publication",
                     "Rejected",
                     "Peer Reviewer Rejected",
-                  ].includes(m.status) &&
-                  (() => {
-                    const parseDateSafe = (d) => {
-                      if (!d) return null;
-                      if (d.toDate) return d.toDate(); // Firestore Timestamp
-                      if (typeof d === "string") return new Date(d); // string
-                      return new Date(d); // already JS Date
-                    };
-
-                    const startDate =
-                      parseDateSafe(
-                        m.assignedReviewersMeta[reviewerId]?.respondedAt
-                      ) ||
-                      parseDateSafe(
-                        m.assignedReviewersMeta[reviewerId]?.assignedAt
-                      ) ||
-                      new Date();
-                    const endDate = parseDateSafe(
-                      m.assignedReviewersMeta[reviewerId]?.deadline
-                    );
-                    if (!startDate || !endDate) return null;
-                    return (
-                      <DeadlineBadge startDate={startDate} endDate={endDate} />
-                    );
-                  })()}
+                  ].includes(m.status) && (
+                    <DeadlineBadge
+                      startDate={
+                        parseDateSafe(
+                          m.assignedReviewersMeta[reviewerId]?.respondedAt
+                        ) ||
+                        parseDateSafe(
+                          m.assignedReviewersMeta[reviewerId]?.assignedAt
+                        ) ||
+                        new Date()
+                      }
+                      endDate={parseDateSafe(
+                        m.assignedReviewersMeta[reviewerId]?.deadline
+                      )}
+                    />
+                  )}
 
                 <div className="text-lg font-semibold">
                   {getManuscriptDisplayTitle(m)}
@@ -828,6 +988,7 @@ export default function ReviewManuscript() {
               {activeReview === m.id && (
                 <ReviewModal
                   manuscript={m}
+                  versionNumber={m.submissionHistory?.length || 1} // set the current version
                   reviewerId={reviewerId}
                   users={users}
                   activeDecision={activeDecision}
@@ -838,6 +999,7 @@ export default function ReviewManuscript() {
                   setReviewFiles={setReviewFiles}
                   handleDecisionSubmit={handleDecisionSubmit}
                   closeModal={() => setActiveReview(null)}
+                  manuscriptFileUrls={manuscriptFileUrls}
                 />
               )}
             </li>

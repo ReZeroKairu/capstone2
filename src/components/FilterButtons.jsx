@@ -6,6 +6,7 @@ const FilterButtons = ({ filter, setFilter, manuscripts }) => {
     { label: "Pending", value: "Pending" }, // <-- added Pending
     { label: "Assigning Peer Reviewer", value: "Assigning Peer Reviewer" },
     { label: "Peer Reviewer Assigned", value: "Peer Reviewer Assigned" },
+    { label: "Peer Reviewer Reviewing", value: "Peer Reviewer Reviewing" },
     { label: "Back to Admin", value: "Back to Admin" },
     { label: "For Revision (Minor)", value: "For Revision (Minor)" },
     { label: "For Revision (Major)", value: "For Revision (Major)" },
@@ -14,11 +15,11 @@ const FilterButtons = ({ filter, setFilter, manuscripts }) => {
   ];
 
   const countByFilter = (value) => {
-   if (value === "all")
-  return manuscripts.length;
+    if (value === "all") return manuscripts.length;
 
-   if (value === "Pending")
-  return manuscripts.filter((m) => !m.status || m.status === "Pending").length;
+    if (value === "Pending")
+      return manuscripts.filter((m) => !m.status || m.status === "Pending")
+        .length;
 
     if (value === "Rejected") {
       return manuscripts.filter(
@@ -27,10 +28,12 @@ const FilterButtons = ({ filter, setFilter, manuscripts }) => {
     }
 
     if (value === "For Revision (Minor)")
-      return manuscripts.filter((m) => m.status === "For Revision (Minor)").length;
+      return manuscripts.filter((m) => m.status === "For Revision (Minor)")
+        .length;
 
     if (value === "For Revision (Major)")
-      return manuscripts.filter((m) => m.status === "For Revision (Major)").length;
+      return manuscripts.filter((m) => m.status === "For Revision (Major)")
+        .length;
 
     return manuscripts.filter((m) => m.status === value).length;
   };

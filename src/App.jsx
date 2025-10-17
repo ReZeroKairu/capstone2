@@ -31,14 +31,14 @@ import UserManagement from "./pages/Admin/UserManagement";
 import AdminCreation from "./components/AdminCreation";
 import UserLog from "./pages/Admin/UserLog";
 import NotFound from "./pages/NotFound";
-import Manuscripts from "./components/Manuscripts";
+import Manuscripts from "./components/manuscriptComp/Manuscripts";
 import SubmitManuscript from "./pages/Researcher/SubmitManuscript";
 import ResubmitManuscript from "./pages/Researcher/ResubmitManuscript";
 import CreateForm from "./formcomponents/CreateForm";
 import FormResponses from "./formcomponents/FormResponses";
 import Dashboard from "./components/Dashboard";
 import ReviewManuscript from "./pages/PeerReviewer/ReviewManuscript";
-import ReviewerInvitations from './pages/PeerReviewer/ReviewerInvitations';
+import ReviewerInvitations from "./pages/PeerReviewer/ReviewerInvitations";
 import DeadlineSettings from "./pages/Admin/DeadlineSettings";
 
 // ⬇️ New admin pages
@@ -128,29 +128,29 @@ function App() {
                 <Route path="/profile/:userId" element={<Profile />} />
                 <Route path="/peer-reviewers" element={<PeerReviewerList />} />
                 <Route
-  path="review-manuscript"
-  element={
-    <ProtectedRoute allowedRoles={["Peer Reviewer"]}>
-      <ReviewManuscript />
-    </ProtectedRoute>
-  }
+                  path="review-manuscript"
+                  element={
+                    <ProtectedRoute allowedRoles={["Peer Reviewer"]}>
+                      <ReviewManuscript />
+                    </ProtectedRoute>
+                  }
                 />
                 <Route
-  path="/admin/deadline-settings"
-  element={
-    <AdminRoute>
-      <DeadlineSettings />
-    </AdminRoute>
-  }
-/>
-                  <Route
-  path="/reviewer-invitations"
-  element={
-    <ProtectedRoute allowedRoles={["Peer Reviewer"]}>
-      <ReviewerInvitations />
-    </ProtectedRoute>
-  }
-/>
+                  path="/admin/deadline-settings"
+                  element={
+                    <AdminRoute>
+                      <DeadlineSettings />
+                    </AdminRoute>
+                  }
+                />
+                <Route
+                  path="/reviewer-invitations"
+                  element={
+                    <ProtectedRoute allowedRoles={["Peer Reviewer"]}>
+                      <ReviewerInvitations />
+                    </ProtectedRoute>
+                  }
+                />
                 <Route
                   path="/submit-manuscript"
                   element={
@@ -167,7 +167,6 @@ function App() {
                     </ProtectedRoute>
                   }
                 />
-  
 
                 <Route path="*" element={<NotFound />} />
 

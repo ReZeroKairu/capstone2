@@ -128,28 +128,20 @@ export default function ResubmitManuscript() {
       let updateFields = {};
       
       if (manuscript.status === "For Revision (Minor)") {
-        newStatus = "Assigning Peer Reviewer"; // Goes back to admin for reassignment
+        newStatus = "Back to Admin"; // Goes back to admin for reassignment
       } else if (manuscript.status === "For Revision (Major)") {
-        newStatus = "Peer Reviewer Assigned"; // Goes back to same reviewers
+        newStatus = "Back to Admin"; // Goes back to admin for reviewer assignment
         
-        // Reset reviewer invitation status for re-review (major revision)
-        const updatedReviewerMeta = { ...(manuscript.assignedReviewersMeta || {}) };
+        // Store previous reviewers for potential re-invitation
         const previousReviewers = manuscript.assignedReviewers || [];
+        const previousReviewersMeta = { ...(manuscript.assignedReviewersMeta || {}) };
         
-        // Reset each reviewer's invitation status to pending for re-review
-        previousReviewers.forEach(reviewerId => {
-          if (updatedReviewerMeta[reviewerId]) {
-            updatedReviewerMeta[reviewerId] = {
-              ...updatedReviewerMeta[reviewerId],
-              invitationStatus: "pending", // Reset to pending for re-review
-              isReReview: true,
-              reReviewInvitedAt: new Date(),
-              previousReviewVersion: currentVersion,
-            };
-          }
-        });
-        
-        updateFields.assignedReviewersMeta = updatedReviewerMeta;
+        // Clear current reviewers but keep them in history
+        updateFields.assignedReviewers = [];
+        updateFields.assignedReviewersMeta = {};
+        updateFields.previousReviewers = previousReviewers;
+        updateFields.previousReviewersMeta = previousReviewersMeta;
+        updateFields.versionReviewed = currentVersion; // Track which version was reviewed
       }
 
       // Create submission history entry with reviewer info
@@ -187,7 +179,31 @@ export default function ResubmitManuscript() {
 
       submissionHistory.push(submissionHistoryEntry);
 
-      // Update manuscript
+      // Archive current reviews before clearing them
+      const previousReviews = manuscript.reviewerSubmissions?.map(review => ({
+        ...review,
+        versionReviewed: manuscript.versionNumber || 1,
+        isArchived: true,
+        archivedAt: new Date()
+      })) || [];
+
+      // Update the submission history entry to include the review information
+      const submissionWithReviews = {
+        ...submissionHistoryEntry,
+        // Include the reviews that were part of this version
+        reviews: [...previousReviews],
+        // Include the decision that led to this resubmission
+        decision: {
+          status: manuscript.status,
+          decision: manuscript.status.includes('Minor') ? 'minorRevision' : 'majorRevision',
+          decidedAt: new Date()
+        }
+      };
+
+      // Update the last entry in submission history
+      submissionHistory[submissionHistory.length - 1] = submissionWithReviews;
+
+      // Update the manuscript document
       await updateDoc(msRef, {
         answeredQuestions: updatedAnsweredQuestions,
         fileUrl: newFile.url,
@@ -201,15 +217,20 @@ export default function ResubmitManuscript() {
         revisionNotes: revisionNotes,
         previousVersion: currentVersion,
         submissionHistory: submissionHistory,
-        // Clear previous review data for minor revisions
-        ...(manuscript.status === "For Revision (Minor)" && {
-          reviewerDecisionMeta: {},
-          reviewerSubmissions: [],
-        }),
+        // Move current reviews to previousReviewSubmissions
+        previousReviewSubmissions: [
+          ...(manuscript.previousReviewSubmissions || []),
+          ...previousReviews
+        ],
+        // Clear current submissions
+        reviewerSubmissions: [],
+        // Archive previous reviews
+        previousReviews: [...(manuscript.previousReviews || []), ...previousReviews],
+        // Reset decision meta for the new version
+        reviewerDecisionMeta: {},
         // Apply reviewer meta updates for major revisions
         ...updateFields,
       });
-
       // Create a revision history entry
       await addDoc(collection(db, "manuscripts", manuscriptId, "revisionHistory"), {
         versionNumber: newVersion,

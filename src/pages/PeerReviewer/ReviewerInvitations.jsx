@@ -9,7 +9,7 @@ import {
   doc,
   serverTimestamp,
   onSnapshot,
-  getDoc
+  getDoc,
 } from "firebase/firestore";
 import { db } from "../../firebase/firebase";
 import { getAuth } from "firebase/auth";
@@ -53,7 +53,12 @@ const ReviewerInvitations = () => {
                 // Filter out invitations that have been responded to (accepted or declined)
                 // BUT include re-review invitations (isReReview: true) even if previously accepted
                 const isReReview = meta.isReReview === true;
-                if (!isReReview && (meta.invitationStatus === "accepted" || meta.invitationStatus === "declined")) return null;
+                if (
+                  !isReReview &&
+                  (meta.invitationStatus === "accepted" ||
+                    meta.invitationStatus === "declined")
+                )
+                  return null;
 
                 const abstractAnswer =
                   data.answeredQuestions?.find((q) => q.question === "Abstract")
@@ -218,16 +223,22 @@ const ReviewerInvitations = () => {
 
             // Use shorter deadline for re-reviews since reviewer already knows the manuscript
             const isReReview = reviewerMeta.isReReview === true;
-            const reviewDeadlineDays = isReReview ?
-              (settings.reReviewDeadline || settings.reviewDeadline || 2) : // 2 days for re-reviews
-              (settings.reviewDeadline || 4); // 4 days for new reviews
+            const reviewDeadlineDays = isReReview
+              ? settings.reReviewDeadline || settings.reviewDeadline || 2 // 2 days for re-reviews
+              : settings.reviewDeadline || 4; // 4 days for new reviews
 
             const deadlineDate = new Date();
             deadlineDate.setDate(deadlineDate.getDate() + reviewDeadlineDays);
             deadline = deadlineDate;
-            console.log(`Setting ${isReReview ? 're-review' : 'review'} deadline: ${reviewDeadlineDays} days from now`);
+            console.log(
+              `Setting ${
+                isReReview ? "re-review" : "review"
+              } deadline: ${reviewDeadlineDays} days from now`
+            );
           } else {
-            console.warn("Deadline settings document not found, using fallback");
+            console.warn(
+              "Deadline settings document not found, using fallback"
+            );
             const isReReview = reviewerMeta.isReReview === true;
             const fallbackDays = isReReview ? 2 : 4;
             const deadlineDate = new Date();
@@ -257,26 +268,29 @@ const ReviewerInvitations = () => {
         declinedAt: !isAccepted ? serverTimestamp() : reviewerMeta.declinedAt,
         ...(isAccepted && deadline && { deadline: deadline }),
         // Clear re-review flag after responding
-        ...(isReReview && { isReReview: false, reReviewRespondedAt: serverTimestamp() }),
+        ...(isReReview && {
+          isReReview: false,
+          reReviewRespondedAt: serverTimestamp(),
+        }),
       };
 
       meta[currentUser.uid] = updateFields;
-      
+
       // Update status to "Peer Reviewer Assigned" if this is an acceptance
       // and at least one reviewer has accepted
       const hasAcceptedReviewer = Object.values(meta).some(
-        m => m.invitationStatus === "accepted"
+        (m) => m.invitationStatus === "accepted"
       );
-      
+
       const updateData = {
         assignedReviewersMeta: meta,
       };
-      
+
       // Only update status if accepting and there's at least one accepted reviewer
       if (isAccepted && hasAcceptedReviewer) {
         updateData.status = "Peer Reviewer Assigned";
       }
-      
+
       await updateDoc(msRef, updateData);
 
       // Notify admins
@@ -313,7 +327,16 @@ const ReviewerInvitations = () => {
   // 🧩 Updated Modal — now includes Deadline + Overdue highlight
   const AbstractModal = ({ isOpen, onClose, invitation }) => {
     if (!isOpen || !invitation) return null;
-    const { title, abstract, keywords, invitedAt, deadline, isReReview, versionNumber, previousReviewVersion } = invitation;
+    const {
+      title,
+      abstract,
+      keywords,
+      invitedAt,
+      deadline,
+      isReReview,
+      versionNumber,
+      previousReviewVersion,
+    } = invitation;
 
     const isOverdue = deadline && new Date() > new Date(deadline);
 
@@ -350,8 +373,11 @@ const ReviewerInvitations = () => {
                 {isReReview && (
                   <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded">
                     <p className="text-sm text-blue-800">
-                      📝 <strong>Re-Review Request:</strong> You previously reviewed version {previousReviewVersion} of this manuscript. 
-                      The author has submitted a revised version (v{versionNumber}). Please review the changes and provide feedback on the revisions.
+                      📝 <strong>Re-Review Request:</strong> You previously
+                      reviewed version {previousReviewVersion} of this
+                      manuscript. The author has submitted a revised version (v
+                      {versionNumber}). Please review the changes and provide
+                      feedback on the revisions.
                     </p>
                   </div>
                 )}
@@ -488,7 +514,17 @@ const ReviewerInvitations = () => {
           </div>
         ) : (
           invitations.map((inv) => {
-            const { id, title, abstract, keywords, invitedAt, deadline, isReReview, versionNumber, previousReviewVersion } = inv;
+            const {
+              id,
+              title,
+              abstract,
+              keywords,
+              invitedAt,
+              deadline,
+              isReReview,
+              versionNumber,
+              previousReviewVersion,
+            } = inv;
             const isOverdue = deadline && new Date() > new Date(deadline);
 
             return (
@@ -515,8 +551,10 @@ const ReviewerInvitations = () => {
                   {isReReview && (
                     <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded">
                       <p className="text-sm text-blue-800">
-                        📝 <strong>Re-Review Request:</strong> You previously reviewed version {previousReviewVersion} of this manuscript. 
-                        The author has submitted a revised version (v{versionNumber}). Please review the changes.
+                        📝 <strong>Re-Review Request:</strong> You previously
+                        reviewed version {previousReviewVersion} of this
+                        manuscript. The author has submitted a revised version
+                        (v{versionNumber}). Please review the changes.
                       </p>
                     </div>
                   )}
