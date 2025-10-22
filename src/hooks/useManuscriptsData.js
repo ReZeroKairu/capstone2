@@ -120,13 +120,17 @@ export const useManuscriptsData = () => {
           (s) => s.reviewerId === myId
         );
 
-        if (!(isAssigned || hasSubmitted || myDecision)) return false;
-
         if (m.status === "For Publication") {
-          return hasSubmitted || myDecision === "publication" || 
+          // Include all assigned reviewers when manuscript is 'For Publication'
+          return isAssigned || hasSubmitted || 
+                 myDecision === "publication" || 
                  myDecision === "minor" || 
-                 myDecision === "major";
+                 myDecision === "major" ||
+                 myDecision === "pending";
         }
+        
+        // For other statuses, use the existing filtering logic
+        if (!(isAssigned || hasSubmitted || myDecision)) return false;
         if (["Rejected", "Peer Reviewer Rejected"].includes(m.status))
           return myDecision === "reject";
 

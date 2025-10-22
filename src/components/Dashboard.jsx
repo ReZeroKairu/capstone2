@@ -113,13 +113,24 @@ useEffect(() => {
               (m.assignedReviewers || []).includes(myId) ||
               (m.originalAssignedReviewers || []).includes(myId);
             const hasSubmitted = m.reviewerSubmissions?.some((s) => s.reviewerId === myId);
-            const wasInvolved = isAssigned || hasSubmitted || myDecision;
-
-            if (!wasInvolved) return false;
-            if (m.status === "For Publication") return myDecision === "publication";
-            if (["Rejected", "Peer Reviewer Rejected"].includes(m.status))
+            
+            // Always show manuscripts where the reviewer is assigned or has submitted
+            if (isAssigned || hasSubmitted) return true;
+            
+            // For specific statuses, check decision status
+            if (m.status === "For Publication") {
+              return myDecision === "publication" || 
+                     myDecision === "minor" || 
+                     myDecision === "major" ||
+                     myDecision === "pending";
+            }
+            
+            if (["Rejected", "Peer Reviewer Rejected"].includes(m.status)) {
               return myDecision === "reject";
-            return true;
+            }
+            
+            // For other statuses, show if there's any decision
+            return !!myDecision;
           });
           setManuscripts(filtered);
         });
@@ -235,25 +246,18 @@ const summaryCounts = useMemo(() => {
     counts.push({ label: "Total Manuscripts", count: manuscripts.length });
   } else if (role === "Peer Reviewer") {
     const reviewedCount = manuscripts.filter((m) => {
-      const currentlyAssigned = (m.assignedReviewers || []).includes(targetUserId);
-      const originallyAssigned = (m.originalAssignedReviewers || []).includes(targetUserId);
-      const hasDecision = m.reviewerDecisionMeta?.[targetUserId];
+      const isAssigned = 
+        (m.assignedReviewers || []).includes(targetUserId) ||
+        (m.originalAssignedReviewers || []).includes(targetUserId);
+      
       const hasSubmission = m.reviewerSubmissions?.some(
         (s) => s.reviewerId === targetUserId
       );
-
-      if (["For Publication", "Peer Reviewer Rejected"].includes(m.status)) {
-        if (hasDecision) {
-          const decision = m.reviewerDecisionMeta[targetUserId].decision;
-          return (
-            (m.status === "For Publication" && decision === "publication") ||
-            (m.status === "Peer Reviewer Rejected" && decision === "reject")
-          );
-        }
-        return false;
-      }
-
-      return currentlyAssigned || originallyAssigned || hasDecision || hasSubmission;
+      
+      const hasDecision = m.reviewerDecisionMeta?.[targetUserId]?.decision;
+      
+      // Count if reviewer is assigned, has submitted, or has made a decision
+      return isAssigned || hasSubmission || !!hasDecision;
     }).length;
 
     counts.push({ label: "Total Manuscripts Reviewed", count: reviewedCount });
