@@ -131,8 +131,11 @@ export const useManuscriptsData = () => {
 
                 if (!(isAssigned || hasSubmitted || myDecision)) return false;
 
-                if (m.status === "For Publication")
-                  return myDecision === "publication";
+                if (m.status === "For Publication") {
+                  return hasSubmitted || myDecision === "publication" || 
+                         myDecision === "minor" || 
+                         myDecision === "major";
+                }
                 if (["Rejected", "Peer Reviewer Rejected"].includes(m.status))
                   return myDecision === "reject";
 

@@ -44,8 +44,12 @@ const Manuscripts = () => {
       }
 
       const manuscript = msDoc.data();
-      const updatedAssignedReviewers = [...(manuscript.assignedReviewers || [])];
-      const updatedAssignedReviewersMeta = { ...(manuscript.assignedReviewersMeta || {}) };
+      const updatedAssignedReviewers = [
+        ...(manuscript.assignedReviewers || []),
+      ];
+      const updatedAssignedReviewersMeta = {
+        ...(manuscript.assignedReviewersMeta || {}),
+      };
 
       if (reviewerId) {
         // Unassign specific reviewer
@@ -70,8 +74,10 @@ const Manuscripts = () => {
       // Check if there are still reviewers assigned
       if (updatedAssignedReviewers.length > 0) {
         // Check if all remaining reviewers have completed their reviews
-        const allReviewersCompleted = updatedAssignedReviewers.every(reviewerId => 
-          manuscript.assignedReviewersMeta?.[reviewerId]?.status === 'completed'
+        const allReviewersCompleted = updatedAssignedReviewers.every(
+          (reviewerId) =>
+            manuscript.assignedReviewersMeta?.[reviewerId]?.status ===
+            "completed"
         );
 
         if (allReviewersCompleted) {
@@ -84,7 +90,9 @@ const Manuscripts = () => {
 
       await updateDoc(msRef, updateData);
 
-      console.log(reviewerId ? "Reviewer unassigned" : "All reviewers unassigned");
+      console.log(
+        reviewerId ? "Reviewer unassigned" : "All reviewers unassigned"
+      );
     } catch (error) {
       console.error("Error unassigning reviewer:", error);
       throw error; // Re-throw to handle in the component
@@ -176,6 +184,7 @@ const Manuscripts = () => {
             manuscript={m}
             role={role}
             users={users}
+            currentUserId={user.uid}
             showFullName={showFullName}
             setShowFullName={setShowFullName}
             formatDate={formatFirestoreDate} // Add this line

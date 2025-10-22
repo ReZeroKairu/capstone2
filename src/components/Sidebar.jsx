@@ -11,7 +11,7 @@ import {
   FaWpforms,
   FaInbox,
   FaEnvelope,
-  FaClock, 
+  FaClock,
 } from "react-icons/fa";
 import { Link, useLocation } from "react-router-dom";
 
@@ -68,11 +68,10 @@ const Sidebar = ({ role, isOpen, toggleSidebar }) => {
       icon: <FaInbox className="text-xl" />,
     },
     {
-  name: "Deadline Settings",
-  path: "/admin/deadline-settings",
-  icon: <FaClock className="text-xl" />,
-},
-
+      name: "Deadline Settings",
+      path: "/admin/deadline-settings",
+      icon: <FaClock className="text-xl" />,
+    },
   ];
 
   const researcherLinks = [
@@ -104,7 +103,13 @@ const Sidebar = ({ role, isOpen, toggleSidebar }) => {
       path: "/reviewer-invitations",
       icon: <FaEnvelope className="text-xl" />,
     },
+    {
+      name: "Completed Reviews",
+      path: "/peerreviewer/completed",
+      icon: <FaClock className="text-xl" />,
+    },
   ];
+
   const renderLinks = (linkArray, mobile = false) =>
     linkArray.map((link) => (
       <li key={link.name} className={mobile ? "flex-1 text-center" : ""}>

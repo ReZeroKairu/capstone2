@@ -11,7 +11,8 @@ import {
   where,
   getDoc,
   addDoc,
-  serverTimestamp
+  serverTimestamp,
+  Timestamp
 } from "firebase/firestore";
 import { FaSearch } from "react-icons/fa";
 
@@ -147,6 +148,9 @@ export default function PeerReviewerList() {
         // 🔹 Determine deadline dynamically
         let deadlineDate = deadlineParam ? new Date(deadlineParam) : null;
 
+// Initialize deadline variables
+let deadlineForFirestore;
+
 if (!deadlineDate) {
   const settingsRef = doc(db, "deadlineSettings", "deadlines");
   const settingsSnap = await getDoc(settingsRef);
@@ -171,8 +175,15 @@ if (!deadlineDate) {
     }
   }
 
-  deadlineDate = new Date();
-  deadlineDate.setDate(deadlineDate.getDate() + defaultDays);
+  // Create a Firestore Timestamp for the deadline
+  const deadlineTimestamp = Timestamp.fromDate(new Date(Date.now() + defaultDays * 24 * 60 * 60 * 1000));
+  deadlineDate = deadlineTimestamp.toDate(); // Keep as Date for any local calculations
+  deadlineForFirestore = deadlineTimestamp; // Assign to the outer scoped variable
+} else {
+  // If deadlineDate was provided, convert it to Firestore Timestamp
+  deadlineForFirestore = typeof deadlineDate.toDate === 'function' 
+    ? deadlineDate 
+    : Timestamp.fromDate(new Date(deadlineDate));
 }
 
 
@@ -188,7 +199,7 @@ const newMeta = {
   acceptedAt: null, // ✅ will be filled when reviewer accepts
   declinedAt: null, // ✅ will be filled when reviewer declines
   decision: null,
-  deadline: deadlineDate,
+  deadline: deadlineForFirestore || serverTimestamp(), // Fallback to serverTimestamp if no deadline set
 };
 
 

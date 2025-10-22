@@ -21,7 +21,22 @@ const PeerReviewDetails = ({
           ])
         )
       : role === "Peer Reviewer"
-      ? [currentUserId]
+      ? (() => {
+          // Check if current user has completed any reviews
+          const hasCompletedReview = (
+            manuscript.reviewerSubmissions || []
+          ).some((s) => s.reviewerId === currentUserId);
+
+          // Include current user if they completed a review OR are in assignedReviewers
+          if (
+            hasCompletedReview ||
+            (manuscript.assignedReviewers || []).includes(currentUserId)
+          ) {
+            return [currentUserId];
+          }
+
+          return [];
+        })()
       : role === "Researcher"
       ? Array.from(
           new Set(
@@ -148,7 +163,26 @@ const PeerReviewDetails = ({
                       {versionText}
                     </span>
                     <span className="text-xs text-gray-500">
-                      {formatDate(review.completedAt)}
+                      {review.completedAt 
+                        ? (() => {
+                            try {
+                              // Handle Firestore timestamp
+                              if (review.completedAt.toDate) {
+                                return review.completedAt.toDate().toLocaleString();
+                              }
+                              // Handle timestamp with seconds
+                              if (review.completedAt.seconds) {
+                                return new Date(review.completedAt.seconds * 1000).toLocaleString();
+                              }
+                              // Handle string or number
+                              const date = new Date(review.completedAt);
+                              return isNaN(date.getTime()) ? '—' : date.toLocaleString();
+                            } catch (e) {
+                              console.error('Error formatting date:', e, review.completedAt);
+                              return '—';
+                            }
+                          })()
+                        : '—'}
                     </span>
                   </div>
 

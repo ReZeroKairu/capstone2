@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { db } from "../../firebase/firebase";
 import { collection, getDocs, updateDoc, doc, deleteField } from "firebase/firestore";
 import SetDeadlineModal from "../../components/SetDeadlineModal";
-import { getDeadlineColor, getRemainingDays } from "../../utils/deadlineUtils";
+import { getDeadlineColor, getRemainingTime } from "../../utils/deadlineUtils";
 
 const FILTERS = ["All", "Pending", "Overdue", "Completed"];
 
@@ -76,7 +76,7 @@ export default function Deadlines() {
           const deadlineTs = m.assignedReviewersMeta?.[rId]?.deadline;
           if (!deadlineTs) return false;
           const parsedDeadline = deadlineTs?.toDate ? deadlineTs.toDate() : new Date(deadlineTs);
-          const remaining = getRemainingDays(parsedDeadline);
+          const { days: remaining } = getRemainingTime(parsedDeadline);
           return remaining <= 0;
         });
       }
@@ -141,7 +141,7 @@ export default function Deadlines() {
                     const parsedDeadline = deadlineTs?.toDate ? deadlineTs.toDate() : new Date(deadlineTs);
 
                     const colorClass = getDeadlineColor(parsedStart, parsedDeadline);
-                    const remaining = getRemainingDays(parsedDeadline);
+                    const { days: remaining } = getRemainingTime(parsedDeadline);
 
                     return (
                       <li key={m.id} className="text-sm flex flex-col gap-1">

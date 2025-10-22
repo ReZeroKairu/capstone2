@@ -1,4 +1,5 @@
-import { useState, useEffect } from "react";
+import React, { useEffect, useState, useMemo } from "react";
+import { getAuth } from "firebase/auth";
 import { useNavigate } from "react-router-dom";
 import NotificationService from "../../utils/notificationService";
 import {
@@ -12,10 +13,57 @@ import {
   getDoc,
 } from "firebase/firestore";
 import { db } from "../../firebase/firebase";
-import { getAuth } from "firebase/auth";
-import { getDeadlineColor, getRemainingDays } from "../../utils/deadlineUtils";
+import {
+  parseDeadline,
+  getRemainingDays,
+  getDeadlineColor,
+} from "../../utils/deadlineUtils";
+import { formatFirestoreDate } from "../../utils/dateUtils"; // new import
 
 import { Timestamp } from "firebase/firestore";
+
+// countdown hook that updates every second and returns formatted string with minutes
+function useCountdown(deadlineDate) {
+  const compute = () => {
+    if (!deadlineDate) return 0;
+    const target =
+      deadlineDate instanceof Date
+        ? deadlineDate.getTime()
+        : new Date(deadlineDate).getTime();
+    return Math.max(target - Date.now(), 0);
+  };
+  const [remainingMs, setRemainingMs] = useState(compute);
+  useEffect(() => {
+    if (!deadlineDate) return;
+    setRemainingMs(compute());
+    const id = setInterval(() => setRemainingMs(compute()), 1000);
+    return () => clearInterval(id);
+  }, [deadlineDate]);
+  const s = Math.floor(remainingMs / 1000);
+  const days = Math.floor(s / 86400);
+  const hours = Math.floor((s % 86400) / 3600);
+  const mins = Math.floor((s % 3600) / 60);
+  const secs = s % 60;
+  const formatted = `${days}d ${String(hours).padStart(2, "0")}h ${String(
+    mins
+  ).padStart(2, "0")}m ${String(secs).padStart(2, "0")}s`;
+  return { remainingMs, formatted, days, hours, mins, secs };
+}
+
+function CountdownBadge({ deadline }) {
+  if (!deadline)
+    return (
+      <span className="px-2 py-0.5 rounded text-xs bg-gray-100 text-gray-700">
+        No deadline
+      </span>
+    );
+  const cd = useCountdown(deadline);
+  return (
+    <span className="px-2 py-0.5 rounded text-xs font-semibold bg-yellow-100 text-yellow-800">
+      {cd.formatted}
+    </span>
+  );
+}
 
 const ReviewerInvitations = () => {
   const [invitations, setInvitations] = useState([]);
@@ -23,6 +71,16 @@ const ReviewerInvitations = () => {
   const [error, setError] = useState(null);
   const [processingId, setProcessingId] = useState(null);
   const [viewingInvitation, setViewingInvitation] = useState(null);
+  const [now, setNow] = useState(new Date());
+
+  // Update current time every minute for countdown
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setNow(new Date());
+    }, 60000); // Update every minute
+
+    return () => clearInterval(timer);
+  }, []);
 
   const auth = getAuth();
   const currentUser = auth.currentUser;
@@ -92,31 +150,50 @@ const ReviewerInvitations = () => {
                   }
                 }
 
-                // ✅ Handle deadline
+                // Normalize / find deadline in several places including assignedReviewersMeta for this reviewer
                 let deadline = null;
-                if (meta.deadline) {
-                  // Firestore Timestamp
-                  if (meta.deadline.toDate) {
-                    deadline = meta.deadline.toDate();
-                  }
-                  // If seconds/milliseconds object
-                  else if (meta.deadline.seconds) {
-                    deadline = new Date(meta.deadline.seconds * 1000);
-                  }
-                  // If already a string or Date-like
-                  else {
-                    deadline = new Date(meta.deadline);
+                // check common meta keys
+                const keys = [
+                  "invitationDeadline",
+                  "deadline",
+                  "reviewDeadline",
+                  "revisionDeadline",
+                  "finalizationDeadline",
+                ];
+                for (const k of keys) {
+                  if (meta?.[k]) {
+                    deadline = parseDeadline(meta[k]);
+                    if (deadline) break;
                   }
                 }
-
-                // Optional sanity check
-                if (isNaN(deadline)) {
-                  console.warn(
-                    "Invalid deadline for manuscript",
-                    docRef.id,
-                    meta.deadline
+                // check assignedReviewersMeta for reviewer-specific keys
+                if (!deadline && meta?.assignedReviewersMeta && currentUser.uid) {
+                  const arm = meta.assignedReviewersMeta[currentUser.uid];
+                  if (arm) {
+                    for (const k of keys.concat(["assignedAt", "invitedAt"])) {
+                      if (arm[k]) {
+                        deadline = parseDeadline(arm[k]);
+                        if (deadline) break;
+                      }
+                    }
+                  }
+                }
+                // final fallback: any field named *Deadline anywhere in meta
+                if (!deadline && meta) {
+                  const entries = Object.entries(meta);
+                  for (const [key, val] of entries) {
+                    if (/deadline/i.test(key) && val) {
+                      deadline = parseDeadline(val);
+                      if (deadline) break;
+                    }
+                  }
+                }
+                // log if none found (for debugging)
+                if (!deadline) {
+                  console.debug(
+                    "ReviewerInvitations: no parsed deadline for",
+                    docRef.id
                   );
-                  deadline = null;
                 }
 
                 return {
@@ -196,7 +273,6 @@ const ReviewerInvitations = () => {
       console.error("Error updating reviewer status:", error);
     }
   };
-
   const handleDecision = async (manuscriptId, isAccepted) => {
     if (!currentUser || !manuscriptId) return;
 
@@ -206,13 +282,18 @@ const ReviewerInvitations = () => {
     try {
       const msRef = doc(db, "manuscripts", manuscriptId);
       const msSnap = await getDoc(msRef);
-      const msData = msSnap.data();
 
+      if (!msSnap.exists()) {
+        console.error("Manuscript not found:", manuscriptId);
+        setProcessingId(null);
+        return;
+      }
+
+      const msData = msSnap.data();
       const meta = msData.assignedReviewersMeta || {};
       const reviewerMeta = meta[currentUser.uid] || {};
 
-      // Fetch review deadline from settings if accepting
-      // Replace invitation deadline with review deadline
+      // Compute deadline if accepting
       let deadline = reviewerMeta.deadline;
       if (isAccepted) {
         try {
@@ -220,25 +301,14 @@ const ReviewerInvitations = () => {
           const settingsSnap = await getDoc(settingsRef);
           if (settingsSnap.exists()) {
             const settings = settingsSnap.data();
-
-            // Use shorter deadline for re-reviews since reviewer already knows the manuscript
             const isReReview = reviewerMeta.isReReview === true;
             const reviewDeadlineDays = isReReview
-              ? settings.reReviewDeadline || settings.reviewDeadline || 2 // 2 days for re-reviews
-              : settings.reviewDeadline || 4; // 4 days for new reviews
-
+              ? settings.reReviewDeadline || settings.reviewDeadline || 2
+              : settings.reviewDeadline || 4;
             const deadlineDate = new Date();
             deadlineDate.setDate(deadlineDate.getDate() + reviewDeadlineDays);
             deadline = deadlineDate;
-            console.log(
-              `Setting ${
-                isReReview ? "re-review" : "review"
-              } deadline: ${reviewDeadlineDays} days from now`
-            );
           } else {
-            console.warn(
-              "Deadline settings document not found, using fallback"
-            );
             const isReReview = reviewerMeta.isReReview === true;
             const fallbackDays = isReReview ? 2 : 4;
             const deadlineDate = new Date();
@@ -247,7 +317,6 @@ const ReviewerInvitations = () => {
           }
         } catch (err) {
           console.error("Error fetching deadline settings:", err);
-          // Fallback with different deadlines for re-reviews
           const isReReview = reviewerMeta.isReReview === true;
           const fallbackDays = isReReview ? 2 : 4;
           const deadlineDate = new Date();
@@ -256,39 +325,41 @@ const ReviewerInvitations = () => {
         }
       }
 
-      // Check if this is a re-review invitation
-      const isReReview = reviewerMeta.isReReview === true;
-
-      // update the timestamps and status
+      // Prepare updated reviewer meta
       const updateFields = {
         ...reviewerMeta,
         invitationStatus: isAccepted ? "accepted" : "declined",
         respondedAt: serverTimestamp(),
         acceptedAt: isAccepted ? serverTimestamp() : reviewerMeta.acceptedAt,
         declinedAt: !isAccepted ? serverTimestamp() : reviewerMeta.declinedAt,
-        ...(isAccepted && deadline && { deadline: deadline }),
-        // Clear re-review flag after responding
-        ...(isReReview && {
-          isReReview: false,
-          reReviewRespondedAt: serverTimestamp(),
-        }),
+        ...(isAccepted && deadline && { deadline }),
+        ...(reviewerMeta.isReReview && isAccepted
+          ? { isReReview: false, reReviewRespondedAt: serverTimestamp() }
+          : {}),
       };
 
       meta[currentUser.uid] = updateFields;
 
-      // Update status to "Peer Reviewer Assigned" if this is an acceptance
-      // and at least one reviewer has accepted
-      const hasAcceptedReviewer = Object.values(meta).some(
-        (m) => m.invitationStatus === "accepted"
-      );
-
+      // Prepare data update
       const updateData = {
         assignedReviewersMeta: meta,
       };
 
-      // Only update status if accepting and there's at least one accepted reviewer
-      if (isAccepted && hasAcceptedReviewer) {
-        updateData.status = "Peer Reviewer Assigned";
+      // Remove reviewer from assignedReviewers array if declined
+      if (!isAccepted) {
+        updateData.assignedReviewers = msData.assignedReviewers?.filter(
+          (uid) => uid !== currentUser.uid
+        );
+      }
+
+      // Update manuscript status if accepting and at least one reviewer accepted
+      if (isAccepted) {
+        const hasAcceptedReviewer = Object.values(meta).some(
+          (m) => m.invitationStatus === "accepted"
+        );
+        if (hasAcceptedReviewer) {
+          updateData.status = "Peer Reviewer Assigned";
+        }
       }
 
       await updateDoc(msRef, updateData);
@@ -296,7 +367,6 @@ const ReviewerInvitations = () => {
       // Notify admins
       let adminIds = await NotificationService.getAdminUserIds();
       if (!Array.isArray(adminIds)) adminIds = adminIds ? [adminIds] : [];
-
       if (adminIds.length > 0) {
         await NotificationService.notifyPeerReviewerDecision(
           manuscriptId,
@@ -307,9 +377,12 @@ const ReviewerInvitations = () => {
         );
       }
 
-      // Update UI state
-      setInvitations((prev) => prev.filter((inv) => inv.id !== manuscriptId));
+      // Update local state
+      setInvitations((prev) =>
+        prev.filter((inv) => !(inv.id === manuscriptId && !isAccepted))
+      );
 
+      // Navigate if accepted
       if (isAccepted) {
         navigate(`/review-manuscript?manuscriptId=${manuscriptId}`);
       }
@@ -410,7 +483,8 @@ const ReviewerInvitations = () => {
                           parsedStart,
                           parsedEnd
                         );
-                        const remaining = getRemainingDays(parsedEnd);
+                        const remainingTime = getRemainingDays(parsedEnd);
+                        const { days, hours, minutes } = remainingTime;
 
                         return (
                           <div
@@ -422,10 +496,20 @@ const ReviewerInvitations = () => {
                               month: "long",
                               day: "numeric",
                             })}{" "}
-                            {remaining > 0
-                              ? `(${remaining} day${
-                                  remaining > 1 ? "s" : ""
-                                } left)`
+                            {days > 0
+                              ? `${days} day${
+                                  days > 1 ? "s" : ""
+                                }, ${hours} hour${hours !== 1 ? "s" : ""} left`
+                              : hours > 0
+                              ? `${hours} hour${
+                                  hours !== 1 ? "s" : ""
+                                }, ${minutes} minute${
+                                  minutes !== 1 ? "s" : ""
+                                } left`
+                              : minutes > 0
+                              ? `${minutes} minute${
+                                  minutes !== 1 ? "s" : ""
+                                } left`
                               : "⚠️ Past Deadline"}
                           </div>
                         );
@@ -587,7 +671,8 @@ const ReviewerInvitations = () => {
                           parsedStartDate,
                           parsedDeadline
                         );
-                        const remaining = getRemainingDays(parsedDeadline);
+                        const remainingTime = getRemainingDays(parsedDeadline);
+                        const { days, hours, minutes } = remainingTime;
 
                         return (
                           <div
@@ -599,10 +684,20 @@ const ReviewerInvitations = () => {
                               month: "long",
                               day: "numeric",
                             })}{" "}
-                            {remaining > 0
-                              ? `(${remaining} day${
-                                  remaining > 1 ? "s" : ""
-                                } left)`
+                            {days > 0
+                              ? `${days} day${
+                                  days > 1 ? "s" : ""
+                                }, ${hours} hour${hours !== 1 ? "s" : ""} left`
+                              : hours > 0
+                              ? `${hours} hour${
+                                  hours !== 1 ? "s" : ""
+                                }, ${minutes} minute${
+                                  minutes !== 1 ? "s" : ""
+                                } left`
+                              : minutes > 0
+                              ? `${minutes} minute${
+                                  minutes !== 1 ? "s" : ""
+                                } left`
                               : "⚠️ Past Deadline"}
                           </div>
                         );

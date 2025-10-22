@@ -40,6 +40,7 @@ import Dashboard from "./components/Dashboard";
 import ReviewManuscript from "./pages/PeerReviewer/ReviewManuscript";
 import ReviewerInvitations from "./pages/PeerReviewer/ReviewerInvitations";
 import DeadlineSettings from "./pages/Admin/DeadlineSettings";
+import CompletedReviews from "./pages/PeerReviewer/CompletedReviews";
 
 // ⬇️ New admin pages
 import Deadlines from "./pages/Admin/Deadlines";
@@ -128,6 +129,11 @@ function App() {
                 <Route path="/profile/:userId" element={<Profile />} />
                 <Route path="/peer-reviewers" element={<PeerReviewerList />} />
                 <Route
+                  path="/peerreviewer/completed"
+                  element={<CompletedReviews />}
+                />
+                ;
+                <Route
                   path="review-manuscript"
                   element={
                     <ProtectedRoute allowedRoles={["Peer Reviewer"]}>
@@ -167,9 +173,7 @@ function App() {
                     </ProtectedRoute>
                   }
                 />
-
                 <Route path="*" element={<NotFound />} />
-
                 {/* Protected Routes */}
                 <Route
                   path="/profile"
@@ -187,7 +191,6 @@ function App() {
                     </ProtectedRoute>
                   }
                 />
-
                 {/* Admin Routes */}
                 <Route
                   path="/user-log"
