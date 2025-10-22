@@ -338,6 +338,20 @@ export default function SubmitManuscript() {
         storagePath: exactStoragePath,
       });
 
+      // Create submission history entry for the initial submission
+      const initialSubmission = {
+        versionNumber: 1,
+        submittedAt: new Date(), // Use client-side date for the initial submission
+        fileUrl: downloadURL,
+        fileName: fileData.name,
+        fileType: fileData.type,
+        fileSize: fileData.size,
+        storagePath: exactStoragePath,
+        revisionNotes: "Initial submission",
+        status: initialStatus,
+        responseId: responseRef.id,
+      };
+
       const manuscriptRef = await addDoc(collection(db, "manuscripts"), {
         responseId: responseRef.id,
         formId: form.id,
@@ -365,6 +379,7 @@ export default function SubmitManuscript() {
         storagePath: exactStoragePath,
         hasFile: true,
         fileUploadedAt: serverTimestamp(),
+        submissionHistory: [initialSubmission],
       });
 
       await updateDoc(doc(db, "Users", currentUser.uid), {

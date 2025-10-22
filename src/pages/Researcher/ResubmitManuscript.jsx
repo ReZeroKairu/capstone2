@@ -124,68 +124,124 @@ export default function ResubmitManuscript() {
       });
 
       // Determine new status based on revision type
-      let newStatus;
+      const newStatus = "Back to Admin";
       let updateFields = {};
       
-      if (manuscript.status === "For Revision (Minor)") {
-        newStatus = "Back to Admin"; // Goes back to admin for reassignment
-      } else if (manuscript.status === "For Revision (Major)") {
-        newStatus = "Back to Admin"; // Goes back to admin for reviewer assignment
-        
-        // Store previous reviewers for potential re-invitation
-        const previousReviewers = manuscript.assignedReviewers || [];
-        const previousReviewersMeta = { ...(manuscript.assignedReviewersMeta || {}) };
-        
-        // Clear current reviewers but keep them in history
-        updateFields.assignedReviewers = [];
-        updateFields.assignedReviewersMeta = {};
-        updateFields.previousReviewers = previousReviewers;
-        updateFields.previousReviewersMeta = previousReviewersMeta;
-        updateFields.versionReviewed = currentVersion; // Track which version was reviewed
-      }
+      // Store previous reviewers for potential re-invitation
+      const previousReviewers = manuscript.assignedReviewers || [];
+      const previousReviewersMeta = { ...(manuscript.assignedReviewersMeta || {}) };
+      
+      // Clear current reviewers but keep them in history
+      updateFields.assignedReviewers = [];
+      updateFields.assignedReviewersMeta = {};
+      updateFields.previousReviewers = [...new Set([
+        ...(manuscript.previousReviewers || []),
+        ...previousReviewers
+      ])];
+      updateFields.previousReviewersMeta = {
+        ...(manuscript.previousReviewersMeta || {}),
+        ...previousReviewersMeta
+      };
+      updateFields.versionReviewed = currentVersion; // Track which version was reviewed
+      updateFields.status = newStatus;
+      
+      // Clear any existing deadlines
+      updateFields.revisionDeadline = null;
+      updateFields.finalizationDeadline = null;
+
+      // Get all reviewers who have submitted reviews for this version
+      const reviewersWithSubmissions = Array.from(
+        new Set([
+          ...(manuscript.assignedReviewers || []),
+          ...(manuscript.reviewerSubmissions?.map(s => s.reviewerId) || [])
+        ])
+      );
 
       // Create submission history entry with reviewer info
+      const now = serverTimestamp();
       const submissionHistoryEntry = {
         versionNumber: newVersion,
-        fileUrl: newFile.url,
-        fileName: newFile.name,
-        fileType: newFile.type,
-        fileSize: newFile.size,
-        storagePath: newFile.storagePath,
-        submittedAt: new Date(),
+        fileUrl: newFile?.url || '',
+        fileName: newFile?.name || '',
+        fileType: newFile?.type || '',
+        fileSize: newFile?.size || 0,
+        storagePath: newFile?.storagePath || '',
+        submittedAt: now,
         submittedBy: currentUser.uid,
-        revisionNotes: revisionNotes,
-        revisionType: manuscript.status,
+        revisionNotes: revisionNotes || 'Resubmitted manuscript',
+        revisionType: manuscript.status || 'Resubmission',
         // Store reviewer information at this version
-        reviewers: manuscript.assignedReviewers || [],
-        reviewerSubmissions: manuscript.reviewerSubmissions || [],
+        reviewers: Array.isArray(reviewersWithSubmissions) ? reviewersWithSubmissions : [],
+        reviewerSubmissions: Array.isArray(manuscript.reviewerSubmissions) ? manuscript.reviewerSubmissions : [],
         reviewerDecisionMeta: manuscript.reviewerDecisionMeta || {},
+        // Ensure we have all required fields
+        completedAt: now,
+        status: 'Completed',
+        submitted: true,
+        // Add timestamps for tracking
+        createdAt: now,
+        updatedAt: now
       };
 
-      // Get existing submission history or create new array
-      const submissionHistory = manuscript.submissionHistory || [
-        {
+      // Create or update submission history
+      let submissionHistory = [];
+      
+      // Add previous submission history if it exists
+      if (Array.isArray(manuscript.submissionHistory) && manuscript.submissionHistory.length > 0) {
+        submissionHistory = [...manuscript.submissionHistory];
+      } else {
+        // Create initial submission history if none exists
+        submissionHistory = [{
           versionNumber: 1,
-          fileUrl: manuscript.fileUrl,
-          fileName: manuscript.fileName,
-          fileType: manuscript.fileType,
-          fileSize: manuscript.fileSize,
-          storagePath: manuscript.storagePath,
-          submittedAt: manuscript.submittedAt || manuscript.resubmittedAt || new Date(),
-          submittedBy: manuscript.submitterId || manuscript.userId,
+          fileUrl: manuscript.fileUrl || '',
+          fileName: manuscript.fileName || '',
+          fileType: manuscript.fileType || '',
+          fileSize: manuscript.fileSize || 0,
+          storagePath: manuscript.storagePath || '',
+          submittedAt: manuscript.submittedAt || manuscript.resubmittedAt || serverTimestamp(),
+          submittedBy: manuscript.submitterId || manuscript.userId || currentUser.uid,
           revisionNotes: "Initial submission",
-        },
-      ];
+          submitted: true,
+          completedAt: manuscript.submittedAt || manuscript.resubmittedAt || serverTimestamp(),
+          status: 'Completed'
+        }];
+      }
 
-      submissionHistory.push(submissionHistoryEntry);
+      // Add the new submission to the history
+      submissionHistory.push({
+        ...submissionHistoryEntry,
+        submittedAt: serverTimestamp(),
+        completedAt: serverTimestamp(),
+        submitted: true,
+        status: 'Completed'
+      });
 
       // Archive current reviews before clearing them
-      const previousReviews = manuscript.reviewerSubmissions?.map(review => ({
-        ...review,
-        versionReviewed: manuscript.versionNumber || 1,
-        isArchived: true,
-        archivedAt: new Date()
-      })) || [];
+      const previousReviews = (manuscript.reviewerSubmissions || []).map(review => {
+        const reviewCopy = { ...review };
+        // Ensure we don't modify the original review object
+        delete reviewCopy.id;
+        delete reviewCopy.isArchived;
+        
+        return {
+          ...reviewCopy,
+          versionReviewed: manuscript.versionNumber || 1,
+          isArchived: true,
+          archivedAt: serverTimestamp(),
+          // Ensure we capture all relevant review data
+          decision: manuscript.reviewerDecisionMeta?.[review.reviewerId]?.decision || review.decision,
+          recommendation: manuscript.reviewerDecisionMeta?.[review.reviewerId]?.recommendation || review.recommendation,
+          completedAt: review.completedAt || serverTimestamp(),
+          manuscriptVersionNumber: manuscript.versionNumber || 1,
+          // Mark as from previous version
+          isFromPreviousVersion: true,
+          // Store the version this review was for
+          forManuscriptVersion: manuscript.versionNumber || 1,
+          // Add timestamps
+          createdAt: review.createdAt || serverTimestamp(),
+          updatedAt: serverTimestamp()
+        };
+      });
 
       // Update the submission history entry to include the review information
       const submissionWithReviews = {
@@ -203,34 +259,82 @@ export default function ResubmitManuscript() {
       // Update the last entry in submission history
       submissionHistory[submissionHistory.length - 1] = submissionWithReviews;
 
-      // Update the manuscript document
-      await updateDoc(msRef, {
-        answeredQuestions: updatedAnsweredQuestions,
-        fileUrl: newFile.url,
-        fileName: newFile.name,
-        fileType: newFile.type,
-        fileSize: newFile.size,
-        storagePath: newFile.storagePath,
+      // Prepare the update data object with all fields and proper default values
+      const updateData = {
+        answeredQuestions: Array.isArray(updatedAnsweredQuestions) ? updatedAnsweredQuestions : [],
+        fileUrl: newFile?.url || null,
+        fileName: newFile?.name || null,
+        fileType: newFile?.type || null,
+        fileSize: newFile?.size || 0,
+        storagePath: newFile?.storagePath || null,
         versionNumber: newVersion,
-        status: newStatus,
+        status: newStatus || 'Under Review',
         resubmittedAt: serverTimestamp(),
-        revisionNotes: revisionNotes,
-        previousVersion: currentVersion,
-        submissionHistory: submissionHistory,
-        // Move current reviews to previousReviewSubmissions
+        revisionNotes: revisionNotes || "Resubmitted manuscript",
+        previousVersion: currentVersion || 1,
+        submissionHistory: Array.isArray(submissionHistory) ? submissionHistory : [],
+        // Preserve the current reviewer submissions in previousReviewSubmissions
         previousReviewSubmissions: [
-          ...(manuscript.previousReviewSubmissions || []),
-          ...previousReviews
+          ...(Array.isArray(manuscript.previousReviewSubmissions) ? manuscript.previousReviewSubmissions : []),
+          ...(Array.isArray(previousReviews) ? previousReviews.filter(Boolean) : [])
         ],
-        // Clear current submissions
+        // Clear current submissions but keep the reviewer assignments
         reviewerSubmissions: [],
-        // Archive previous reviews
-        previousReviews: [...(manuscript.previousReviews || []), ...previousReviews],
-        // Reset decision meta for the new version
+        // Preserve the previous reviews, filtering out any null/undefined
+        previousReviews: [
+          ...(Array.isArray(manuscript.previousReviews) ? manuscript.previousReviews.filter(Boolean) : []),
+          ...(Array.isArray(previousReviews) ? previousReviews.filter(Boolean) : [])
+        ],
+        // Preserve the decision meta but reset for the new version
+        previousReviewerDecisionMeta: {
+          ...(manuscript.previousReviewerDecisionMeta || {}),
+          ...(currentVersion ? { [`v${currentVersion}`]: manuscript.reviewerDecisionMeta || {} } : {})
+        },
         reviewerDecisionMeta: {},
-        // Apply reviewer meta updates for major revisions
-        ...updateFields,
+        lastUpdated: serverTimestamp()
+      };
+      
+      // Clean up any undefined or null values that might have slipped through
+      Object.keys(updateData).forEach(key => {
+        if (updateData[key] === undefined || updateData[key] === null) {
+          delete updateData[key];
+        }
       });
+
+      // Only include updateFields if it has values to avoid undefined errors
+      if (updateFields && Object.keys(updateFields).length > 0) {
+        Object.assign(updateData, updateFields);
+      }
+
+      // Deep clean the updateData object to remove any undefined or null values
+      const cleanData = (obj) => {
+        if (Array.isArray(obj)) {
+          return obj
+            .map(value => (value && typeof value === 'object' ? cleanData(value) : value))
+            .filter(value => value !== undefined && value !== null);
+        } else if (obj && typeof obj === 'object') {
+          return Object.entries(obj).reduce((acc, [key, value]) => {
+            if (value === undefined || value === null) {
+              return acc; // Skip undefined/null values
+            }
+            const cleanedValue = value && typeof value === 'object' ? cleanData(value) : value;
+            if (cleanedValue !== undefined && cleanedValue !== null) {
+              acc[key] = cleanedValue;
+            }
+            return acc;
+          }, {});
+        }
+        return obj;
+      };
+
+      const cleanedUpdateData = cleanData(updateData);
+
+      // Log the data being sent to Firestore for debugging
+      console.log('Updating document with:', JSON.parse(JSON.stringify(cleanedUpdateData)));
+
+      // Update the manuscript document with the cleaned data
+      await updateDoc(msRef, cleanedUpdateData);
+
       // Create a revision history entry
       await addDoc(collection(db, "manuscripts", manuscriptId, "revisionHistory"), {
         versionNumber: newVersion,

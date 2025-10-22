@@ -18,6 +18,8 @@ const PeerReviewDetails = ({
           new Set([
             ...(manuscript.originalAssignedReviewers || []),
             ...(manuscript.assignedReviewers || []),
+            // Include all reviewers who have submitted reviews
+            ...(manuscript.reviewerSubmissions || []).map(s => s.reviewerId)
           ])
         )
       : role === "Peer Reviewer"
@@ -45,14 +47,26 @@ const PeerReviewDetails = ({
         )
       : [];
 
-  // Combine all review sources but no "archived" tag
+  // Combine all review sources including archived ones
   const allReviews = [
+    // Current version reviews
     ...(manuscript.reviewerSubmissions || []),
+    // Previous version reviews
     ...(manuscript.previousReviewSubmissions || []),
+    // Reviews from submission history
     ...(manuscript.submissionHistory || []).flatMap(
       (submission) => submission.reviews || []
     ),
-  ];
+    // Archived reviews
+    ...(manuscript.previousReviews || []),
+    // Reviews from previous versions' decision meta
+    ...(manuscript.previousReviewSubmissions || []).map(submission => ({
+      ...submission,
+      // Use the decision from the meta if available
+      decision: manuscript.previousReviewerDecisionMeta?.[`v${submission.manuscriptVersionNumber}`]?.[submission.reviewerId]?.decision || submission.decision,
+      recommendation: manuscript.previousReviewerDecisionMeta?.[`v${submission.manuscriptVersionNumber}`]?.[submission.reviewerId]?.recommendation || submission.recommendation
+    }))
+  ].filter(Boolean); // Remove any null/undefined entries
 
   // Group reviews by reviewer
   const reviewsByReviewer = reviewerIds

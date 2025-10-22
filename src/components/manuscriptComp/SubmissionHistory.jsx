@@ -53,56 +53,47 @@ const SubmissionHistory = ({
     }`;
   };
 
-  // Gather all reviewer submissions (current and previous) per version
+  // Gather all reviewer submissions for a specific version
   const getReviewerSubmissionsForVersion = (versionNumber) => {
+    // Use a Set to track unique submission IDs we've already seen
+    const seenSubmissionIds = new Set();
+    
+    // Get all submissions from all possible sources, removing duplicates
     const allSubmissions = [
-      ...(manuscript.reviewerSubmissions || []).map((s) => ({
-        ...s,
-        isCurrent: true,
-      })),
-      ...(manuscript.previousReviewSubmissions || []).map((s) => ({
-        ...s,
-        isCurrent: false,
-      })),
-    ];
+      ...(manuscript.reviewerSubmissions || []),
+      ...(manuscript.previousReviewSubmissions || []),
+      ...(manuscript.submissionHistory?.flatMap(sh => sh.reviewerSubmissions || []) || [])
+    ].filter(submission => {
+      // Filter out duplicates by submission ID or by unique combination of fields
+      if (!submission) return false;
+      
+      const submissionId = submission.id || 
+        `${submission.reviewerId}_${submission.manuscriptVersionNumber || '1'}_${submission.completedAt || submission.submittedAt}`;
+      
+      if (seenSubmissionIds.has(submissionId)) return false;
+      seenSubmissionIds.add(submissionId);
+      return true;
+    });
 
-    // Filter based on role and permissions
+    // Filter submissions for the specific version and permissions
     return allSubmissions
-      .filter((submission) => {
+      .filter(submission => {
         const submissionVersion = submission.manuscriptVersionNumber || 1;
-        const isCurrentVersion = submissionVersion === manuscript.versionNumber;
-        const isUnderReview = [
-          "Back to Admin",
-          "Under Review",
-          "Peer Reviewer Assigned",
-        ].includes(manuscript.status);
-
-        // Always include for admins
+        return submissionVersion === versionNumber;
+      })
+      .filter(submission => {
+        // Filter based on role and permissions
         if (role === "Admin") return true;
-
-        // For researchers
-        if (role === "Researcher") {
-          // Hide current version reviews if still under review
-          if (isCurrentVersion && isUnderReview) {
-            return false;
-          }
-          return true;
-        }
-
-        // For peer reviewers, only show their own reviews
+        if (role === "Researcher") return true;
         if (role === "Peer Reviewer") {
           return submission.reviewerId === currentUserId;
         }
-
         return false;
-      })
-      .filter((s) => {
-        const submissionVersion = s.manuscriptVersionNumber || 1;
-        return submissionVersion === versionNumber;
       })
       .map((sub, index) => ({
         ...sub,
-        reviewerNumber: index + 1, // Add reviewer number for consistent display
+        reviewerNumber: index + 1,
+        isCurrent: true
       }))
       .sort((a, b) => {
         const aTime = a.completedAt?.toDate
@@ -115,33 +106,60 @@ const SubmissionHistory = ({
       });
   };
 
+  // Check if we should hide the latest feedback for researchers
+  const statusesToHideFeedback = ["Back to Admin", "Assigning Peer Reviewer", "Peer Reviewer Reviewing", "Peer Reviewer Assigned"];
+  const shouldHideLatestFeedback = role === "Researcher" && statusesToHideFeedback.includes(manuscript.status);
+  const latestVersion = manuscript.submissionHistory?.length || 0;
+
   return (
     <div className="space-y-3 mb-4">
       {Array.isArray(manuscript.submissionHistory) &&
       manuscript.submissionHistory.length > 0 ? (
         manuscript.submissionHistory
-          // Filter out the latest version if reviewer hasn't accepted
+          // Filter submissions based on user role and permissions
           .filter((submission, idx) => {
-            if (
-              isReviewer &&
-              !hasAcceptedLatest &&
-              isLatestVersion &&
-              submission.versionNumber === manuscript.versionNumber
-            ) {
-              return false;
+            // If user is an admin, show all submissions
+            if (role === "Admin") return true;
+            
+            // For researchers, show all submissions but we'll hide the latest feedback in the render
+            if (role === "Researcher") return true;
+            
+            // For peer reviewers
+            if (role === "Peer Reviewer") {
+              // Check if they have accepted the invitation
+              const hasAcceptedInvitation = manuscript.assignedReviewersMeta?.[currentUserId]?.acceptedAt;
+              
+              // Check if they are in the reviewers list for this submission
+              const isAssignedReviewer = (submission.reviewers || []).includes(currentUserId);
+              
+              // Check if they have any submissions for this or previous version
+              const hasReviewerSubmission = (manuscript.reviewerSubmissions || []).some(
+                s => s.reviewerId === currentUserId && 
+                     (s.manuscriptVersionNumber === submission.versionNumber || 
+                      s.manuscriptVersionNumber === submission.versionNumber - 1)
+              );
+              
+              const isLatestVersion = submission.versionNumber === latestVersion;
+              
+              // If it's the latest version, only show if they've accepted the invitation
+              if (isLatestVersion) {
+                return hasAcceptedInvitation && (isAssignedReviewer || hasReviewerSubmission);
+              }
+              
+              // For previous versions, show if they're assigned or have submissions
+              return isAssignedReviewer || hasReviewerSubmission;
             }
-            return true;
+            
+            return false;
           })
           .map((submission, idx) => {
             const versionNumber = submission.versionNumber || idx + 1;
 
-            // Reviewers for this version
-            const versionReviewers = submission.reviewers || [];
-            const reviewerData = getReviewerData(versionReviewers);
-
-            // Include all submissions (for all versions up to this one)
-            const reviewerSubmissions =
-              getReviewerSubmissionsForVersion(versionNumber);
+            // Get submissions for this version only
+            const reviewerSubmissions = getReviewerSubmissionsForVersion(versionNumber);
+            
+            // Only show the submission info if there are actual reviews
+            const hasReviews = reviewerSubmissions.length > 0;
 
             return (
               <div
@@ -170,158 +188,69 @@ const SubmissionHistory = ({
 
                     {submission.revisionNotes &&
                       submission.revisionNotes !== "Initial submission" && (
-                        <p className="text-xs text-gray-600 italic mt-1">
-                          "{submission.revisionNotes}"
-                        </p>
-                      )}
-
-                    {/* Original version reviewers */}
-                    {reviewerData.length > 0 && (
-                      <div className="mt-2 pt-2 border-t border-gray-300">
-                        <p className="text-xs font-medium text-gray-700 mb-1">
-                          Reviewers ({reviewerData.length}):
-                        </p>
-                        <div className="flex flex-wrap gap-1">
-                          {reviewerData.map((reviewer, rIdx) => {
-                            const reviewerDecision =
-                              submission.reviewerDecisionMeta?.[reviewer.id];
-
-                            // Hide latest feedback for Researchers if Back to Admin
-                            if (
-                              role === "Researcher" &&
-                              isLatestSubmission(submission) &&
-                              manuscript.status === "Back to Admin"
-                            ) {
-                              return (
-                                <div
-                                  key={rIdx}
-                                  className="text-xs bg-blue-50 px-2 py-1 rounded border border-blue-200"
-                                >
-                                  <span className="font-medium">
-                                    {reviewer.firstName} {reviewer.lastName}
-                                  </span>
-                                  <span className="ml-1 text-gray-500 italic">
-                                    Feedback hidden until admin finalizes
-                                  </span>
-                                </div>
-                              );
-                            }
-
-                            return (
-                              <div
-                                key={rIdx}
-                                className="text-xs bg-blue-50 px-2 py-1 rounded border border-blue-200"
-                              >
-                                <span className="font-medium">
-                                  {reviewer.firstName} {reviewer.lastName}
-                                </span>
-                                {reviewerDecision?.decision && (
-                                  <span
-                                    className={`ml-1 px-1 rounded text-xs ${
-                                      reviewerDecision.decision ===
-                                      "publication"
-                                        ? "bg-green-200 text-green-800"
-                                        : reviewerDecision.decision === "minor"
-                                        ? "bg-yellow-200 text-yellow-800"
-                                        : reviewerDecision.decision === "major"
-                                        ? "bg-orange-200 text-orange-800"
-                                        : "bg-red-200 text-red-800"
-                                    }`}
-                                  >
-                                    {reviewerDecision.decision === "publication"
-                                      ? "✓ Publish"
-                                      : reviewerDecision.decision === "minor"
-                                      ? "Minor Rev"
-                                      : reviewerDecision.decision === "major"
-                                      ? "Major Rev"
-                                      : "✗ Reject"}
-                                  </span>
-                                )}
-                              </div>
-                            );
-                          })}
+                        <div className="mt-2">
+                          <p className="text-xs font-medium text-gray-700 mb-1">Revision Notes:</p>
+                          <p className="text-xs text-gray-600 italic">
+                            "{submission.revisionNotes}"
+                          </p>
                         </div>
-                      </div>
-                    )}
+                      )}
 
                     {/* All reviewer submissions / feedback */}
                     {reviewerSubmissions.length > 0 && (
-                      <div className="mt-2 pt-2 border-t border-gray-300">
-                        <p className="text-xs font-medium text-gray-700 mb-1">
-                          Reviewer Feedback:
-                        </p>
-                        <div className="space-y-2">
-                          {reviewerSubmissions.map((sub, sIdx) => {
-                            // Hide latest for researcher if Back to Admin
-                            const hideLatestForResearcher =
-                              role === "Researcher" &&
-                              isLatestSubmission(submission) &&
-                              manuscript.status === "Back to Admin" &&
-                              sub.manuscriptVersionNumber === versionNumber &&
-                              sub ===
-                                reviewerSubmissions[
-                                  reviewerSubmissions.length - 1
-                                ];
-
-                            if (hideLatestForResearcher) {
-                              return (
-                                <div
-                                  key={sIdx}
-                                  className="bg-white p-2 rounded border border-blue-100"
-                                >
-                                  <span className="font-medium text-xs">
-                                    {users.find((u) => u.id === sub.reviewerId)
-                                      ?.firstName ||
-                                      `Reviewer ${sub.reviewerId}`}
-                                  </span>
-                                  <span className="ml-1 text-gray-500 italic text-xs">
-                                    Latest feedback hidden until admin finalizes
-                                  </span>
-                                </div>
-                              );
-                            }
-
-                            return (
-                              <div
-                                key={sIdx}
-                                className="bg-white p-2 rounded border border-blue-100"
-                              >
-                                <p className="text-xs font-medium text-gray-800">
-                                  {getReviewerDisplayName(
-                                    sub.reviewerId,
-                                    sub.reviewerNumber
-                                  )}{" "}
-                                  - Version{" "}
-                                  {sub.manuscriptVersionNumber || versionNumber}
-                                  {sub.isLatest && " (Latest)"}
-                                </p>
-                                {sub.comment && (
-                                  <p className="text-xs text-gray-700 italic mt-1">
-                                    "{sub.comment}"
-                                  </p>
-                                )}
-                                {(sub.reviewFileUrl ||
-                                  sub.reviewFile ||
-                                  sub.reviewFilePath) && (
-                                  <button
-                                    onClick={() =>
-                                      downloadFileCandidate(
-                                        sub.reviewFileUrl ||
-                                          sub.reviewFile ||
-                                          sub.reviewFilePath,
-                                        sub.fileName || sub.name
-                                      )
-                                    }
-                                    className="mt-1 px-2 py-1 text-blue-600 underline text-xs rounded"
+                      <>
+                        {((role !== "Researcher" || 
+                           versionNumber !== latestVersion || 
+                           !shouldHideLatestFeedback) && (
+                          <div className="mt-2 pt-2 border-t border-gray-300">
+                            <p className="text-xs font-medium text-gray-700 mb-1">
+                              Reviewer Feedback:
+                            </p>
+                            <div className="space-y-2">
+                              {reviewerSubmissions
+                                .filter(sub => sub.manuscriptVersionNumber === versionNumber)
+                                .map((sub, sIdx) => (
+                                  <div
+                                    key={sIdx}
+                                    className="bg-white p-2 rounded border border-blue-100"
                                   >
-                                    Download Review File
-                                  </button>
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
+                                    <p className="text-xs font-medium text-gray-800">
+                                      {getReviewerDisplayName(
+                                        sub.reviewerId,
+                                        sub.reviewerNumber
+                                      )}{" "}
+                                      - Version{" "}
+                                      {sub.manuscriptVersionNumber || versionNumber}
+                                      {sub.isLatest && " (Latest)"}
+                                    </p>
+                                    {sub.comment && (
+                                      <p className="text-xs text-gray-700 italic mt-1">
+                                        "{sub.comment}"
+                                      </p>
+                                    )}
+                                    {(sub.reviewFileUrl ||
+                                      sub.reviewFile ||
+                                      sub.reviewFilePath) && (
+                                      <button
+                                        onClick={() =>
+                                          downloadFileCandidate(
+                                            sub.reviewFileUrl ||
+                                              sub.reviewFile ||
+                                              sub.reviewFilePath,
+                                            sub.fileName || sub.name
+                                          )
+                                        }
+                                        className="mt-1 px-2 py-1 text-blue-600 underline text-xs rounded"
+                                      >
+                                        Download Review File
+                                      </button>
+                                    )}
+                                  </div>
+                                ))}
+                            </div>
+                          </div>
+                        ))}
+                      </>
                     )}
                   </div>
 

@@ -1,6 +1,6 @@
 import { doc, updateDoc, arrayUnion, getDoc } from "firebase/firestore";
 import { db } from "../firebase/firebase";
-import { getAuth } from "firebase/auth";
+import { useAuth } from "../authcontext/AuthContext";
 
 // Status constants
 const REVISION_STATUSES = {
@@ -11,12 +11,13 @@ const REVISION_STATUSES = {
 };
 
 export const useManuscriptStatus = () => {
-  const auth = getAuth();
+  const { currentUser } = useAuth();
 
   const handleStatusChange = async (manuscriptId, newStatus, note = "") => {
     try {
-      const user = auth.currentUser;
-      if (!user) throw new Error("User not authenticated");
+      if (!currentUser) {
+        throw new Error("No user session. Please refresh the page and try again.");
+      }
 
       const manuscriptRef = doc(db, "manuscripts", manuscriptId);
       const currentTime = new Date();
@@ -27,7 +28,7 @@ export const useManuscriptStatus = () => {
         statusHistory: arrayUnion({
           status: newStatus,
           note,
-          changedBy: user.email,
+          changedBy: currentUser.email,
           timestamp: currentTime,
         }),
       };
@@ -58,7 +59,7 @@ export const useManuscriptStatus = () => {
       }
       // Clear deadlines when manuscript is finalized or rejected
       else if (["For Publication", "Rejected"].includes(newStatus)) {
-        updateData.finalDecisionBy = user.email;
+        updateData.finalDecisionBy = currentUser.email;
         updateData.finalDecisionAt = currentTime;
         updateData.revisionDeadline = null;
         updateData.finalizationDeadline = null;

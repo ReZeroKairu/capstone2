@@ -1,8 +1,8 @@
 // src/components/Manuscripts/ManuscriptItem.jsx
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { doc, updateDoc, getDoc } from "firebase/firestore";
-import { db, auth } from "../../firebase/firebase";
+import { doc, updateDoc, getDoc, serverTimestamp } from "firebase/firestore";
+import { db } from "../../firebase/firebase";
 import SubmissionHistory from "./SubmissionHistory";
 import ReviewerFeedback from "./ReviewerFeedback";
 import ManuscriptModal from "./ManuscriptModal";
@@ -33,6 +33,8 @@ const ManuscriptItem = ({
   showFullName,
   setShowFullName,
   manuscriptFileUrls = [],
+  currentUserId,
+  ...props
 }) => {
   if (!manuscript || Object.keys(manuscript).length === 0) return null;
 
@@ -50,7 +52,6 @@ const ManuscriptItem = ({
     status,
   } = manuscript;
 
-  const currentUserId = auth?.currentUser?.uid;
   const navigate = useNavigate();
 
   const [showModal, setShowModal] = useState(false);
@@ -133,16 +134,20 @@ const ManuscriptItem = ({
         const completedReview = manuscript.reviewerSubmissions?.some(
           (r) => r.reviewerId === currentUserId && r.status === "Completed"
         );
-        
+
         // Or was assigned and didn't explicitly reject
-        const rejected = manuscript.reviewerDecisionMeta?.[currentUserId]?.decision === "reject";
-        
+        const rejected =
+          manuscript.reviewerDecisionMeta?.[currentUserId]?.decision ===
+          "reject";
+
         return completedReview || !rejected;
       }
-      
+
       // For revision statuses
       if (["For Revision (Minor)", "For Revision (Major)"].includes(status)) {
-        const rejected = manuscript.reviewerDecisionMeta?.[currentUserId]?.decision === "reject";
+        const rejected =
+          manuscript.reviewerDecisionMeta?.[currentUserId]?.decision ===
+          "reject";
         return !rejected;
       }
 
@@ -238,12 +243,49 @@ const ManuscriptItem = ({
     return null;
   };
   const handleStatusChange = async (manuscriptId, newStatus) => {
+    console.log('handleStatusChange called with:', { 
+      manuscriptId, 
+      newStatus,
+      currentUserId
+    });
+    
+    if (!currentUserId) {
+      console.error('No current user ID available');
+      alert('Error: No user session. Please refresh the page and try again.');
+      return;
+    }
+    
     try {
+      // Call the handleStatusChange prop function that was passed from Manuscripts
+      if (typeof props.handleStatusChange === 'function') {
+        const result = await props.handleStatusChange(manuscriptId, newStatus);
+        if (result && result.success) {
+          console.log('Status updated successfully');
+          return;
+        } else {
+          console.error('Failed to update status:', result?.error);
+          return;
+        }
+      }
+      
+      // Fallback to local implementation if handleStatusChange prop is not provided
+      console.warn('Using fallback status change handler. Consider passing handleStatusChange from parent component.');
       const msRef = doc(db, "manuscripts", manuscriptId);
+      console.log('Fetching document...');
       const snapshot = await getDoc(msRef);
-      if (!snapshot.exists()) return;
+      if (!snapshot.exists()) {
+        console.error('Document does not exist:', manuscriptId);
+        return;
+      }
 
       const ms = snapshot.data();
+      console.log('Current manuscript data:', {
+        id: manuscriptId,
+        currentStatus: ms.status,
+        assignedReviewers: ms.assignedReviewers,
+        assignedReviewersMeta: ms.assignedReviewersMeta,
+        reviewerSubmissions: ms.reviewerSubmissions
+      });
 
       const buildReviewerObjects = (ids) =>
         ids.map((id) => {
@@ -331,25 +373,34 @@ const ManuscriptItem = ({
       } else if (
         ["For Revision (Minor)", "For Revision (Major)"].includes(newStatus)
       ) {
-        const acceptedReviewerIds =
-          newStatus === "For Revision (Major)"
-            ? filterAcceptedReviewers(
-                ms.reviewerDecisionMeta,
-                (ms.assignedReviewers || []).map((id) => ({ id }))
-              ).map((r) => r.id)
-            : [];
+        // For new revisions, we need to reset the review data
+        const currentReviewers = ms.assignedReviewers || [];
 
-        updatedAssignedReviewers = buildReviewerObjects(acceptedReviewerIds);
+        // If coming from "Back to Admin", keep the current reviewers
+        if (ms.status === "Back to Admin") {
+          updatedAssignedReviewers = buildReviewerObjects(currentReviewers);
+          updatedAssignedMeta = { ...ms.assignedReviewersMeta };
+        } else {
+          // For major revisions, only keep reviewers who accepted
+          const acceptedReviewerIds =
+            newStatus === "For Revision (Major)"
+              ? filterAcceptedReviewers(
+                  ms.reviewerDecisionMeta,
+                  currentReviewers.map((id) => ({ id }))
+                ).map((r) => r.id)
+              : [];
 
-        updatedAssignedMeta = Object.fromEntries(
-          updatedAssignedReviewers.map((r) => [
-            r.id,
-            ms.assignedReviewersMeta?.[r.id] || {
-              assignedAt: r.assignedAt,
-              assignedBy: r.assignedBy,
-            },
-          ])
-        );
+          updatedAssignedReviewers = buildReviewerObjects(acceptedReviewerIds);
+          updatedAssignedMeta = Object.fromEntries(
+            updatedAssignedReviewers.map((r) => [
+              r.id,
+              ms.assignedReviewersMeta?.[r.id] || {
+                assignedAt: serverTimestamp(),
+                assignedBy: currentUserId || 'system',
+              },
+            ])
+          );
+        }
       }
 
       // ---------- Auto-change to "Back to Admin" only when appropriate ----------
@@ -383,11 +434,35 @@ const ManuscriptItem = ({
         reviewerSubmissions: ms.reviewerSubmissions || [],
         finalDecisionAt: new Date(),
         finalDecisionBy: "Admin",
+        lastUpdated: new Date().toISOString()
       };
 
-      await updateDoc(msRef, updateData);
+      console.log('Attempting to update document with:', JSON.parse(JSON.stringify(updateData)));
+      
+      try {
+        await updateDoc(msRef, updateData);
+        console.log('Document updated successfully');
+      } catch (updateError) {
+        console.error('Error in updateDoc:', {
+          error: updateError,
+          errorMessage: updateError.message,
+          errorStack: updateError.stack,
+          updateData: JSON.parse(JSON.stringify(updateData))
+        });
+        throw updateError; // Re-throw to be caught by the outer catch
+      }
     } catch (err) {
-      console.error("Error updating status:", err);
+      console.error("Error in handleStatusChange:", {
+        error: err,
+        errorMessage: err.message,
+        errorStack: err.stack,
+        manuscriptId,
+        newStatus,
+        currentUserId
+      });
+      
+      // Show error to user
+      alert(`Failed to update status: ${err.message}`);
     }
   };
 
@@ -679,11 +754,24 @@ const ManuscriptItem = ({
         )}
       </div>
 
-      {/* Submission History */}
-      {(role === "Admin" ||
-        role === "Researcher" ||
-        role === "Peer Reviewer") &&
-        manuscript.submissionHistory?.length > 0 && (
+      {/* Submission History - Show for all manuscripts, but only if user has appropriate role */}
+      {manuscript && (
+        (role === "Admin" || 
+         role === "Researcher" ||
+         (role === "Peer Reviewer" && 
+          // Show if they are assigned as a reviewer
+          (manuscript.assignedReviewers?.includes(currentUserId) || 
+           // OR if they have any submissions
+           (manuscript.reviewerSubmissions || []).some(s => s.reviewerId === currentUserId) ||
+           // OR if they are in the reviewers list of any submission history
+           (manuscript.submissionHistory || []).some(sh => 
+             (sh.reviewers || []).includes(currentUserId) ||
+             (sh.reviewerSubmissions || []).some(s => s.reviewerId === currentUserId)
+           ) ||
+           // OR if they have accepted the invitation
+           (manuscript.assignedReviewersMeta?.[currentUserId]?.acceptedAt)
+          ))
+        ) && (
           <div className="mt-4 border-t pt-3">
             <button
               className="mb-2 px-4 py-1 bg-blue-100 text-blue-700 rounded font-medium text-sm hover:bg-blue-200"
@@ -691,7 +779,7 @@ const ManuscriptItem = ({
             >
               {expandedSubmissionHistory
                 ? `Hide Submission History`
-                : `Show Submission History (${manuscript.submissionHistory.length})`}
+                : `Show Submission History (${manuscript.submissionHistory?.length || 0})`}
             </button>
 
             {expandedSubmissionHistory && (
@@ -703,7 +791,8 @@ const ManuscriptItem = ({
               />
             )}
           </div>
-        )}
+        )
+      )}
 
       {/* View Response Modal */}
       {showModal && (

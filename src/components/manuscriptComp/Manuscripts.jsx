@@ -18,19 +18,21 @@ const Manuscripts = () => {
   const [showFullName, setShowFullName] = useState(true);
 
   // Custom hooks (data + actions)
-  const { manuscripts, users, user, role, loading } =
-    useManuscriptsData(showFullName);
+  const { manuscripts, users, user, role, loading } = useManuscriptsData();
   const { handleStatusChange } = useManuscriptStatus();
 
   // --- Loading / Access Control ---
-  if (loading)
+  if (loading) {
     return <div className="p-28 text-gray-700">Loading manuscripts...</div>;
-  if (!user)
+  }
+  
+  if (!user) {
     return (
       <div className="p-28 text-red-600 text-center">
-        You must be signed in to view manuscripts.
+        You must be signed in to view manuscripts. Please refresh the page.
       </div>
     );
+  }
 
   // In Manuscripts.jsx, add this function
   const handleUnassignReviewer = async (manuscriptId, reviewerId = null) => {
@@ -184,13 +186,12 @@ const Manuscripts = () => {
             manuscript={m}
             role={role}
             users={users}
-            currentUserId={user.uid}
+            currentUserId={user?.uid}
             showFullName={showFullName}
             setShowFullName={setShowFullName}
-            formatDate={formatFirestoreDate} // Add this line
+            formatDate={formatFirestoreDate}
             handleStatusChange={handleStatusChange}
-            // Add these if they're needed
-            handleAssign={() => {}} // Add actual implementation
+            handleAssign={() => {}}
             unassignReviewer={handleUnassignReviewer}
           />
         ))}
