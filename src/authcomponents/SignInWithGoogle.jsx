@@ -37,7 +37,7 @@ function SignInwithGoogle() {
           actingUserId: adminId || userId,
           actingUserIsAdmin: !!adminId,
           email: user.email,
-          action: "Signed in with Google",
+          action: "Signed in/up with Google",
         });
 
         console.log(

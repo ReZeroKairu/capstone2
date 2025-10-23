@@ -109,28 +109,46 @@ useEffect(() => {
           const filtered = allManuscripts.filter((m) => {
             const myId = targetUserId;
             const myDecision = m.reviewerDecisionMeta?.[myId]?.decision;
-            const isAssigned =
-              (m.assignedReviewers || []).includes(myId) ||
-              (m.originalAssignedReviewers || []).includes(myId);
+            const isAssigned = (m.assignedReviewers || []).includes(myId);
+            const isPreviousReviewer = (m.previousReviewers || []).includes(myId);
             const hasSubmitted = m.reviewerSubmissions?.some((s) => s.reviewerId === myId);
+            const hasDeclined = m.declinedReviewers?.includes(myId);
+            const hasReviewedBefore = isPreviousReviewer || hasSubmitted;
             
-            // Always show manuscripts where the reviewer is assigned or has submitted
-            if (isAssigned || hasSubmitted) return true;
+            // Only hide if they declined AND never reviewed it before
+            if (hasDeclined && !hasReviewedBefore) return false;
             
-            // For specific statuses, check decision status
-            if (m.status === "For Publication") {
-              return myDecision === "publication" || 
-                     myDecision === "minor" || 
-                     myDecision === "major" ||
-                     myDecision === "pending";
+            // If currently assigned, always show
+            if (isAssigned) return true;
+            
+            // If previously reviewed, check for conflicting decisions
+            if (isPreviousReviewer) {
+              // Hide if reviewer rejected but manuscript was published
+              if (m.status === "For Publication" && myDecision === "reject") {
+                return false;
+              }
+              // Hide if reviewer approved but manuscript was rejected
+              if (["Rejected", "Peer Reviewer Rejected"].includes(m.status) && 
+                  myDecision && myDecision !== "reject") {
+                return false;
+              }
+              // Otherwise, show the manuscript
+              return true;
             }
             
-            if (["Rejected", "Peer Reviewer Rejected"].includes(m.status)) {
-              return myDecision === "reject";
+            // For current submissions, check if they have access
+            if (hasSubmitted) {
+              // Apply the same conflict rules for current submissions
+              if (m.status === "For Publication") {
+                return myDecision && myDecision !== "reject";
+              }
+              if (["Rejected", "Peer Reviewer Rejected"].includes(m.status)) {
+                return myDecision === "reject";
+              }
+              return true;
             }
             
-            // For other statuses, show if there's any decision
-            return !!myDecision;
+            return false;
           });
           setManuscripts(filtered);
         });

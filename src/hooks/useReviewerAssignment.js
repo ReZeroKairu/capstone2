@@ -14,7 +14,8 @@ export const useReviewerAssignment = () => {
   const assignReviewer = async (
     manuscriptId,
     manuscriptStatus,
-    statusToDeadlineField
+    statusToDeadlineField,
+    handleStatusChange = null
   ) => {
     try {
       // Early return if manuscriptStatus is not in mapping (optional improvement)

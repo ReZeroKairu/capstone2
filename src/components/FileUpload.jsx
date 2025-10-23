@@ -46,7 +46,7 @@ const FileUpload = ({
       if (!allowedTypes.includes(file.type) && ![".doc", ".docx"].includes(ext)) {
         throw new Error("Only .doc and .docx files are allowed");
       }
-      if (file.size > 10 * 1024 * 1024) throw new Error("File size should be less than 10MB");
+      if (file.size > 15 * 1024 * 1024) throw new Error("File size should be less than 15MB");
 
       setPreviewUrl(null);
 
@@ -132,12 +132,14 @@ const FileUpload = ({
           accept={accept}
         />
         {fileInfo && (
-          <div className="flex-1">
+          <div className="flex-1 min-w-0">
             <div className="flex items-center justify-between bg-gray-50 p-3 rounded-lg border border-gray-200">
-              <div className="flex items-center space-x-3 min-w-0">
-                <span className="text-2xl">{getFileTypeIcon(fileInfo.name)}</span>
-                <div className="min-w-0">
-                  <p className="text-sm font-medium text-gray-900 truncate">{fileInfo.name}</p>
+              <div className="flex items-center space-x-3 min-w-0 flex-1">
+                <span className="flex-shrink-0 text-2xl">{getFileTypeIcon(fileInfo.name)}</span>
+                <div className="min-w-0 overflow-hidden">
+                  <p className="text-sm font-medium text-gray-900 truncate" title={fileInfo.name}>
+                    {fileInfo.name}
+                  </p>
                   <p className="text-xs text-gray-500">{formatFileSize(fileInfo.size)}</p>
                 </div>
               </div>

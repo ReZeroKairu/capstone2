@@ -34,7 +34,7 @@ const Manuscripts = () => {
     );
   }
 
-  // In Manuscripts.jsx, add this function
+  // Handle unassigning a reviewer
   const handleUnassignReviewer = async (manuscriptId, reviewerId = null) => {
     try {
       const msRef = doc(db, "manuscripts", manuscriptId);
@@ -68,29 +68,33 @@ const Manuscripts = () => {
         });
       }
 
-      const updateData = {
+      // Update the manuscript with the new reviewer assignments
+      await updateDoc(msRef, {
         assignedReviewers: updatedAssignedReviewers,
         assignedReviewersMeta: updatedAssignedReviewersMeta,
-      };
+      });
 
-      // Check if there are still reviewers assigned
+      // Recalculate the manuscript status using handleStatusChange
       if (updatedAssignedReviewers.length > 0) {
         // Check if all remaining reviewers have completed their reviews
         const allReviewersCompleted = updatedAssignedReviewers.every(
           (reviewerId) =>
-            manuscript.assignedReviewersMeta?.[reviewerId]?.status ===
-            "completed"
+            manuscript.reviewerSubmissions?.some(
+              (submission) =>
+                submission.reviewerId === reviewerId &&
+                submission.status === "Completed"
+            )
         );
 
         if (allReviewersCompleted) {
-          updateData.status = "Back to Admin";
+          await handleStatusChange(manuscriptId, "Back to Admin", "All reviews completed");
+        } else {
+          await handleStatusChange(manuscriptId, "Peer Reviewer Reviewing", "Reviewers still working");
         }
       } else {
         // No reviewers left, set to Assigning Peer Reviewer
-        updateData.status = "Assigning Peer Reviewer";
+        await handleStatusChange(manuscriptId, "Assigning Peer Reviewer", "No reviewers assigned");
       }
-
-      await updateDoc(msRef, updateData);
 
       console.log(
         reviewerId ? "Reviewer unassigned" : "All reviewers unassigned"

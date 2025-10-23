@@ -929,22 +929,6 @@ setTotalResponses((prev) => Math.max(0, prev - 1));
               </span>
             </div>
 
-            {/* History */}
-            <div className="mb-2 text-sm font-semibold">History:</div>
-            <div className="mb-3 text-sm">
-              {(selectedResponse.history || []).length === 0 && (
-                <div className="text-gray-500">No history yet.</div>
-              )}
-              {(selectedResponse.history || []).map((h, i) => (
-                <div key={i} className="text-gray-700">
-                  [
-                  {h.timestamp?.seconds
-                    ? new Date(h.timestamp.seconds * 1000).toLocaleString()
-                    : ""}
-                  ] {h.updatedBy} → {h.status}
-                </div>
-              ))}
-            </div>
 
             {/* Admin actions */}
             {isAdmin && selectedResponse.status === "Pending" && (

@@ -11,11 +11,16 @@ import { recalcManuscriptStatus } from "../../../utils/recalcManuscriptStatus";
 
 /**
  * Assign a reviewer to a manuscript. Recalculates manuscript status afterwards.
+ * @param {string} manuscriptId - The ID of the manuscript
+ * @param {string} reviewerId - The ID of the reviewer to assign
+ * @param {string} assignedBy - The ID of the user who assigned the reviewer
+ * @param {Function} handleStatusChange - Optional function to handle status changes
  */
 export const assignReviewer = async (
   manuscriptId,
   reviewerId,
-  assignedBy = "adminId"
+  assignedBy = "adminId",
+  handleStatusChange = null
 ) => {
   const msRef = doc(db, "manuscripts", manuscriptId);
 
@@ -28,13 +33,16 @@ export const assignReviewer = async (
     },
   });
 
-  await recalcManuscriptStatus(manuscriptId);
+  await recalcManuscriptStatus(manuscriptId, handleStatusChange);
 };
 
 /**
  * Unassign reviewer and recalc status.
+ * @param {string} manuscriptId - The ID of the manuscript
+ * @param {string} reviewerId - The ID of the reviewer to unassign
+ * @param {Function} handleStatusChange - Optional function to handle status changes
  */
-export const unassignReviewer = async (manuscriptId, reviewerId) => {
+export const unassignReviewer = async (manuscriptId, reviewerId, handleStatusChange = null) => {
   const msRef = doc(db, "manuscripts", manuscriptId);
 
   await updateDoc(msRef, {
@@ -42,5 +50,5 @@ export const unassignReviewer = async (manuscriptId, reviewerId) => {
     [`assignedReviewersMeta.${reviewerId}`]: deleteField(),
   });
 
-  await recalcManuscriptStatus(manuscriptId);
+  await recalcManuscriptStatus(manuscriptId, handleStatusChange);
 };

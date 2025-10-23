@@ -8,6 +8,7 @@ import ReviewerFeedback from "./ReviewerFeedback";
 import ManuscriptModal from "./ManuscriptModal";
 import { useFileDownloader } from "../../hooks/useFileDownloader";
 import { useReviewerAssignment } from "../../hooks/useReviewerAssignment";
+import { useManuscriptStatus } from "../../hooks/useManuscriptStatus";
 import {
   filterAcceptedReviewers,
   filterRejectedReviewers,
@@ -36,6 +37,9 @@ const ManuscriptItem = ({
   currentUserId,
   ...props
 }) => {
+  const { handleStatusChange: handleStatusUpdate } = useManuscriptStatus();
+  const navigate = useNavigate();
+  
   if (!manuscript || Object.keys(manuscript).length === 0) return null;
 
   const {
@@ -51,8 +55,6 @@ const ManuscriptItem = ({
     acceptedAt,
     status,
   } = manuscript;
-
-  const navigate = useNavigate();
 
   const [showModal, setShowModal] = useState(false);
   const [expandedReviewerIds, setExpandedReviewerIds] = useState({});
@@ -242,72 +244,51 @@ const ManuscriptItem = ({
     }
     return null;
   };
-  const handleStatusChange = async (manuscriptId, newStatus) => {
+
+  const handleStatusChange = async (manuscriptId, newStatus, note = '') => {
     console.log('handleStatusChange called with:', { 
       manuscriptId, 
       newStatus,
+      note,
       currentUserId
     });
     
-    if (!currentUserId) {
-      console.error('No current user ID available');
-      alert('Error: No user session. Please refresh the page and try again.');
-      return;
+    if (!manuscriptId || !newStatus) {
+      console.error('Missing required parameters for handleStatusChange');
+      return { success: false, error: 'Missing required parameters' };
     }
     
     try {
-      // Call the handleStatusChange prop function that was passed from Manuscripts
-      if (typeof props.handleStatusChange === 'function') {
-        const result = await props.handleStatusChange(manuscriptId, newStatus);
+      // First try to use the handleStatusUpdate from useManuscriptStatus
+      if (handleStatusUpdate) {
+        console.log('Using handleStatusUpdate from useManuscriptStatus');
+        const result = await handleStatusUpdate(manuscriptId, newStatus, note || `Status changed to ${newStatus}`);
         if (result && result.success) {
-          console.log('Status updated successfully');
-          return;
-        } else {
-          console.error('Failed to update status:', result?.error);
-          return;
+          console.log('Status updated successfully using useManuscriptStatus');
+          return { success: true };
         }
+        return result || { success: false, error: 'Failed to update status' };
       }
       
-      // Fallback to local implementation if handleStatusChange prop is not provided
-      console.warn('Using fallback status change handler. Consider passing handleStatusChange from parent component.');
-      const msRef = doc(db, "manuscripts", manuscriptId);
-      console.log('Fetching document...');
-      const snapshot = await getDoc(msRef);
-      if (!snapshot.exists()) {
-        console.error('Document does not exist:', manuscriptId);
-        return;
-      }
-
-      const ms = snapshot.data();
-      console.log('Current manuscript data:', {
-        id: manuscriptId,
-        currentStatus: ms.status,
-        assignedReviewers: ms.assignedReviewers,
-        assignedReviewersMeta: ms.assignedReviewersMeta,
-        reviewerSubmissions: ms.reviewerSubmissions
-      });
-
-      const buildReviewerObjects = (ids) =>
-        ids.map((id) => {
-          const user = users.find((u) => u.id === id);
-          const meta = ms.assignedReviewersMeta?.[id] || {};
-          return {
-            id,
-            firstName: user?.firstName || "",
-            middleName: user?.middleName || "",
-            lastName: user?.lastName || "",
-            email: user?.email || "",
-            assignedAt: meta.assignedAt || null,
-            assignedBy: meta.assignedBy || "—",
-          };
-        });
-
-      const updateReviewerStats = async (reviewers, field) => {
-        for (const r of reviewers) {
-          const reviewerRef = doc(db, "Users", r.id);
-          await updateDoc(reviewerRef, { [field]: (r[field] || 0) + 1 });
+      // Fallback to the prop function if available
+      if (typeof props.handleStatusChange === 'function') {
+        console.log('Using handleStatusChange from props');
+        const result = await props.handleStatusChange(manuscriptId, newStatus, note);
+        if (result && result.success) {
+          console.log('Status updated successfully using prop function');
+          return { success: true };
         }
-      };
+        return result || { success: false, error: 'Failed to update status' };
+      }
+      
+      // Last resort: direct update (without handling deadlines)
+      console.warn('Using direct document update as fallback - deadlines may not be set correctly');
+      const msRef = doc(db, "manuscripts", manuscriptId);
+      console.log('Updating document directly...');
+      await updateDoc(msRef, {
+        status: newStatus,
+        lastUpdated: serverTimestamp()
+      });
 
       let updatedAssignedReviewers = [];
       let updatedAssignedMeta = {};
@@ -489,16 +470,18 @@ const ManuscriptItem = ({
 
           {(() => {
             const deadlineField = statusToDeadlineField[status];
+            if (!deadlineField) return null;
+            
             const deadlineValue = manuscript[deadlineField];
-            const shouldShowDeadline =
-              deadlineValue &&
-              ![
-                "For Publication",
-                "Rejected",
-                "Peer Reviewer Rejected",
-              ].includes(status);
-
-            if (!shouldShowDeadline) return null;
+            if (!deadlineValue) return null;
+            
+            const hideDeadlineForStatuses = [
+              "For Publication",
+              "Rejected",
+              "Peer Reviewer Rejected"
+            ];
+            
+            if (hideDeadlineForStatuses.includes(status)) return null;
 
             return (
               <DeadlineBadge
@@ -513,7 +496,7 @@ const ManuscriptItem = ({
 
       {/* Author & Meta Info */}
       <div className="mt-2 text-sm sm:text-base text-gray-600 break-words space-y-0.5">
-        {role !== "Peer Reviewer" ? (
+        {(role !== "Peer Reviewer" || !currentUserId) ? (
           <>
             <p>
               By{" "}
@@ -546,9 +529,18 @@ const ManuscriptItem = ({
           </>
         ) : (
           <>
-            {manuscript.assignedReviewersMeta?.[currentUserId] &&
+            {(manuscript.assignedReviewersMeta?.[currentUserId] || 
+              (manuscript.previousReviewers?.includes(currentUserId) && 
+               ["For Publication", "Rejected", "Peer Reviewer Rejected"].includes(manuscript.status))) &&
               (() => {
-                const meta = manuscript.assignedReviewersMeta[currentUserId];
+                const isPreviousReviewer = manuscript.previousReviewers?.includes(currentUserId) && 
+                                          !manuscript.assignedReviewers?.includes(currentUserId);
+                const meta = manuscript.assignedReviewersMeta?.[currentUserId] || 
+                           (isPreviousReviewer ? {
+                             assignedAt: manuscript.submittedAt,
+                             acceptedAt: manuscript.submittedAt
+                           } : {});
+                
                 const assignedAt = normalizeTimestamp(meta.assignedAt);
                 const acceptedAt = normalizeTimestamp(meta.acceptedAt);
                 const declinedAt = normalizeTimestamp(meta.declinedAt);
@@ -584,7 +576,7 @@ const ManuscriptItem = ({
                       "Peer Reviewer Rejected",
                     ].includes(manuscript.status) ? (
                       <p className="text-green-700 font-medium">
-                        ✅ Review Completed
+                        {isPreviousReviewer ? "✅ Previously Reviewed" : "✅ Review Completed"}
                       </p>
                     ) : null}
 
@@ -759,18 +751,50 @@ const ManuscriptItem = ({
         (role === "Admin" || 
          role === "Researcher" ||
          (role === "Peer Reviewer" && 
-          // Show if they are assigned as a reviewer
-          (manuscript.assignedReviewers?.includes(currentUserId) || 
-           // OR if they have any submissions
-           (manuscript.reviewerSubmissions || []).some(s => s.reviewerId === currentUserId) ||
-           // OR if they are in the reviewers list of any submission history
-           (manuscript.submissionHistory || []).some(sh => 
-             (sh.reviewers || []).includes(currentUserId) ||
-             (sh.reviewerSubmissions || []).some(s => s.reviewerId === currentUserId)
-           ) ||
-           // OR if they have accepted the invitation
-           (manuscript.assignedReviewersMeta?.[currentUserId]?.acceptedAt)
-          ))
+          (() => {
+            const isAssigned = manuscript.assignedReviewers?.includes(currentUserId);
+            const isPreviousReviewer = (manuscript.previousReviewers || []).includes(currentUserId);
+            const myDecision = manuscript.reviewerDecisionMeta?.[currentUserId]?.decision;
+            const hasDeclined = manuscript.declinedReviewers?.includes(currentUserId);
+            const hasReviewedBefore = isPreviousReviewer || (manuscript.reviewerSubmissions || []).some(s => s.reviewerId === currentUserId);
+            
+            // Only hide if they declined AND never reviewed it before
+            if (hasDeclined && !hasReviewedBefore) return false;
+            
+            // If currently assigned, always show
+            if (isAssigned) return true;
+            
+            // If previously reviewed, check for conflicting decisions
+            if (isPreviousReviewer) {
+              // Hide if reviewer rejected but manuscript was published
+              if (manuscript.status === "For Publication" && myDecision === "reject") {
+                return false;
+              }
+              // Hide if reviewer approved but manuscript was rejected
+              if (["Rejected", "Peer Reviewer Rejected"].includes(manuscript.status) && 
+                  myDecision && myDecision !== "reject") {
+                return false;
+              }
+              // Otherwise, show the manuscript
+              return true;
+            }
+            
+            // For current submissions, check if they have access
+            const hasSubmitted = (manuscript.reviewerSubmissions || []).some(s => s.reviewerId === currentUserId);
+            if (hasSubmitted) {
+              // Apply the same conflict rules for current submissions
+              if (manuscript.status === "For Publication") {
+                return myDecision && myDecision !== "reject";
+              }
+              if (["Rejected", "Peer Reviewer Rejected"].includes(manuscript.status)) {
+                return myDecision === "reject";
+              }
+              return true;
+            }
+            
+            return false;
+          })()
+         )
         ) && (
           <div className="mt-4 border-t pt-3">
             <button
