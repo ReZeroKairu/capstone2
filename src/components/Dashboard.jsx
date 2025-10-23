@@ -463,7 +463,7 @@ const summaryCounts = useMemo(() => {
               return (
                 <div
                   key={m.id}
-                  onClick={() => navigate("/manuscripts")}
+                  onClick={() => navigate(`/manuscripts?manuscriptId=${m.id}`)}
                   className="bg-white rounded-2xl p-5 shadow-md border border-gray-100 hover:shadow-xl transition relative cursor-pointer"
                 >
                   <div className="flex justify-between items-center mb-2">

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import { getDeadlineColor } from "../../utils/deadlineUtils";
 import { parseDateSafe } from "../../utils/dateUtils";
 
@@ -6,14 +6,27 @@ export const DeadlineBadge = ({ startDate, endDate }) => {
   const [remainingText, setRemainingText] = useState("");
   const [percentLeft, setPercentLeft] = useState(null);
   const [colorClass, setColorClass] = useState("");
-
-  if (!startDate || !endDate) return null;
-
-  const s = parseDateSafe(startDate);
-  const e = parseDateSafe(endDate);
-  if (!s || !e) return null;
+  
+  // Refs to track previous values
+  const prevValues = useRef({
+    remainingText: "",
+    percentLeft: null,
+    colorClass: ""
+  });
+  
+  // Memoize the parsed dates
+  const parsedDates = useMemo(() => {
+    if (!startDate || !endDate) return null;
+    const s = parseDateSafe(startDate);
+    const e = parseDateSafe(endDate);
+    return s && e ? { start: s, end: e } : null;
+  }, [startDate, endDate]);
 
   useEffect(() => {
+    if (!parsedDates) return;
+    
+    const { start: s, end: e } = parsedDates;
+    
     const updateCountdown = () => {
       const now = new Date();
       const total = e - s;
@@ -37,20 +50,35 @@ export const DeadlineBadge = ({ startDate, endDate }) => {
       const timeParts = [];
       if (days > 0) timeParts.push(`${days}d`);
       if (hours > 0 || days > 0) timeParts.push(`${hours}h`);
-      if (minutes > 0 || (days === 0 && hours === 0))
-        timeParts.push(`${minutes}m`);
+      if (minutes > 0 || (days === 0 && hours === 0)) timeParts.push(`${minutes}m`);
       if (days === 0 && hours === 0) timeParts.push(`${seconds}s`);
-      setRemainingText(`${timeParts.join(" ")} left`);
+      
+      const newRemainingText = `${timeParts.join(" ")} left`;
+      const newPercentLeft = Math.max(0, Math.min(1, remaining / total));
+      const newColorClass = getDeadlineColor(s, e);
 
-      const percent = Math.max(0, Math.min(1, remaining / total));
-      setPercentLeft(percent);
-      setColorClass(getDeadlineColor(s, e));
+      // Only update state if values have actually changed
+      if (newRemainingText !== prevValues.current.remainingText) {
+        setRemainingText(newRemainingText);
+        prevValues.current.remainingText = newRemainingText;
+      }
+      if (newPercentLeft !== prevValues.current.percentLeft) {
+        setPercentLeft(newPercentLeft);
+        prevValues.current.percentLeft = newPercentLeft;
+      }
+      if (newColorClass !== prevValues.current.colorClass) {
+        setColorClass(newColorClass);
+        prevValues.current.colorClass = newColorClass;
+      }
     };
 
     updateCountdown();
-    const timer = setInterval(updateCountdown, 1000); // ⏱ tick every second
+    const timer = setInterval(updateCountdown, 1000);
     return () => clearInterval(timer);
-  }, [s, e]);
+  }, [parsedDates]); // Only depend on parsedDates
+
+  if (!parsedDates) return null;
+  const { end } = parsedDates;
 
   return (
     <div
@@ -62,11 +90,12 @@ export const DeadlineBadge = ({ startDate, endDate }) => {
       }
     >
       Deadline:{" "}
-      {e.toLocaleDateString("en-US", {
+      {end.toLocaleDateString("en-US", {
         year: "numeric",
         month: "long",
         day: "numeric",
-      })}{" "}
+      })}
+      {" "}
       — {remainingText}
     </div>
   );

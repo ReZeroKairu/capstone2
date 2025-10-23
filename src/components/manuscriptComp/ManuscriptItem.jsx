@@ -16,6 +16,7 @@ import {
 import PeerReviewerDetails from "./PeerReviewerDetails";
 import ManuscriptStatusBadge from "../ManuscriptStatusBadge";
 import DeadlineBadge from "./DeadlineBadge";
+import StatusActionButtons from "./StatusActionButtons";
 
 const statusToDeadlineField = {
   "Assigning Peer Reviewer": "invitationDeadline",
@@ -221,9 +222,8 @@ const ManuscriptItem = ({
       };
     });
 
-  const showAssignButton =
-    role === "Admin" &&
-    ["Assigning Peer Reviewer", "Peer Reviewer Assigned"].includes(status);
+  // This is now handled by StatusActionButtons
+  const showAssignButton = false;
 
   const toggleReviewerExpand = (reviewerId) =>
     setExpandedReviewerIds((prev) => ({
@@ -456,6 +456,27 @@ const ManuscriptItem = ({
         </p>
 
         <div className="flex items-center gap-2">
+          {(() => {
+            const deadlineField = statusToDeadlineField[status];
+            const deadlineValue = deadlineField ? manuscript[deadlineField] : null;
+            const hideDeadlineForStatuses = [
+              "For Publication",
+              "Rejected",
+              "Peer Reviewer Rejected"
+            ];
+            
+            if (deadlineField && deadlineValue && !hideDeadlineForStatuses.includes(status)) {
+              return (
+                <DeadlineBadge
+                  start={new Date()}
+                  end={deadlineValue}
+                  formatDate={formatDate}
+                />
+              );
+            }
+            return null;
+          })()}
+
           {hasRejection &&
             (status === "Back to Admin" || status === "Rejected") && (
               <span className="px-3 py-1 rounded-full text-xs sm:text-sm font-semibold shadow-sm bg-red-100 text-red-800">
@@ -464,33 +485,8 @@ const ManuscriptItem = ({
             )}
           <ManuscriptStatusBadge
             status={status}
-            revisionDeadline={manuscript.revisionDeadline}
-            finalizationDeadline={manuscript.finalizationDeadline}
+            className="ml-2"
           />
-
-          {(() => {
-            const deadlineField = statusToDeadlineField[status];
-            if (!deadlineField) return null;
-            
-            const deadlineValue = manuscript[deadlineField];
-            if (!deadlineValue) return null;
-            
-            const hideDeadlineForStatuses = [
-              "For Publication",
-              "Rejected",
-              "Peer Reviewer Rejected"
-            ];
-            
-            if (hideDeadlineForStatuses.includes(status)) return null;
-
-            return (
-              <DeadlineBadge
-                start={new Date()}
-                end={deadlineValue}
-                formatDate={formatDate}
-              />
-            );
-          })()}
         </div>
       </div>
 
@@ -673,78 +669,23 @@ const ManuscriptItem = ({
               Resubmit Revised Manuscript
             </button>
           )}
-
-        {showAssignButton && (
-          <>
-            <button
-              onClick={async () => {
-                await assignReviewer(
-                  id,
-                  manuscript.status,
-                  statusToDeadlineField
-                );
-              }}
-              className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition font-medium text-sm sm:text-base"
-            >
-              {hasReviewer ? "Assign More Reviewers" : "Assign Reviewer"}
-            </button>
-
-            {hasReviewer && (
-              <button
-                onClick={() => {
-                  if (
-                    window.confirm(
-                      "Are you sure you want to unassign ALL reviewers from this manuscript?"
-                    )
-                  ) {
-                    unassignReviewer(id);
-                  }
-                }}
-                className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition font-medium text-sm sm:text-base"
-              >
-                Unassign All Reviewers
-              </button>
-            )}
-          </>
-        )}
-
-        {role === "Admin" && status === "Back to Admin" && (
-          <div className="flex flex-wrap gap-2 mt-2">
-            <button
-              onClick={() => handleStatusChange(id, "For Revision (Minor)")}
-              className="px-4 py-2 bg-yellow-400 text-black rounded hover:bg-yellow-500"
-            >
-              For Revision (Minor)
-            </button>
-            <button
-              onClick={() => handleStatusChange(id, "For Revision (Major)")}
-              className="px-4 py-2 bg-orange-500 text-white rounded hover:bg-orange-600"
-            >
-              For Revision (Major)
-            </button>
-            <button
-              onClick={() => handleStatusChange(id, "For Publication")}
-              className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
-            >
-              For Publication
-            </button>
-            <button
-              onClick={() => handleStatusChange(id, "Peer Reviewer Rejected")}
-              className="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600"
-            >
-              Reject Manuscript
-            </button>
-            <button
-              onClick={async () => {
-                await assignReviewer(id, status, statusToDeadlineField);
-              }}
-              className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-            >
-              Assign Reviewer
-            </button>
-          </div>
-        )}
       </div>
+
+      {/* Status Action Buttons - Moved below the card */}
+      {role === "Admin" && status !== "Pending" && (
+        <div className="mt-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
+          <h3 className="text-lg font-medium text-gray-800 mb-3">Manuscript Status</h3>
+          <StatusActionButtons
+            id={id}
+            status={status}
+            assignReviewer={assignReviewer}
+            statusToDeadlineField={statusToDeadlineField}
+            handleStatusChange={handleStatusChange}
+            hasReviewer={hasReviewer}
+            unassignReviewer={unassignReviewer}
+          />
+        </div>
+      )}
 
       {/* Submission History - Show for all manuscripts, but only if user has appropriate role */}
       {manuscript && (

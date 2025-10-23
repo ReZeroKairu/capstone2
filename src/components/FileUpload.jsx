@@ -148,7 +148,7 @@ const FileUpload = ({
                 <button type="button" onClick={handleRemoveFile} className="p-1.5 text-gray-500 hover:text-red-600 focus:outline-none" title="Remove file">Remove</button>
               </div>
             </div>
-          </div>
+          </div>  
         )}
       </div>
 
@@ -158,7 +158,7 @@ const FileUpload = ({
         </div>
       )}
 
-      <p className="mt-1 text-sm text-gray-500">Accepted formats: {accept.replace(/\./g, ' ').replace(/,/g, ', ')} (Max 10MB)</p>
+      <p className="mt-1 text-sm text-gray-500">Accepted formats: {accept.replace(/\./g, ' ').replace(/,/g, ', ')} (Max 15MB)</p>
       {error && <p className="mt-1 text-sm text-red-600" role="alert">{error}</p>}
     </div>
   );

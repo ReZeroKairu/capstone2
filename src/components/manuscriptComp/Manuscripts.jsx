@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { doc, updateDoc, getDoc } from "firebase/firestore";
+import { useSearchParams } from "react-router-dom";
 import { db } from "../../firebase/firebase";
 import { useManuscriptsData } from "../../hooks/useManuscriptsData";
 import { useManuscriptStatus } from "../../hooks/useManuscriptStatus";
@@ -16,9 +17,34 @@ const Manuscripts = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [manuscriptsPerPage, setManuscriptsPerPage] = useState(10);
   const [showFullName, setShowFullName] = useState(true);
-
+  const [searchParams] = useSearchParams();
+  const manuscriptId = searchParams.get('manuscriptId');
+  const manuscriptRef = useRef(null);
+  
   // Custom hooks (data + actions)
   const { manuscripts, users, user, role, loading } = useManuscriptsData();
+  
+  // Scroll to specific manuscript if manuscriptId is in URL
+  useEffect(() => {
+    if (manuscriptId && manuscriptRef.current && manuscripts?.length > 0) {
+      // Small timeout to ensure the DOM is fully rendered
+      const timer = setTimeout(() => {
+        if (manuscriptRef.current) {
+          manuscriptRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          // Highlight the manuscript briefly
+          const element = manuscriptRef.current;
+          element.classList.add('ring-2', 'ring-blue-500');
+          setTimeout(() => {
+            if (element) {
+              element.classList.remove('ring-2', 'ring-blue-500');
+            }
+          }, 3000);
+        }
+      }, 100);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [manuscriptId, manuscripts]);
   const { handleStatusChange } = useManuscriptStatus();
 
   // --- Loading / Access Control ---
@@ -184,21 +210,29 @@ const Manuscripts = () => {
       />
 
       <ul className="space-y-4">
-        {currentManuscripts.map((m) => (
-          <ManuscriptItem
-            key={m.id}
-            manuscript={m}
-            role={role}
-            users={users}
-            currentUserId={user?.uid}
-            showFullName={showFullName}
-            setShowFullName={setShowFullName}
-            formatDate={formatFirestoreDate}
-            handleStatusChange={handleStatusChange}
-            handleAssign={() => {}}
-            unassignReviewer={handleUnassignReviewer}
-          />
-        ))}
+        {currentManuscripts.map((manuscript) => {
+          const isTargetManuscript = manuscript.id === manuscriptId;
+          return (
+            <div 
+              key={manuscript.id} 
+              ref={isTargetManuscript ? manuscriptRef : null}
+              className={isTargetManuscript ? 'transition-all duration-500' : ''}
+            >
+              <ManuscriptItem
+                manuscript={manuscript}
+                role={role}
+                users={users}
+                handleAssign={() => {}}
+                unassignReviewer={handleUnassignReviewer}
+                showFullName={showFullName}
+                setShowFullName={setShowFullName}
+                currentUserId={user?.uid}
+                formatDate={formatFirestoreDate}
+                handleStatusChange={handleStatusChange}
+              />
+            </div>
+          );
+        })}
       </ul>
 
       <PaginationControls

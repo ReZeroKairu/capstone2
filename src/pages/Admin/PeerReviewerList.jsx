@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { getAuth } from "firebase/auth";
 import { db } from "../../firebase/firebase";
@@ -7,7 +7,7 @@ import {
   getDocs,
   doc,
   updateDoc,
-  query,
+  query,  
   where,
   getDoc,
   addDoc,
@@ -24,6 +24,7 @@ export default function PeerReviewerList() {
   const [itemsPerPage, setItemsPerPage] = useState(5);
   const [manuscriptData, setManuscriptData] = useState(null);
   const [previousReviewers, setPreviousReviewers] = useState([]);
+  const [refreshTrigger, setRefreshTrigger] = useState(0); // Add this line
   const location = useLocation();
   const navigate = useNavigate();
   const params = new URLSearchParams(location.search);
@@ -50,22 +51,81 @@ export default function PeerReviewerList() {
     return rangeWithDots;
   };
 
+  // These statuses will be counted towards the reviewer's active workload
+  const ACTIVE_STATUSES = [
+    'Assigning Peer Reviewer',
+    'Peer Reviewer Assigned',
+    'Peer Reviewer Reviewing',
+    'For Revision (Minor)',
+    'For Revision (Major)',
+    'Back to Admin'
+  ];
+  
+  // These statuses indicate a revision is in progress
+  const REVISION_STATUSES = [
+    'For Revision (Minor)',
+    'For Revision (Major)'
+  ];
+
   const fetchReviewers = async () => {
     setLoading(true);
+    console.log('Fetching reviewers...');
     try {
+      // Get all peer reviewers
       const usersSnap = await getDocs(collection(db, "Users"));
       const allUsers = usersSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
       const reviewersOnly = allUsers.filter((u) => u.role === "Peer Reviewer");
+      console.log(`Found ${reviewersOnly.length} peer reviewers`);
 
       const reviewersWithCount = await Promise.all(
         reviewersOnly.map(async (r) => {
-          const manuscriptsSnap = await getDocs(
-            query(
-              collection(db, "manuscripts"),
-              where("assignedReviewers", "array-contains", r.id)
-            )
-          );
-          return { ...r, assignedCount: manuscriptsSnap.size };
+          try {
+            // Get all manuscripts where this reviewer is assigned
+            const manuscriptsSnap = await getDocs(
+              query(
+                collection(db, "manuscripts"),
+                where("assignedReviewers", "array-contains", r.id)
+              )
+            );
+            
+            // Log all manuscripts and their statuses for this reviewer with more details
+            console.log(`\n📋 Reviewer ${r.id} - All assigned manuscripts (${manuscriptsSnap.docs.length} total):`);
+            
+            const statusCounts = {};
+            manuscriptsSnap.docs.forEach(doc => {
+              const data = doc.data();
+              const status = data.status || 'No Status';
+              statusCounts[status] = (statusCounts[status] || 0) + 1;
+              
+              console.log(`- ${doc.id}: "${status}"`);
+              console.log(`  Assigned: ${data.assignedAt ? new Date(data.assignedAt.seconds * 1000).toLocaleString() : 'N/A'}`);
+              console.log(`  Active: ${ACTIVE_STATUSES.includes(status) ? '✅' : '❌'}`);
+              console.log(`  Revision: ${REVISION_STATUSES.includes(status) ? '🔄' : '➖'}`);
+            });
+            
+            // Count only manuscripts with the exact statuses we care about
+            const activeManuscripts = manuscriptsSnap.docs.filter(doc => {
+              const status = doc.data().status || '';
+              return ACTIVE_STATUSES.includes(status);
+            });
+            
+            // Count only manuscripts that are in revision status
+            const revisionManuscripts = manuscriptsSnap.docs.filter(doc => {
+              const status = doc.data().status || '';
+              return REVISION_STATUSES.includes(status);
+            });
+            
+            console.log(`\n📊 Reviewer ${r.id} Summary:`);
+            console.log('Status Counts:', statusCounts);
+            console.log(`- Total assigned: ${manuscriptsSnap.docs.length}`);
+            console.log(`- Active manuscripts: ${activeManuscripts.length} (${ACTIVE_STATUSES.join(', ')})`);
+            console.log(`- In revision: ${revisionManuscripts.length} (${REVISION_STATUSES.join(', ')})`);
+            console.log(`- Other statuses: ${manuscriptsSnap.docs.length - activeManuscripts.length}`);
+            return { ...r, assignedCount: activeManuscripts.length };
+          } catch (error) {
+            console.error(`Error processing reviewer ${r.id}:`, error);
+            return { ...r, assignedCount: 0 }; // Return 0 if there's an error
+          }
         })
       );
 
@@ -78,11 +138,12 @@ export default function PeerReviewerList() {
   };
 
   useEffect(() => {
+    console.log('useEffect triggered', { manuscriptId, refreshTrigger });
     fetchReviewers();
     if (manuscriptId) {
       fetchManuscriptData();
     }
-  }, [manuscriptId]);
+  }, [manuscriptId, refreshTrigger]); // Add refreshTrigger to dependencies
 
   const fetchManuscriptData = async () => {
     try {
@@ -215,11 +276,25 @@ const newMeta = {
         
         const newStatus = hasAcceptedReviewer ? "Peer Reviewer Assigned" : "Assigning Peer Reviewer";
 
-        await updateDoc(msRef, {
+        // Update Firestore
+        const updateData = {
           assignedReviewers: updatedAssigned,
           assignedReviewersMeta: updatedMeta,
           status: newStatus,
-        });
+        };
+        
+        console.log('Updating Firestore with:', updateData);
+        await updateDoc(msRef, updateData);
+        console.log('Firestore update complete');
+
+        // Update the local state immediately for better UX
+        setReviewers(prevReviewers => 
+          prevReviewers.map(reviewer => 
+            reviewer.id === reviewerId 
+              ? { ...reviewer, assignedCount: (reviewer.assignedCount || 0) + 1 }
+              : reviewer
+          )
+        );
 
         // Send notification
         const notificationRef = collection(db, "Users", reviewerId, "Notifications");
@@ -236,7 +311,8 @@ const newMeta = {
           invitedAt,
         });
 
-        fetchReviewers();
+        // Trigger a complete refresh to ensure data consistency
+        setRefreshTrigger(prev => prev + 1);
         alert("Reviewer successfully invited!");
       }
     } catch (err) {
@@ -245,16 +321,29 @@ const newMeta = {
     }
   };
 
-  const filteredReviewers = reviewers.filter((r) => {
-    if (!searchQuery) return true;
-    const q = searchQuery.toLowerCase();
-    return (
-      r.firstName?.toLowerCase().includes(q) ||
-      r.lastName?.toLowerCase().includes(q) ||
-      r.middleName?.toLowerCase().includes(q) ||
-      r.email?.toLowerCase().includes(q)
-    );
-  });
+  // Memoize the filtered reviewers to prevent unnecessary recalculations
+  const filteredReviewers = React.useMemo(() => {
+    console.log('Filtering reviewers...', { reviewerCount: reviewers.length, searchQuery });
+    return reviewers.filter((r) => {
+      if (!searchQuery) return true;
+      const q = searchQuery.toLowerCase();
+      return (
+        (r.name && r.name.toLowerCase().includes(q)) ||
+        (r.email && r.email.toLowerCase().includes(q)) ||
+        (r.firstName && r.firstName.toLowerCase().includes(q)) ||
+        (r.lastName && r.lastName.toLowerCase().includes(q))
+      );
+    });
+  }, [reviewers, searchQuery]);
+
+  // Log when filtered reviewers change
+  React.useEffect(() => {
+    console.log('Filtered reviewers updated:', {
+      totalReviewers: reviewers.length,
+      filteredCount: filteredReviewers.length,
+      searchQuery
+    });
+  }, [filteredReviewers, reviewers.length, searchQuery]);
 
   const indexOfLast = currentPage * itemsPerPage;
   const indexOfFirst = indexOfLast - itemsPerPage;

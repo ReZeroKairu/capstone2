@@ -30,6 +30,7 @@ import { useUserLogs } from "../../hooks/useUserLogs";
 import { getDeadlineColor, getRemainingTime } from "../../utils/deadlineUtils";
 import { parseDateSafe } from "../../utils/dateUtils";
 import { recalcManuscriptStatus } from "../../utils/recalcManuscriptStatus";
+import { useManuscriptStatus } from "../../hooks/useManuscriptStatus";
 
 import {
   buildRestUrlSafe,
@@ -186,20 +187,37 @@ export default function ReviewManuscript() {
     });
   };
 
+  // Get handleStatusChange from useManuscriptStatus
+  const { handleStatusChange } = useManuscriptStatus();
+
+  // State for tracking submission status
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
   // Submit decision - preserved in component (keeps state updates intact)
   const handleDecisionSubmit = async (manuscriptId, versionNumber) => {
+    // Show confirmation dialog
+    const confirmSubmit = window.confirm("Are you sure you want to submit your review? This action cannot be undone.");
+    if (!confirmSubmit) return;
+
     const selected = manuscripts.find((m) => m.id === manuscriptId);
-    if (!selected) return;
+    if (!selected) {
+      alert("Manuscript not found. Please refresh the page and try again.");
+      return;
+    }
 
     const decision = activeDecision[manuscriptId];
     const review = reviews[manuscriptId];
     if (!decision || !review?.comment) {
-      alert("Please provide your review comments before submitting.");
+      alert("Please provide your review comments and decision before submitting.");
       return;
     }
 
-    let fileUrl = null;
-    let fileName = null;
+    // Set loading state
+    setIsSubmitting(true);
+    
+    try {
+      let fileUrl = null;
+      let fileName = null;
 
     if (reviewFiles[manuscriptId]) {
       const file = reviewFiles[manuscriptId];
@@ -254,8 +272,8 @@ export default function ReviewManuscript() {
       }),
     });
 
-    // Recalculate status
-    await recalcManuscriptStatus(manuscriptId);
+    // Recalculate status with handleStatusChange to ensure proper status updates
+    await recalcManuscriptStatus(manuscriptId, handleStatusChange);
 
     // Peer reviewer hooks
     await handlePeerReviewerDecision(
@@ -269,20 +287,50 @@ export default function ReviewManuscript() {
       selected.manuscriptTitle || selected.title || "Untitled",
       reviewerId
     );
-    await logManuscriptReview(
-      manuscriptId,
-      selected.manuscriptTitle || selected.title || "Untitled",
-      decision
-    );
+      await logManuscriptReview(
+        manuscriptId,
+        selected.manuscriptTitle || selected.title || "Untitled",
+        decision
+      );
+      
+      // Show success message
+      alert("Your review has been submitted successfully!");
+    } catch (error) {
+      console.error("Error submitting review:", error);
+      alert(`Failed to submit review: ${error.message || 'Please try again.'}`);
+    } finally {
+      // Reset loading state
+      setIsSubmitting(false);
+    }
 
-    // Update local state
+    // Update local state with the new review submission
     setManuscripts((prev) =>
       prev.map((m) =>
         m.id === manuscriptId
           ? {
               ...m,
-              reviewerDecisionMeta: updatedDecisions,
-              status: m.status,
+              reviewerDecisionMeta: {
+                ...m.reviewerDecisionMeta,
+                [reviewerId]: {
+                  decision,
+                  comment: review.comment,
+                  decidedAt: new Date(),
+                  reviewFileUrl: fileUrl,
+                  reviewFileName: fileName || null,
+                },
+              },
+              reviewerSubmissions: [
+                ...(m.reviewerSubmissions || []),
+                {
+                  reviewerId,
+                  comment: review.comment,
+                  status: "Completed",
+                  completedAt: new Date(),
+                  reviewFileUrl: fileUrl,
+                  reviewFileName: fileName || null,
+                  manuscriptVersionNumber: versionNumber || 1,
+                },
+              ],
             }
           : m
       )
@@ -379,17 +427,35 @@ export default function ReviewManuscript() {
                   ].includes(m.status) && (
                     <DeadlineBadge
                       startDate={
-                        parseDateSafe(
-                          m.assignedReviewersMeta[reviewerId]?.respondedAt
-                        ) ||
-                        parseDateSafe(
-                          m.assignedReviewersMeta[reviewerId]?.assignedAt
-                        ) ||
-                        new Date()
+                        (() => {
+                          // Try to get the respondedAt date first
+                          const respondedAt = m.assignedReviewersMeta?.[reviewerId]?.respondedAt;
+                          if (respondedAt) {
+                            const parsed = parseDateSafe(respondedAt);
+                            if (parsed && !isNaN(parsed.getTime())) return parsed;
+                          }
+                          
+                          // Fall back to assignedAt
+                          const assignedAt = m.assignedReviewersMeta?.[reviewerId]?.assignedAt;
+                          if (assignedAt) {
+                            const parsed = parseDateSafe(assignedAt);
+                            if (parsed && !isNaN(parsed.getTime())) return parsed;
+                          }
+                          
+                          // Default to current date if no valid dates found
+                          return new Date();
+                        })()
                       }
-                      endDate={parseDateSafe(
-                        m.assignedReviewersMeta[reviewerId]?.deadline
-                      )}
+                      endDate={
+                        (() => {
+                          const deadline = m.assignedReviewersMeta?.[reviewerId]?.deadline;
+                          if (deadline) {
+                            const parsed = parseDateSafe(deadline);
+                            if (parsed && !isNaN(parsed.getTime())) return parsed;
+                          }
+                          return null;
+                        })()
+                      }
                     />
                   )}
 
@@ -397,12 +463,19 @@ export default function ReviewManuscript() {
                   {getManuscriptDisplayTitle(m)}
                 </div>
                 <div className="text-xs text-gray-500 mt-1">
-                  Invited by{" "}
-                  {users[
-                    m.assignedReviewersMeta?.[reviewerId]?.assignedBy ||
-                      m.assignedReviewersMeta?.[reviewerId]?.invitedBy
-                  ]?.firstName || "Unknown"}{" "}
-                  • Status: <span className="font-medium">{m.status}</span>
+                  <div>Invited by{" "}
+                    {users[
+                      m.assignedReviewersMeta?.[reviewerId]?.assignedBy ||
+                        m.assignedReviewersMeta?.[reviewerId]?.invitedBy
+                    ]?.firstName || "Unknown"}{" "}
+                    • Status: <span className="font-medium">{m.status}</span>
+                  </div>
+                  {m.assignedReviewersMeta?.[reviewerId]?.respondedAt && (
+                    <div>
+                      Responded:{" "}
+                      {new Date(m.assignedReviewersMeta[reviewerId].respondedAt.seconds * 1000).toLocaleString()}
+                    </div>
+                  )}
                 </div>
               </div>
 

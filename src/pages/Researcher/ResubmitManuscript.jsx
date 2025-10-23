@@ -268,7 +268,7 @@ export default function ResubmitManuscript() {
         fileSize: newFile?.size || 0,
         storagePath: newFile?.storagePath || null,
         versionNumber: newVersion,
-        status: newStatus || 'Under Review',
+        status: newStatus || 'Assigning Peer Reviewer',
         resubmittedAt: serverTimestamp(),
         revisionNotes: revisionNotes || "Resubmitted manuscript",
         previousVersion: currentVersion || 1,

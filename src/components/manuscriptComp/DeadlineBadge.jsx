@@ -4,16 +4,20 @@ import { getDeadlineColor, getRemainingTime } from "../../utils/deadlineUtils";
 
 const DeadlineBadge = ({ start, end, formatDate }) => {
   const [timeLeft, setTimeLeft] = useState("");
+  const [isOverdue, setIsOverdue] = useState(false);
   const [colorClass, setColorClass] = useState("");
 
   useEffect(() => {
     const updateCountdown = () => {
-      const { days, hours, minutes } = getRemainingTime(end);
+      const { days, hours, minutes, isOverdue: overdue } = getRemainingTime(end);
       setColorClass(getDeadlineColor(start, end));
+      setIsOverdue(overdue);
 
-      setTimeLeft(`${days}d ${hours}h ${minutes}m left`);
-      if (days === 0 && hours === 0 && minutes === 0)
-        setTimeLeft("Deadline Passed");
+      if (overdue) {
+        setTimeLeft("Overdue");
+      } else {
+        setTimeLeft(`${days}d ${hours}h ${minutes}m left`);
+      }
     };
 
     updateCountdown();
@@ -23,10 +27,12 @@ const DeadlineBadge = ({ start, end, formatDate }) => {
 
   return (
     <span
-      className={`inline-flex items-center px-3 py-1 rounded-full text-xs sm:text-sm font-semibold shadow-sm ${colorClass}`}
+      className={`inline-flex items-center px-3 py-1 rounded-full text-xs sm:text-sm font-semibold shadow-sm ${
+        isOverdue ? 'bg-red-100 text-red-800' : colorClass
+      }`}
     >
-      ⏳ Deadline: {formatDate(end)}
-      <span className="ml-2 text-gray-600">({timeLeft})</span>
+      {isOverdue ? '⚠️ Overdue' : `⏳ Deadline: ${formatDate(end)}`}
+      {!isOverdue && <span className="ml-2 text-gray-600">({timeLeft})</span>}
     </span>
   );
 };

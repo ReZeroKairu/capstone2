@@ -358,7 +358,26 @@ const ReviewerInvitations = () => {
           (m) => m.invitationStatus === "accepted"
         );
         if (hasAcceptedReviewer) {
+          // Set initial status to Peer Reviewer Assigned
           updateData.status = "Peer Reviewer Assigned";
+          
+          // Schedule status update to Peer Reviewer Reviewing after 5 seconds
+          setTimeout(async () => {
+            try {
+              const msSnap = await getDoc(msRef);
+              if (msSnap.exists()) {
+                const currentStatus = msSnap.data().status;
+                // Only update if the status is still Peer Reviewer Assigned
+                if (currentStatus === "Peer Reviewer Assigned") {
+                  await updateDoc(msRef, {
+                    status: "Peer Reviewer Reviewing"
+                  });
+                }
+              }
+            } catch (error) {
+              console.error("Error updating to Peer Reviewer Reviewing status:", error);
+            }
+          }, 5000); // 5 seconds delay
         }
       }
 

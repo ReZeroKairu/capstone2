@@ -89,14 +89,26 @@ export default function ReviewModal({
 
   const invitedMeta = manuscript.assignedReviewersMeta?.[reviewerId] || {};
   const invitedById = invitedMeta?.assignedBy || invitedMeta?.invitedBy || null;
-  const invitedAt = invitedMeta?.assignedAt || invitedMeta?.invitedAt || null;
-  const acceptedAt = invitedMeta?.respondedAt || null;
+  
+  // Safely parse dates with proper Firestore timestamp handling
+  const parseFirestoreDate = (date) => {
+    if (!date) return null;
+    // If it's a Firestore timestamp
+    if (date.toDate) return date.toDate();
+    // If it's a timestamp object with seconds
+    if (date.seconds) return new Date(date.seconds * 1000);
+    // If it's already a Date
+    if (date instanceof Date) return date;
+    // If it's a string that can be parsed to a date
+    const parsed = new Date(date);
+    return isNaN(parsed.getTime()) ? null : parsed;
+  };
+
+  const invitedAt = parseFirestoreDate(invitedMeta?.assignedAt || invitedMeta?.invitedAt);
+  const acceptedAt = parseFirestoreDate(invitedMeta?.respondedAt);
   const invitationStatus = invitedMeta?.invitationStatus || "pending";
-  const hasAccepted =
-    invitationStatus === "accepted" || invitedMeta?.decision === "accepted";
-  const deadline = invitedMeta?.deadline
-    ? new Date(invitedMeta.deadline?.toDate?.() || invitedMeta.deadline)
-    : null;
+  const hasAccepted = invitationStatus === "accepted" || invitedMeta?.decision === "accepted";
+  const deadline = parseFirestoreDate(invitedMeta?.deadline);
 
   const inviter =
     invitedById && users[invitedById]
@@ -112,11 +124,8 @@ export default function ReviewModal({
     manuscript.abstract ||
     "—";
 
-  const startDate =
-    myDecision === "pending" && !hasSubmittedReview
-      ? new Date()
-      : parseDateSafe(acceptedAt) || parseDateSafe(invitedAt);
-  const endDate = parseDateSafe(deadline);
+  const startDate = hasAccepted ? (acceptedAt || invitedAt || new Date()) : new Date();
+  const endDate = deadline;
 
   const handleOverlayClick = (e) => {
     if (e.target === e.currentTarget) {
@@ -141,7 +150,7 @@ export default function ReviewModal({
             </h2>
             <div className="text-sm text-gray-600">
               Invited by {inviter} • Invited at:{" "}
-              {invitedAt ? parseDateSafe(invitedAt).toLocaleString() : "—"}
+              {invitedAt ? invitedAt.toLocaleString() : "—"}
             </div>
             <div className="text-sm text-gray-600 mt-1">
               Status: <span className="font-medium">{manuscript.status}</span>
@@ -446,7 +455,9 @@ export default function ReviewModal({
                   </span>
 
                   <span className="text-xs text-gray-500">
-                    {new Date(submission.completedAt).toLocaleString()}
+                    {submission.completedAt ? (
+                      parseFirestoreDate(submission.completedAt)?.toLocaleString() || '—'
+                    ) : '—'}
                   </span>
                 </div>
 

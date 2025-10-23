@@ -8,14 +8,23 @@ import { auth } from "../firebase/firebase";
  */
 export const getRemainingTime = (endDate) => {
   const now = new Date();
-  const diff = parseDateSafe(endDate) - now;
-  if (diff <= 0) return { days: 0, hours: 0, minutes: 0, totalMs: 0 };
+  const end = parseDateSafe(endDate);
+  const diff = end - now;
+  const isOverdue = diff <= 0;
+  
+  if (isOverdue) {
+    const overdueMs = Math.abs(diff);
+    const days = Math.floor(overdueMs / (1000 * 60 * 60 * 24));
+    const hours = Math.floor((overdueMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+    const minutes = Math.floor((overdueMs % (1000 * 60 * 60)) / (1000 * 60));
+    return { days, hours, minutes, totalMs: overdueMs, isOverdue: true };
+  }
 
   const days = Math.floor(diff / (1000 * 60 * 60 * 24));
   const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
   const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
 
-  return { days, hours, minutes, totalMs: diff };
+  return { days, hours, minutes, totalMs: diff, isOverdue: false };
 };
 
 /**

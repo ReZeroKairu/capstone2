@@ -1,6 +1,5 @@
 // src/components/Manuscripts/ManuscriptStatusBadge.jsx
 import React from "react";
-import { getRemainingTime } from "../utils/deadlineUtils";
 
 const statusColors = {
   Pending: "bg-gray-100 text-gray-800",
@@ -20,48 +19,13 @@ const statusColors = {
 
 const ManuscriptStatusBadge = ({
   status,
-  revisionDeadline,
-  finalizationDeadline,
   className = "",
 }) => {
-  const getStatusText = () => {
-    let deadline = null;
-
-    if (
-      status === "For Revision (Minor)" ||
-      status === "For Revision (Major)"
-    ) {
-      deadline = revisionDeadline;
-    } else if (status === "In Finalization") {
-      deadline = finalizationDeadline;
-    }
-
-    if (deadline) {
-      const { days, hours, minutes, totalMs } = getRemainingTime(deadline);
-      const isOverdue = totalMs <= 0;
-
-      return (
-        <>
-          <span>{status}</span>
-          <span className="ml-2 text-xs font-normal">
-            {isOverdue
-              ? `Overdue by ${days}d ${hours}h ${minutes}m`
-              : `Due in ${days}d ${hours}h ${minutes}m`}
-          </span>
-        </>
-      );
-    }
-
-    return status;
-  };
-
   return (
     <span
-      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-        statusColors[status] || statusColors.default
-      } ${className}`}
+      className={`inline-flex items-center px-3 py-1 rounded-full text-xs sm:text-sm font-medium ${statusColors[status] || statusColors.default} ${className}`}
     >
-      {getStatusText()}
+      {status}
     </span>
   );
 };
