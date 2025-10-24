@@ -52,28 +52,57 @@ export const getDeadlineColor = (startDate, endDate) => {
 
 /**
  * Get the active deadline for a manuscript based on role and status
+ * For Peer Reviewers: Returns their individual deadline
+ * For Admins: Returns the latest deadline among all reviewers, or falls back to manuscript-level deadlines
  */
-export const getActiveDeadline = (manuscript, role) => {
+export const getActiveDeadline = (manuscript, role, currentUserId) => {
   if (!manuscript) return null;
 
-  if (role === "Peer Reviewer") {
-    const meta = manuscript.assignedReviewersMeta?.[auth.currentUser.uid];
-    return meta?.deadline ? new Date(meta.deadline) : null;
-  }
-
-  // Admin sees deadlines for finalization/revision
-  if (
-    ["Back to Admin", "For Revision (Minor)", "For Revision (Major)"].includes(
-      manuscript.status
-    )
-  ) {
-    return manuscript.finalizationDeadline
-      ? new Date(manuscript.finalizationDeadline)
+  // For Peer Reviewers, return their individual deadline
+  if (role === "Peer Reviewer" && currentUserId) {
+    const meta = manuscript.assignedReviewersMeta?.[currentUserId];
+    if (meta?.deadline) {
+      return meta.deadline?.toDate ? meta.deadline.toDate() : new Date(meta.deadline);
+    }
+    // Fallback to manuscript-level review deadline if no individual deadline set
+    return manuscript.reviewDeadline 
+      ? (manuscript.reviewDeadline.toDate ? manuscript.reviewDeadline.toDate() : new Date(manuscript.reviewDeadline))
       : null;
   }
 
-  // Default review deadline
-  return manuscript.reviewDeadline ? new Date(manuscript.reviewDeadline) : null;
+  // For Admins, handle different statuses
+  if (role === "Admin") {
+    // Check for finalization/revision deadlines first
+    if (["Back to Admin", "For Revision (Minor)", "For Revision (Major)"].includes(manuscript.status)) {
+      if (manuscript.finalizationDeadline) {
+        return manuscript.finalizationDeadline.toDate 
+          ? manuscript.finalizationDeadline.toDate() 
+          : new Date(manuscript.finalizationDeadline);
+      }
+    }
+
+    // For manuscripts with reviewers, find the latest deadline
+    if (manuscript.assignedReviewersMeta) {
+      let latestDeadline = null;
+      
+      // Check each reviewer's deadline
+      Object.values(manuscript.assignedReviewersMeta).forEach(meta => {
+        if (meta?.deadline) {
+          const deadline = meta.deadline.toDate ? meta.deadline.toDate() : new Date(meta.deadline);
+          if (!latestDeadline || deadline > latestDeadline) {
+            latestDeadline = deadline;
+          }
+        }
+      });
+      
+      if (latestDeadline) return latestDeadline;
+    }
+  }
+
+  // Default to manuscript-level review deadline if no individual deadlines found
+  return manuscript.reviewDeadline 
+    ? (manuscript.reviewDeadline.toDate ? manuscript.reviewDeadline.toDate() : new Date(manuscript.reviewDeadline))
+    : null;
 };
 
 export function getRemainingDays(rawDeadline) {

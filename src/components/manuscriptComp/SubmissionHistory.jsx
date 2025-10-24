@@ -126,28 +126,28 @@ const SubmissionHistory = ({
             
             // For peer reviewers
             if (role === "Peer Reviewer") {
-              // Check if they have accepted the invitation
+              const isLatestVersion = submission.versionNumber === latestVersion;
               const hasAcceptedInvitation = manuscript.assignedReviewersMeta?.[currentUserId]?.acceptedAt;
               
-              // Check if they are in the reviewers list for this submission
-              const isAssignedReviewer = (submission.reviewers || []).includes(currentUserId);
-              
-              // Check if they have any submissions for this or previous version
-              const hasReviewerSubmission = (manuscript.reviewerSubmissions || []).some(
-                s => s.reviewerId === currentUserId && 
-                     (s.manuscriptVersionNumber === submission.versionNumber || 
-                      s.manuscriptVersionNumber === submission.versionNumber - 1)
-              );
-              
-              const isLatestVersion = submission.versionNumber === latestVersion;
-              
-              // If it's the latest version, only show if they've accepted the invitation
+              // Always show the latest version if they've accepted the invitation
               if (isLatestVersion) {
-                return hasAcceptedInvitation && (isAssignedReviewer || hasReviewerSubmission);
+                return hasAcceptedInvitation;
               }
               
-              // For previous versions, show if they're assigned or have submissions
-              return isAssignedReviewer || hasReviewerSubmission;
+              // For previous versions, check if they've reviewed them before
+              const hasReviewedThisVersion = (manuscript.reviewerSubmissions || []).some(
+                s => s.reviewerId === currentUserId && 
+                     s.manuscriptVersionNumber === submission.versionNumber
+              );
+              
+              // Also check previous review submissions if they exist
+              const hasReviewedInHistory = (manuscript.previousReviewSubmissions || []).some(
+                s => s.reviewerId === currentUserId && 
+                     s.manuscriptVersionNumber === submission.versionNumber
+              );
+              
+              // Show if they've reviewed this version before, regardless of current invitation status
+              return hasReviewedThisVersion || hasReviewedInHistory;
             }
             
             return false;

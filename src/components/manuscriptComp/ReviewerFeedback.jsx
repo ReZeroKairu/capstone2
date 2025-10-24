@@ -1,20 +1,24 @@
 // src/components/Manuscripts/ReviewerFeedback.jsx
 import React from "react";
+import { useNavigate } from "react-router-dom";
 
 const ReviewerFeedback = ({
   manuscript,
   users = [],
   visibleReviewers = [],
   role,
-  showFullName,
-  setShowFullName,
+  showFullName: propShowFullName = {},
+  setShowFullName: propSetShowFullName,
   formatReviewerName,
   formatDate,
   normalizeTimestamp,
   downloadFileCandidate,
   unassignReviewer,
 }) => {
+  const [showFullName, setShowFullName] = React.useState(propShowFullName);
+  const [clickedEmails, setClickedEmails] = React.useState({});
   // Define isFinalState at the component level
+  const navigate = useNavigate();
   const isFinalState = [
     "For Revision (Minor)",
     "For Revision (Major)",
@@ -106,22 +110,57 @@ const ReviewerFeedback = ({
               <>
                 <div className="flex justify-between items-start">
                   <div>
-                    <span
-                      className="text-blue-800 text-sm font-medium cursor-pointer"
-                      onClick={() => {
-                        const assignedKey = `assigned_${manuscript.id}_${reviewer.id}`;
-                        setShowFullName((prev) => ({
-                          ...prev,
-                          [assignedKey]: !prev[assignedKey],
-                        }));
-                      }}
-                      title="Click to toggle full name"
-                    >
-                      {formatReviewerName(
-                        reviewer,
-                        showFullName[`assigned_${manuscript.id}_${reviewer.id}`]
+                    <div>
+                      <span
+                        className="text-blue-800 text-sm font-medium cursor-pointer"
+                        onClick={() => {
+                          const assignedKey = `assigned_${manuscript.id}_${reviewer.id}`;
+                          setShowFullName((prev) => ({
+                            ...prev,
+                            [assignedKey]: !prev[assignedKey],
+                          }));
+                        }}
+                        title="Click to toggle full name"
+                      >
+                        {formatReviewerName(
+                          reviewer,
+                          showFullName[`assigned_${manuscript.id}_${reviewer.id}`]
+                        )}
+                      </span>
+                      {reviewer.email && (
+                        <div 
+                          className={`text-xs cursor-pointer transition-all duration-200 ${
+                            clickedEmails[reviewer.id] 
+                              ? 'text-yellow-900 font-medium' 
+                              : 'text-yellow-700 hover:text-yellow-800 hover:underline'
+                          }`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            // Add visual feedback
+                            setClickedEmails(prev => ({
+                              ...prev,
+                              [reviewer.id]: true
+                            }));
+                            // Navigate after a small delay for visual feedback
+                            setTimeout(() => {
+                              navigate(`/profile/${reviewer.id}`);
+                            }, 150);
+                          }}
+                          title="View reviewer profile"
+                          onMouseLeave={() => {
+                            // Reset the clicked state when mouse leaves
+                            setTimeout(() => {
+                              setClickedEmails(prev => ({
+                                ...prev,
+                                [reviewer.id]: false
+                              }));
+                            }, 1000);
+                          }}
+                        >
+                          {reviewer.email}
+                        </div>
                       )}
-                    </span>
+                    </div>
 
                     <div className="text-xs text-black mt-1">
                       Assigned: {formatDate(meta.assignedAt)} by{" "}
