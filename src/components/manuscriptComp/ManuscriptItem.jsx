@@ -3,6 +3,7 @@ import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { doc, updateDoc, getDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "../../firebase/firebase";
+import { getActiveDeadline as getReviewerDeadline } from "../../utils/deadlineUtils";
 import SubmissionHistory from "./SubmissionHistory";
 import ReviewerFeedback from "./ReviewerFeedback";
 import ManuscriptModal from "./ManuscriptModal";
@@ -231,18 +232,9 @@ const ManuscriptItem = ({
       [reviewerId]: !prev[reviewerId],
     }));
 
+  // Local function that uses the imported getReviewerDeadline
   const getActiveDeadline = (manuscript, role) => {
-    if (role === "Peer Reviewer")
-      return manuscript?.deadlines?.review?.end || null;
-    if (role === "Admin") {
-      if (manuscript.status === "Back to Admin")
-        return manuscript?.deadlines?.finalization?.end;
-      if (manuscript.status?.includes("Revision")) {
-        const latestRevision = manuscript?.deadlines?.revision?.slice(-1)[0];
-        return latestRevision?.end;
-      }
-    }
-    return null;
+    return getReviewerDeadline(manuscript, role, currentUserId);
   };
 
   const handleStatusChange = async (manuscriptId, newStatus, note = '') => {
@@ -450,43 +442,67 @@ const ManuscriptItem = ({
   return (
     <li className="border rounded-xl shadow-md hover:shadow-xl transition-all bg-gradient-to-br from-white to-gray-50 w-full sm:w-auto p-4">
       {/* Header */}
-      <div className="flex justify-between items-center">
-        <p className="font-bold text-lg sm:text-xl break-words text-gray-900">
-          {manuscriptTitle}
-        </p>
-
-        <div className="flex items-center gap-2">
-          {(() => {
-            const deadlineField = statusToDeadlineField[status];
-            const deadlineValue = deadlineField ? manuscript[deadlineField] : null;
-            const hideDeadlineForStatuses = [
-              "For Publication",
-              "Rejected",
-              "Peer Reviewer Rejected"
-            ];
+      <div className="w-full">
+        <div className="flex justify-between items-start gap-2">
+          <div className="flex-1 min-w-0">
+            <p className="font-bold text-lg sm:text-xl break-words text-gray-900">
+              {manuscriptTitle}
+            </p>
             
-            if (deadlineField && deadlineValue && !hideDeadlineForStatuses.includes(status)) {
-              return (
-                <DeadlineBadge
-                  start={new Date()}
-                  end={deadlineValue}
-                  formatDate={formatDate}
-                />
-              );
-            }
-            return null;
-          })()}
-
-          {hasRejection &&
-            (status === "Back to Admin" || status === "Rejected") && (
-              <span className="px-3 py-1 rounded-full text-xs sm:text-sm font-semibold shadow-sm bg-red-100 text-red-800">
-                Rejected by Peer Reviewer
-              </span>
-            )}
-          <ManuscriptStatusBadge
-            status={status}
-            className="ml-2"
-          />
+            {/* Removed duplicate reviewer information - now shown in the main content area */}
+          </div>
+          
+          {/* Status and rejection badge */}
+          <div className="flex flex-col items-end gap-1">
+            <ManuscriptStatusBadge
+              status={status}
+              className="ml-2"
+            />
+            
+            {hasRejection &&
+              (status === "Back to Admin" || status === "Rejected") && (
+                <span className="px-2 py-0.5 rounded-full text-xs font-semibold shadow-sm bg-red-100 text-red-800">
+                  Rejected by Peer Reviewer
+                </span>
+              )}
+            
+            {/* Deadline */}
+            {(() => {
+              const activeDeadline = getActiveDeadline(manuscript, role);
+              const hideDeadlineForStatuses = [
+                "For Publication",
+                "Rejected",
+                "Peer Reviewer Rejected"
+              ];
+              
+              if (activeDeadline && !hideDeadlineForStatuses.includes(status)) {
+                if (role === "Peer Reviewer") {
+                  const meta = manuscript.assignedReviewersMeta?.[currentUserId];
+                  if (meta?.invitationStatus === 'accepted' || meta?.acceptedAt) {
+                    return (
+                      <DeadlineBadge
+                        start={meta.assignedAt || new Date()}
+                        end={activeDeadline}
+                        formatDate={formatDate}
+                        className="mt-1"
+                      />
+                    );
+                  }
+                  return null;
+                }
+                
+                return (
+                  <DeadlineBadge
+                    start={manuscript.submittedAt || new Date()}
+                    end={activeDeadline}
+                    formatDate={formatDate}
+                    className="mt-1"
+                  />
+                );
+              }
+              return null;
+            })()}
+          </div>
         </div>
       </div>
 
@@ -576,18 +592,12 @@ const ManuscriptItem = ({
                       </p>
                     ) : null}
 
-                    {activeDeadline && assignedAt && (
-                      <DeadlineBadge
-                        start={assignedAt}
-                        end={activeDeadline}
-                        formatDate={formatDate}
-                      />
-                    )}
+                    {/* Deadline badge removed from here - now shown in the header */}
                   </>
                 );
               })()}
           </>
-        )}
+        )}  
       </div>
 
       {/* Reviewer Feedback */}
