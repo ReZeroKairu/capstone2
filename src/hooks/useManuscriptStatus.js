@@ -89,7 +89,11 @@ export const useManuscriptStatus = () => {
       else if ([REVISION_STATUSES.MINOR_REVISION, REVISION_STATUSES.MAJOR_REVISION].includes(newStatus)) {
         // Get default revision deadline from settings
         const deadlineDoc = await getDoc(doc(db, "deadlineSettings", "deadlines"));
-        const revisionDeadlineDays = deadlineDoc.data()?.revisionDeadline || 14;
+        const settings = deadlineDoc.data() || {};
+        console.log('Retrieved deadline settings:', settings);
+        
+        const revisionDeadlineDays = settings.revisionDeadline || 14;
+        console.log(`Setting revision deadline to ${revisionDeadlineDays} days from now`);
         
         // Calculate deadline date
         const deadlineDate = new Date();

@@ -1,5 +1,8 @@
 import React, { useEffect, useState, useMemo } from "react";
 import { getAuth } from "firebase/auth";
+import { getActiveDeadline } from "../utils/deadlineUtils";
+import { format } from "date-fns";
+import DeadlineCountdown from "./manuscriptComp/DeadlineCountdown";
 import {
   doc,
   getDoc,
@@ -482,9 +485,30 @@ const summaryCounts = useMemo(() => {
                       {statusForProgress}
                     </span>
                   </div>
-                  <p className="text-gray-400 text-sm mb-3">
+                  <p className="text-gray-400 text-sm mb-1">
                     Submitted: {submittedAtText}
                   </p>
+                  {(() => {
+                    const activeDeadline = getActiveDeadline(m, role, user?.uid);
+                    if (activeDeadline) {
+                      const deadlineDate = activeDeadline?.toDate ? activeDeadline.toDate() : new Date(activeDeadline);
+                      const formattedDeadline = format(deadlineDate, 'MMM d, yyyy h:mm a');
+                      const isOverdue = new Date() > deadlineDate;
+                      
+                      return (
+                        <div className="flex flex-col gap-1 mb-3">
+                          <p className={`text-sm ${isOverdue ? 'text-red-500 font-medium' : 'text-gray-600'}`}>
+                            {isOverdue ? '⚠️ Overdue: ' : '⏳ Deadline: '}
+                            {formattedDeadline}
+                          </p>
+                          <div className="flex items-center">
+                            <DeadlineCountdown deadline={activeDeadline} />
+                          </div>
+                        </div>
+                      );
+                    }
+                    return null;
+                  })()}
                   <Progressbar
                     currentStep={stepIndex}
                     steps={STATUS_STEPS}

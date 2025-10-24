@@ -70,22 +70,40 @@ export const getActiveDeadline = (manuscript, role, currentUserId) => {
       : null;
   }
 
-  // For Admins, handle different statuses
-  if (role === "Admin") {
-    // Check for finalization/revision deadlines first
-    if (["Back to Admin", "For Revision (Minor)", "For Revision (Major)"].includes(manuscript.status)) {
+  // Handle deadlines based on manuscript status and role
+  const status = manuscript.status;
+  
+  // For Admin and Researcher roles
+  if (role === "Admin" || role === "Researcher") {
+    // 1. Check for revision deadlines first
+    if (["For Revision (Minor)", "For Revision (Major)"].includes(status)) {
+      if (manuscript.revisionDeadline) {
+        return manuscript.revisionDeadline.toDate
+          ? manuscript.revisionDeadline.toDate()
+          : new Date(manuscript.revisionDeadline);
+      }
+    } 
+    // 2. Check for finalization deadline
+    else if (status === "Back to Admin" || status === "In Finalization") {
       if (manuscript.finalizationDeadline) {
         return manuscript.finalizationDeadline.toDate 
           ? manuscript.finalizationDeadline.toDate() 
           : new Date(manuscript.finalizationDeadline);
       }
     }
+    // 3. For review phase, use reviewDeadline
+    else if (["Peer Reviewer Assigned", "Peer Reviewer Reviewing"].includes(status)) {
+      if (manuscript.reviewDeadline) {
+        return manuscript.reviewDeadline.toDate
+          ? manuscript.reviewDeadline.toDate()
+          : new Date(manuscript.reviewDeadline);
+      }
+    }
 
-    // For manuscripts with reviewers, find the latest deadline
+    // 4. Fallback to latest reviewer deadline if available
     if (manuscript.assignedReviewersMeta) {
       let latestDeadline = null;
       
-      // Check each reviewer's deadline
       Object.values(manuscript.assignedReviewersMeta).forEach(meta => {
         if (meta?.deadline) {
           const deadline = meta.deadline.toDate ? meta.deadline.toDate() : new Date(meta.deadline);
@@ -105,8 +123,122 @@ export const getActiveDeadline = (manuscript, role, currentUserId) => {
     : null;
 };
 
+/**
+ * Get the appropriate deadline days based on manuscript status
+ */
+export const getDeadlineDaysByStatus = async (status) => {
+  try {
+    const { doc, getDoc } = await import('firebase/firestore');
+    const { db } = await import('../firebase/firebase');
+    
+    const settingsRef = doc(db, 'deadlineSettings', 'deadlines');
+    const settingsSnap = await getDoc(settingsRef);
+    
+    if (!settingsSnap.exists()) {
+      console.warn('No deadline settings found, using defaults');
+      return {
+        'Assigning Peer Reviewer': 5,
+        'Peer Reviewer Assigned': 5,
+        'For Revision (Minor)': 5,
+        'For Revision (Major)': 5,
+        'Back to Admin': 5,
+      }[status] || 5;
+    }
+    
+    const settings = settingsSnap.data();
+    console.log('Retrieved deadline settings:', settings);
+    
+    const statusToField = {
+      'Assigning Peer Reviewer': 'invitationDeadline',
+      'Peer Reviewer Assigned': 'reviewDeadline',
+      'For Revision (Minor)': 'revisionDeadline',
+      'For Revision (Major)': 'revisionDeadline',
+      'Back to Admin': 'finalizationDeadline',
+    };
+    
+    const field = statusToField[status];
+    console.log(`Status: "${status}" maps to field: "${field}"`);
+    
+    if (!field) {
+      console.warn(`No field mapping found for status: "${status}". Using default 6 days.`);
+      return 6;
+    }
+    
+    const days = settings[field];
+    console.log(`Retrieved ${days} days for ${field}`);
+    
+    return days !== undefined ? days : 6;
+  } catch (error) {
+    console.error('Error getting deadline settings:', error);
+    return 6 // Fallback to 6 days
+  }
+};
+
+/**
+ * Update deadlines for all assigned reviewers when a manuscript is resubmitted
+ */
+export const updateReviewerDeadlines = async (manuscriptId, status) => {
+  try {
+    const { doc, getDoc, updateDoc, serverTimestamp } = await import('firebase/firestore');
+    const { db } = await import('../firebase/firebase');
+    
+    // Get the manuscript
+    const msRef = doc(db, 'manuscripts', manuscriptId);
+    const msSnap = await getDoc(msRef);
+    
+    if (!msSnap.exists()) {
+      console.error('Manuscript not found');
+      return false;
+    }
+    
+    const manuscript = { id: msSnap.id, ...msSnap.data() };
+    const assignedReviewers = manuscript.assignedReviewers || [];
+    
+    if (assignedReviewers.length === 0) {
+      return true; // No reviewers to update
+    }
+    
+    // Get the appropriate deadline days based on status
+    const deadlineDays = await getDeadlineDaysByStatus(status);
+    const newDeadline = new Date();
+    newDeadline.setDate(newDeadline.getDate() + deadlineDays);
+    
+    // Prepare updates for each reviewer
+    const updates = {};
+    assignedReviewers.forEach(reviewerId => {
+      updates[`assignedReviewersMeta.${reviewerId}.deadline`] = newDeadline;
+      updates[`assignedReviewersMeta.${reviewerId}.deadlineUpdatedAt`] = serverTimestamp();
+    });
+    
+    // Add the manuscript-level deadline field if needed
+    const statusToDeadlineField = {
+      'Assigning Peer Reviewer': 'invitationDeadline',
+      'Peer Reviewer Assigned': 'reviewDeadline',
+      'For Revision (Minor)': 'revisionDeadline',
+      'For Revision (Major)': 'revisionDeadline',
+      'Back to Admin': 'finalizationDeadline',
+    };
+    
+    const deadlineField = statusToDeadlineField[status];
+    if (deadlineField) {
+      updates[deadlineField] = newDeadline;
+    }
+    
+    // Update the document
+    await updateDoc(msRef, {
+      ...updates,
+      updatedAt: serverTimestamp()
+    });
+    
+    return true;
+  } catch (error) {
+    console.error('Error updating reviewer deadlines:', error);
+    return false;
+  }
+};
+
 export function getRemainingDays(rawDeadline) {
-  if (!rawDeadline) return null;
+  if (!rawDeadline) return { days: 0, hours: 0, minutes: 0, isPast: true };
 
   // normalize to JS Date
   let date;
@@ -117,7 +249,11 @@ export function getRemainingDays(rawDeadline) {
   } else {
     date = new Date(rawDeadline);
   }
-  if (isNaN(date)) return null;
+  
+  if (isNaN(date.getTime())) {
+    console.error('Invalid date:', rawDeadline);
+    return { days: 0, hours: 0, minutes: 0, isPast: true };
+  }
 
   const diff = date.getTime() - Date.now();
   const isPast = diff <= 0;
@@ -126,14 +262,15 @@ export function getRemainingDays(rawDeadline) {
   const s = Math.floor(remainingMs / 1000);
   const days = Math.floor(s / 86400);
   const hours = Math.floor((s % 86400) / 3600);
-  const mins = Math.floor((s % 3600) / 60);
+  const minutes = Math.floor((s % 3600) / 60);
+
   const secs = s % 60;
 
   const formatted = `${days}d ${String(hours).padStart(2, "0")}h ${String(
-    mins
+    minutes
   ).padStart(2, "0")}m ${String(secs).padStart(2, "0")}s`;
 
-  return { remainingMs, isPast, formatted, days, hours, mins, secs, date };
+  return { remainingMs, isPast, formatted, days, hours, minutes, secs, date };
 }
 
 /**

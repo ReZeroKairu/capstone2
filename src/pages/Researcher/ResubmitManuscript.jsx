@@ -145,9 +145,8 @@ export default function ResubmitManuscript() {
       updateFields.versionReviewed = currentVersion; // Track which version was reviewed
       updateFields.status = newStatus;
       
-      // Clear any existing deadlines
-      updateFields.revisionDeadline = null;
-      updateFields.finalizationDeadline = null;
+      // The revision deadline is already set when the status was changed to 'For Revision'
+      // We don't need to update it here as it would reset the deadline
 
       // Get all reviewers who have submitted reviews for this version
       const reviewersWithSubmissions = Array.from(
@@ -366,12 +365,23 @@ export default function ResubmitManuscript() {
         );
       }
 
-      // Log the resubmission
-      await logManuscriptSubmission(
-        currentUser.uid,
-        manuscriptId,
-        manuscript.manuscriptTitle || manuscript.title || "Untitled Manuscript"
-      );
+      // First update the manuscript with the new version and status
+      await updateDoc(msRef, updateFields);
+      
+      // Then update reviewer deadlines using the new utility function
+      try {
+        const { updateReviewerDeadlines } = await import('../../utils/deadlineUtils');
+        await updateReviewerDeadlines(manuscriptId, 'Back to Admin');
+      } catch (error) {
+        console.error('Error updating reviewer deadlines:', error);
+        // Don't fail the entire submission if deadline update fails
+      }
+      
+      // Log the submission
+      await logManuscriptSubmission(manuscriptId, newVersion, 'resubmitted');
+      
+      // Notify admins about the resubmission
+      await notifyManuscriptSubmission(manuscriptId, 'resubmitted');
 
       showMessage("Manuscript resubmitted successfully!");
       setTimeout(() => navigate("/manuscripts"), 2000);

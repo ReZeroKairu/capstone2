@@ -468,29 +468,19 @@ const ManuscriptItem = ({
             
             {/* Deadline */}
             {(() => {
-              const activeDeadline = getActiveDeadline(manuscript, role);
+              const activeDeadline = getActiveDeadline(manuscript, role, currentUserId);
               const hideDeadlineForStatuses = [
                 "For Publication",
                 "Rejected",
                 "Peer Reviewer Rejected"
               ];
               
-              if (activeDeadline && !hideDeadlineForStatuses.includes(status)) {
-                if (role === "Peer Reviewer") {
-                  const meta = manuscript.assignedReviewersMeta?.[currentUserId];
-                  if (meta?.invitationStatus === 'accepted' || meta?.acceptedAt) {
-                    return (
-                      <DeadlineBadge
-                        start={meta.assignedAt || new Date()}
-                        end={activeDeadline}
-                        formatDate={formatDate}
-                        className="mt-1"
-                      />
-                    );
-                  }
-                  return null;
-                }
-                
+              if (!activeDeadline || hideDeadlineForStatuses.includes(status)) {
+                return null;
+              }
+
+              // For Admins - show for all manuscripts
+              if (role === "Admin") {
                 return (
                   <DeadlineBadge
                     start={manuscript.submittedAt || new Date()}
@@ -500,6 +490,34 @@ const ManuscriptItem = ({
                   />
                 );
               }
+
+              // For Peer Reviewers - show if assigned to this manuscript
+              if (role === "Peer Reviewer" && manuscript.assignedReviewers?.includes(currentUserId)) {
+                const meta = manuscript.assignedReviewersMeta?.[currentUserId];
+                return (
+                  <DeadlineBadge
+                    start={meta?.assignedAt || manuscript.submittedAt || new Date()}
+                    end={activeDeadline}
+                    formatDate={formatDate}
+                    className="mt-1"
+                  />
+                );
+              }
+
+              // For Researchers - show if they are the submitter or a co-author
+              if (role === "Researcher" && 
+                  (manuscript.submitterId === currentUserId || 
+                   manuscript.coAuthorsIds?.includes(currentUserId))) {
+                return (
+                  <DeadlineBadge
+                    start={manuscript.submittedAt || new Date()}
+                    end={activeDeadline}
+                    formatDate={formatDate}
+                    className="mt-1"
+                  />
+                );
+              }
+
               return null;
             })()}
           </div>
