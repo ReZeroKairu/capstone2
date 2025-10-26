@@ -13,7 +13,7 @@ export const DeadlineCountdown = ({ deadline }) => {
       setIsOverdue(overdue);
       
       if (overdue) {
-        setTimeLeft(`Overdue by ${days}d ${hours}h ${minutes}m`);
+        setTimeLeft(`Overdue: ${days}d ${hours}h ${minutes}m`);
       } else if (days > 0) {
         setTimeLeft(`${days}d ${hours}h left`);
       } else if (hours > 0) {

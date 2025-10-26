@@ -31,6 +31,7 @@ import { getDeadlineColor, getRemainingTime } from "../../utils/deadlineUtils";
 import { parseDateSafe } from "../../utils/dateUtils";
 import { recalcManuscriptStatus } from "../../utils/recalcManuscriptStatus";
 import { useManuscriptStatus } from "../../hooks/useManuscriptStatus";
+import PaginationControls from "../../components/PaginationControls";
 
 import {
   buildRestUrlSafe,
@@ -55,6 +56,11 @@ export default function ReviewManuscript() {
   const [userRole, setUserRole] = useState(null);
   const { logManuscriptReview } = useUserLogs();
   const [manuscriptFileUrls, setManuscriptFileUrls] = useState({});
+  
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [manuscriptsPerPage, setManuscriptsPerPage] = useState(5); // Default to 5 items per page
+  const [searchTerm, setSearchTerm] = useState("");
 
   const decisionLabels = {
     minor: "Accept (Minor Revision)",
@@ -196,7 +202,9 @@ export default function ReviewManuscript() {
   // Submit decision - preserved in component (keeps state updates intact)
   const handleDecisionSubmit = async (manuscriptId, versionNumber) => {
     // Show confirmation dialog
-    const confirmSubmit = window.confirm("Are you sure you want to submit your review? This action cannot be undone.");
+    const confirmSubmit = window.confirm(
+      "Are you sure you want to submit your review? This action cannot be undone."
+    );
     if (!confirmSubmit) return;
 
     const selected = manuscripts.find((m) => m.id === manuscriptId);
@@ -208,96 +216,98 @@ export default function ReviewManuscript() {
     const decision = activeDecision[manuscriptId];
     const review = reviews[manuscriptId];
     if (!decision || !review?.comment) {
-      alert("Please provide your review comments and decision before submitting.");
+      alert(
+        "Please provide your review comments and decision before submitting."
+      );
       return;
     }
 
     // Set loading state
     setIsSubmitting(true);
-    
+
     try {
       let fileUrl = null;
       let fileName = null;
 
-    if (reviewFiles[manuscriptId]) {
-      const file = reviewFiles[manuscriptId];
-      if (file.size > 30 * 1024 * 1024) {
-        alert("File size exceeds 30MB. Please upload a smaller file.");
-        return;
+      if (reviewFiles[manuscriptId]) {
+        const file = reviewFiles[manuscriptId];
+        if (file.size > 30 * 1024 * 1024) {
+          alert("File size exceeds 30MB. Please upload a smaller file.");
+          return;
+        }
+        const fileRef = storageRef(
+          storage,
+          `reviews/${manuscriptId}/${reviewerId}-${file.name}`
+        );
+        const metadata = {
+          contentType: file.type,
+          contentDisposition: `attachment; filename="${file.name}"`,
+        };
+        await uploadBytes(fileRef, file, metadata);
+        fileUrl = await getDownloadURL(fileRef);
+        fileName = file.name;
       }
-      const fileRef = storageRef(
-        storage,
-        `reviews/${manuscriptId}/${reviewerId}-${file.name}`
-      );
-      const metadata = {
-        contentType: file.type,
-        contentDisposition: `attachment; filename="${file.name}"`,
+
+      const updatedDecisions = {
+        ...(selected.reviewerDecisionMeta || {}),
+        [reviewerId]: {
+          decision,
+          comment: review.comment,
+          decidedAt: new Date(),
+          reviewFileUrl: fileUrl,
+          reviewFileName: fileName || null,
+        },
       };
-      await uploadBytes(fileRef, file, metadata);
-      fileUrl = await getDownloadURL(fileRef);
-      fileName = file.name;
-    }
 
-    const updatedDecisions = {
-      ...(selected.reviewerDecisionMeta || {}),
-      [reviewerId]: {
-        decision,
-        comment: review.comment,
-        decidedAt: new Date(),
-        reviewFileUrl: fileUrl,
-        reviewFileName: fileName || null,
-      },
-    };
+      const msRef = doc(db, "manuscripts", manuscriptId);
+      await logReviewerHistory(msRef, reviewerId, decision);
 
-    const msRef = doc(db, "manuscripts", manuscriptId);
-    await logReviewerHistory(msRef, reviewerId, decision);
+      const respondedAt = new Date();
 
-    const respondedAt = new Date();
+      // Use the version passed from the modal
+      const manuscriptVersion = versionNumber || 1;
 
-    // Use the version passed from the modal
-    const manuscriptVersion = versionNumber || 1;
+      // Update meta and submission
+      await updateDoc(msRef, {
+        [`reviewerDecisionMeta.${reviewerId}`]: updatedDecisions[reviewerId],
+        [`assignedReviewersMeta.${reviewerId}.respondedAt`]: respondedAt,
+        reviewerSubmissions: arrayUnion({
+          reviewerId,
+          comment: review.comment,
+          status: "Completed",
+          completedAt: new Date(),
+          reviewFileUrl: fileUrl,
+          reviewFileName: fileName || null,
+          manuscriptVersionNumber: manuscriptVersion,
+        }),
+      });
 
-    // Update meta and submission
-    await updateDoc(msRef, {
-      [`reviewerDecisionMeta.${reviewerId}`]: updatedDecisions[reviewerId],
-      [`assignedReviewersMeta.${reviewerId}.respondedAt`]: respondedAt,
-      reviewerSubmissions: arrayUnion({
+      // Recalculate status with handleStatusChange to ensure proper status updates
+      await recalcManuscriptStatus(manuscriptId, handleStatusChange);
+
+      // Peer reviewer hooks
+      await handlePeerReviewerDecision(
+        manuscriptId,
+        selected.manuscriptTitle || selected.title || "Untitled",
         reviewerId,
-        comment: review.comment,
-        status: "Completed",
-        completedAt: new Date(),
-        reviewFileUrl: fileUrl,
-        reviewFileName: fileName || null,
-        manuscriptVersionNumber: manuscriptVersion,
-      }),
-    });
-
-    // Recalculate status with handleStatusChange to ensure proper status updates
-    await recalcManuscriptStatus(manuscriptId, handleStatusChange);
-
-    // Peer reviewer hooks
-    await handlePeerReviewerDecision(
-      manuscriptId,
-      selected.manuscriptTitle || selected.title || "Untitled",
-      reviewerId,
-      decision
-    );
-    await handleReviewCompletion(
-      manuscriptId,
-      selected.manuscriptTitle || selected.title || "Untitled",
-      reviewerId
-    );
+        decision
+      );
+      await handleReviewCompletion(
+        manuscriptId,
+        selected.manuscriptTitle || selected.title || "Untitled",
+        reviewerId
+      );
       await logManuscriptReview(
         manuscriptId,
         selected.manuscriptTitle || selected.title || "Untitled",
         decision
       );
-      
+
       // Show success message
       alert("Your review has been submitted successfully!");
     } catch (error) {
       console.error("Error submitting review:", error);
-      alert(`Failed to submit review: ${error.message || 'Please try again.'}`);
+      alert(`Failed to submit review: ${error.message || "Please try again."}`);
     } finally {
       // Reset loading state
       setIsSubmitting(false);
@@ -380,6 +390,30 @@ export default function ReviewManuscript() {
     });
   }, [manuscripts, reviewerId, userRole]);
 
+  // Filter manuscripts by search term
+  const filteredManuscripts = useMemo(() => {
+    if (!searchTerm) return visibleManuscripts;
+    const searchLower = searchTerm.toLowerCase();
+    return visibleManuscripts.filter(ms => {
+      const title = (ms.manuscriptTitle || ms.title || "").toLowerCase();
+      return title.includes(searchLower);
+    });
+  }, [visibleManuscripts, searchTerm]);
+
+  // Pagination logic
+  const totalItems = filteredManuscripts.length;
+  const totalPages = Math.max(1, Math.ceil(totalItems / manuscriptsPerPage));
+  const startIndex = (currentPage - 1) * manuscriptsPerPage;
+  const paginatedManuscripts = filteredManuscripts.slice(
+    startIndex,
+    startIndex + parseInt(manuscriptsPerPage)
+  );
+
+  // Reset to first page when search or filter changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filteredManuscripts.length, manuscriptsPerPage]);
+
   if (loading) return <p>Loading manuscripts...</p>;
   if (!visibleManuscripts.length)
     return (
@@ -394,9 +428,20 @@ export default function ReviewManuscript() {
 
   return (
     <div className="px-6 py-28 max-w-5xl mx-auto">
-      <h1 className="text-2xl font-bold mb-6">My Assigned Manuscripts</h1>
-      <ul className="space-y-4">
-        {visibleManuscripts.map((m) => {
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
+        <h1 className="text-2xl font-bold">My Assigned Manuscripts</h1>
+        <div className="w-full sm:w-64">
+          <input
+            type="text"
+            placeholder="Search by title..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+        </div>
+      </div>
+      <ul className="space-y-4 mb-6">
+        {paginatedManuscripts.map((m) => {
           const myMeta = m.reviewerDecisionMeta?.[reviewerId];
           const myDecision = myMeta?.decision || "pending";
           const myDecisionLabel = decisionLabels[myDecision] || "Pending";
@@ -426,36 +471,35 @@ export default function ReviewManuscript() {
                     "Completed",
                   ].includes(m.status) && (
                     <DeadlineBadge
-                      startDate={
-                        (() => {
-                          // Try to get the respondedAt date first
-                          const respondedAt = m.assignedReviewersMeta?.[reviewerId]?.respondedAt;
-                          if (respondedAt) {
-                            const parsed = parseDateSafe(respondedAt);
-                            if (parsed && !isNaN(parsed.getTime())) return parsed;
-                          }
-                          
-                          // Fall back to assignedAt
-                          const assignedAt = m.assignedReviewersMeta?.[reviewerId]?.assignedAt;
-                          if (assignedAt) {
-                            const parsed = parseDateSafe(assignedAt);
-                            if (parsed && !isNaN(parsed.getTime())) return parsed;
-                          }
-                          
-                          // Default to current date if no valid dates found
-                          return new Date();
-                        })()
-                      }
-                      endDate={
-                        (() => {
-                          const deadline = m.assignedReviewersMeta?.[reviewerId]?.deadline;
-                          if (deadline) {
-                            const parsed = parseDateSafe(deadline);
-                            if (parsed && !isNaN(parsed.getTime())) return parsed;
-                          }
-                          return null;
-                        })()
-                      }
+                      startDate={(() => {
+                        // Try to get the respondedAt date first
+                        const respondedAt =
+                          m.assignedReviewersMeta?.[reviewerId]?.respondedAt;
+                        if (respondedAt) {
+                          const parsed = parseDateSafe(respondedAt);
+                          if (parsed && !isNaN(parsed.getTime())) return parsed;
+                        }
+
+                        // Fall back to assignedAt
+                        const assignedAt =
+                          m.assignedReviewersMeta?.[reviewerId]?.assignedAt;
+                        if (assignedAt) {
+                          const parsed = parseDateSafe(assignedAt);
+                          if (parsed && !isNaN(parsed.getTime())) return parsed;
+                        }
+
+                        // Default to current date if no valid dates found
+                        return new Date();
+                      })()}
+                      endDate={(() => {
+                        const deadline =
+                          m.assignedReviewersMeta?.[reviewerId]?.deadline;
+                        if (deadline) {
+                          const parsed = parseDateSafe(deadline);
+                          if (parsed && !isNaN(parsed.getTime())) return parsed;
+                        }
+                        return null;
+                      })()}
                     />
                   )}
 
@@ -463,7 +507,8 @@ export default function ReviewManuscript() {
                   {getManuscriptDisplayTitle(m)}
                 </div>
                 <div className="text-xs text-gray-500 mt-1">
-                  <div>Invited by{" "}
+                  <div>
+                    Invited by{" "}
                     {users[
                       m.assignedReviewersMeta?.[reviewerId]?.assignedBy ||
                         m.assignedReviewersMeta?.[reviewerId]?.invitedBy
@@ -473,7 +518,10 @@ export default function ReviewManuscript() {
                   {m.assignedReviewersMeta?.[reviewerId]?.respondedAt && (
                     <div>
                       Responded:{" "}
-                      {new Date(m.assignedReviewersMeta[reviewerId].respondedAt.seconds * 1000).toLocaleString()}
+                      {new Date(
+                        m.assignedReviewersMeta[reviewerId].respondedAt
+                          .seconds * 1000
+                      ).toLocaleString()}
                     </div>
                   )}
                 </div>
@@ -514,6 +562,19 @@ export default function ReviewManuscript() {
           );
         })}
       </ul>
+
+      {/* Pagination Controls */}
+      {totalItems > 0 && (
+        <div className="mt-6">
+          <PaginationControls
+            currentPage={currentPage}
+            setCurrentPage={setCurrentPage}
+            totalPages={totalPages}
+            manuscriptsPerPage={manuscriptsPerPage}
+            setManuscriptsPerPage={setManuscriptsPerPage}
+          />
+        </div>
+      )}
     </div>
   );
 }

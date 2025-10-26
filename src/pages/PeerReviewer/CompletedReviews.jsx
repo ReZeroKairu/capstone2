@@ -72,26 +72,31 @@ export default function CompletedReviews() {
   });
 
   // Calculate pagination
-  const totalItems = filteredReviews.length;
-  const totalPages = Math.ceil(totalItems / ITEMS_PER_PAGE);
-  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
-  const paginatedReviews = filteredReviews.slice(startIndex, startIndex + ITEMS_PER_PAGE);
   const [manuscriptsPerPage, setManuscriptsPerPage] = useState(ITEMS_PER_PAGE);
+  const totalItems = filteredReviews.length;
+  const totalPages = Math.ceil(totalItems / manuscriptsPerPage);
+  const startIndex = (currentPage - 1) * manuscriptsPerPage;
+  const paginatedReviews = filteredReviews.slice(startIndex, startIndex + manuscriptsPerPage);
 
-  const getVersionNumber = (manuscript, submission) => {
-    if (!manuscript.submissionHistory?.length) return '1';
+  const getVersionInfo = (manuscript, submission) => {
+    if (!manuscript.submissionHistory?.length) return { reviewedVersion: 1, currentVersion: 1 };
+    
     const submissionDate = submission?.completedAt?.toDate ? 
       submission.completedAt.toDate() : 
       new Date(submission.completedAt.seconds * 1000);
     
-    const version = manuscript.submissionHistory.findIndex(s => {
+    // Find all versions before the review was completed
+    const versionsBeforeReview = manuscript.submissionHistory.filter(s => {
       const subDate = s.submittedAt?.toDate ? 
         s.submittedAt.toDate() : 
         new Date(s.submittedAt.seconds * 1000);
-      return subDate > submissionDate;
+      return subDate <= submissionDate;
     });
+
+    const reviewedVersion = versionsBeforeReview.length + 1;
+    const currentVersion = manuscript.submissionHistory.length + 1;
     
-    return version === -1 ? manuscript.submissionHistory.length + 1 : version + 1;
+    return { reviewedVersion, currentVersion };
   };
 
   if (loading) return <p className="pt-28 px-6 text-gray-600">Loading...</p>;
@@ -127,26 +132,40 @@ export default function CompletedReviews() {
                 const myReview = m.reviewerSubmissions?.find(
                   (r) => r.reviewerId === reviewerId
                 );
-                // Get the inviter's ID from the reviewer's metadata
-                const reviewerMeta = m.assignedReviewersMeta?.[reviewerId] || {};
-                const inviterId = reviewerMeta.assignedBy || reviewerMeta.invitedBy;
-                
-                // Format the inviter's name
+
+                // Format name helper function
                 const formatName = (user) => {
                   if (!user) return 'System';
-                  const name = `${user.firstName || ''} ${
-                    user.middleName ? user.middleName.charAt(0) + '.' : ''
-                  } ${user.lastName || ''}`.trim();
-                  return name || user.email || 'System';
+                  const name = [
+                    user.firstName,
+                    user.middleName ? user.middleName.charAt(0) + '.' : null,
+                    user.lastName
+                  ].filter(Boolean).join(' ').trim();
+                  
+                  if (name) return name;
+                  if (user.email) return user.email.split('@')[0];
+                  return 'System';
+                };
+
+                // Get inviter info
+                const reviewerMeta = m.assignedReviewersMeta?.[reviewerId] || {};
+                const inviterId = reviewerMeta.assignedBy || reviewerMeta.invitedBy;
+                const inviter = inviterId ? users[inviterId] : null;
+                const inviterName = inviter ? formatName(inviter) : 'System';
+                const inviterEmail = inviter?.email || '';
+
+                // Get version info
+                const { reviewedVersion, currentVersion } = myReview ? getVersionInfo(m, myReview) : { 
+                  reviewedVersion: 'N/A', 
+                  currentVersion: 'N/A' 
                 };
                 
-                const inviter = users[inviterId];
-                const inviterName = inviter ? formatName(inviter) : 'System';
-                
-                const versionNumber = myReview ? getVersionNumber(m, myReview) : 'N/A';
                 const reviewDate = myReview?.completedAt?.seconds 
                   ? new Date(myReview.completedAt.seconds * 1000) 
                   : null;
+                
+                const isOutdated = myReview && currentVersion > reviewedVersion;
+                const versionNumber = reviewedVersion;
 
                 return (
                   <li key={m.id} className="hover:bg-gray-50">
@@ -161,17 +180,34 @@ export default function CompletedReviews() {
                           </p>
                         </div>
                       </div>
-                      <div className="mt-2 sm:flex sm:justify-between">
-                        <div className="sm:flex">
-                          <p className="flex items-center text-sm text-gray-500">
-                            <span>Reviewed on: {reviewDate?.toLocaleDateString() || 'N/A'}</span>
+                      <div className="mt-2 space-y-2 sm:space-y-0 sm:grid sm:grid-cols-2 sm:gap-4">
+                        <div className="space-y-1">
+                          <p className="text-sm text-gray-500">
+                            <span className="font-medium">Reviewed on:</span> {reviewDate ? reviewDate.toLocaleDateString('en-US', { 
+                              year: 'numeric', 
+                              month: 'long', 
+                              day: 'numeric',
+                              hour: '2-digit',
+                              minute: '2-digit'
+                            }) : 'N/A'}
                           </p>
-                          <p className="mt-2 flex items-center text-sm text-gray-500 sm:mt-0 sm:ml-6">
-                            <span>Status: {m.status}</span>
+                          <p className="text-sm text-gray-500">
+                            <span className="font-medium">Version:</span> {reviewedVersion}
+                            {isOutdated && (
+                              <span className="ml-2 px-2 py-0.5 text-xs rounded-full bg-yellow-100 text-yellow-800">
+                                {currentVersion - reviewedVersion} update{currentVersion - reviewedVersion > 1 ? 's' : ''} available
+                              </span>
+                            )}
                           </p>
                         </div>
-                        <div className="mt-2 flex items-center text-sm text-gray-500 sm:mt-0">
-                          <span>Invited by: {inviterName}</span>
+                        <div className="space-y-1">
+                          <p className="text-sm text-gray-500">
+                            <span className="font-medium">Status:</span> {m.status}
+                          </p>
+                          <p className="text-sm text-gray-500">
+                            <span className="font-medium">Invited by:</span> {inviterName}
+                            {inviterEmail && <span className="text-gray-400 ml-1">({inviterEmail})</span>}
+                          </p>
                         </div>
                       </div>
                       {myReview?.decision && (
@@ -191,6 +227,8 @@ export default function CompletedReviews() {
                     </div>
                   </li>
                 );
+                
+                return <ReviewItem key={m.id} />;
               })}
             </ul>
           </div>
