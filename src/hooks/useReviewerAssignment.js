@@ -20,23 +20,17 @@ export const useReviewerAssignment = () => {
     handleStatusChange = null
   ) => {
     try {
-      // Early return if manuscriptStatus is not in mapping (optional improvement)
-      if (!statusToDeadlineField[manuscriptStatus]) {
-        console.warn(
-          `No deadline field mapping for manuscript status: ${manuscriptStatus}. Using default 30 days.`
-        );
-      }
-
       const settingsRef = doc(db, "deadlineSettings", "deadlines");
       const settingsSnap = await getDoc(settingsRef);
 
-      let defaultDays = 30;
+      // Default to 7 days if no settings found
+      let defaultDays = 7;
+      
       if (settingsSnap.exists()) {
         const settings = settingsSnap.data();
-        const field = statusToDeadlineField[manuscriptStatus];
-        if (field && settings[field]) {
-          defaultDays = settings[field];
-        }
+        // Always use invitationDeadline for reviewer assignment, regardless of manuscript status
+        defaultDays = settings.invitationDeadline || 7;
+        console.log(`Using invitation deadline of ${defaultDays} days for manuscript ${manuscriptId}`);
       }
 
       // Calculate default deadline

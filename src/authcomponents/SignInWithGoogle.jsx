@@ -4,8 +4,7 @@ import { setDoc, doc, getDoc } from "firebase/firestore";
 import { useNavigate } from "react-router-dom";
 import React from "react";
 
-// 🔹 Import centralized logger
-import { logUserAction } from "../utils/logger";
+import { UserLogService } from "../utils/userLogService";
 
 function SignInwithGoogle() {
   const navigate = useNavigate();
@@ -32,13 +31,28 @@ function SignInwithGoogle() {
           adminId = userId;
         }
 
-        // 🔹 Log successful Google sign-in
-        await logUserAction({
-          actingUserId: adminId || userId,
-          actingUserIsAdmin: !!adminId,
-          email: user.email,
-          action: "Signed in/up with Google",
-        });
+        // Log successful Google sign-in with email in metadata
+        await UserLogService.logUserActivity(
+          userId,
+          "User Signed In",
+          `User signed in via google`,
+          {
+            loginMethod: "google",
+            actionType: "authentication",
+            email: user.email, // Ensure email is included in metadata
+          },
+          user.email // Pass email as separate parameter as well
+        );
+
+        // Log admin status separately if needed
+        if (adminId) {
+          await UserLogService.logSecurityEvent(
+            userId,
+            "admin_login",
+            "Admin user logged in via Google",
+            "info"
+          );
+        }
 
         console.log(
           adminId
@@ -61,13 +75,11 @@ function SignInwithGoogle() {
 
           console.log("User document successfully created.");
 
-          // 🔹 Log new user signup
-          await logUserAction({
-            actingUserId: userId,
-            actingUserIsAdmin: false,
-            email: user.email,
-            action: "Signed up with Google",
-          });
+          // Log new user registration
+          await UserLogService.logRegistration(userId, "google");
+
+          // Log successful login for new user
+          await UserLogService.logUserLogin(userId, user.email, "google");
 
           console.log(`New user signed up: User ID: ${userId}`);
         } catch (error) {
@@ -79,13 +91,21 @@ function SignInwithGoogle() {
     } catch (error) {
       console.error("Error logging in with Google:", error.message);
 
-      // 🔹 Optional: log failed Google sign-in attempt
-      await logUserAction({
-        actingUserId: null,
-        email: null,
-        action: "Google Sign-In Failed",
-        metadata: { errorMessage: error.message },
-      });
+      // Log failed Google sign-in attempt
+      const emailFromError = error?.customData?.email || "Unknown";
+      await UserLogService.logLoginFailure(
+        emailFromError,
+        error.message || "Unknown error during Google sign-in",
+        "google"
+      );
+
+      // Log security event for failed login
+      await UserLogService.logSecurityEvent(
+        "anonymous",
+        "google_login_failed",
+        `Failed Google sign-in attempt for ${emailFromError}: ${error.message}`,
+        "warning"
+      );
     }
   }
 

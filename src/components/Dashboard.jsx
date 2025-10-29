@@ -1,8 +1,5 @@
 import React, { useEffect, useState, useMemo } from "react";
 import { getAuth } from "firebase/auth";
-import { getActiveDeadline } from "../utils/deadlineUtils";
-import { format } from "date-fns";
-import DeadlineCountdown from "./manuscriptComp/DeadlineCountdown";
 import {
   doc,
   getDoc,
@@ -18,7 +15,8 @@ import Progressbar from "./Progressbar.jsx";
 import { useNavigate } from "react-router-dom";
 import PaginationControls from "./PaginationControls";
 import { useParams } from "react-router-dom";
-
+import { getActiveDeadline as getReviewerDeadline } from "../utils/deadlineUtils";
+import DeadlineBadge from "./manuscriptComp/DeadlineBadge";
 
 const IN_PROGRESS_STATUSES = [
   "Pending",
@@ -57,274 +55,402 @@ const Dashboard = ({ sidebarOpen }) => {
   const [currentPage, setCurrentPage] = useState(1);
   const [manuscriptsPerPage, setManuscriptsPerPage] = useState(5);
   const navigate = useNavigate();
-  const { userId } = useParams(); // ✅ ADDED — get the target userId from the URL
-  const [targetUser, setTargetUser] = useState(null); // ✅ optional: store the viewed user info
+  const { userId } = useParams(); 
+  const [targetUser, setTargetUser] = useState(null);
+  const [activeDeadlines, setActiveDeadlines] = useState({});
 
-// --- Fetch manuscripts ---
-useEffect(() => {
-  const auth = getAuth();
-  let unsubscribes = [];
+  useEffect(() => {
+    const auth = getAuth();
+    let unsubscribes = [];
 
-  const unsubscribeAuth = auth.onAuthStateChanged(async (currentUser) => {
-    if (!currentUser) {
-      setUser(null);
-      setRole(null);
-      setManuscripts([]);
-      setLoading(false);
-      return;
-    }
+    const unsubscribeAuth = auth.onAuthStateChanged(async (currentUser) => {
+      if (!currentUser) {
+        setUser(null);
+        setRole(null);
+        setManuscripts([]);
+        setLoading(false);
+        return;
+      }
 
-    setUser(currentUser);
+      setUser(currentUser);
 
-    try {
-      const targetUserId = userId || currentUser.uid; // ✅ if no param, show own dashboard
-      const userRef = doc(db, "Users", targetUserId);
-      const docSnap = await getDoc(userRef);
-      const userRole = docSnap.exists() ? docSnap.data().role : "Researcher";
-      setRole(userRole);
+      try {
+        const targetUserId = userId || currentUser.uid; 
+        const userRef = doc(db, "Users", targetUserId);
+        const docSnap = await getDoc(userRef);
+        const userRole = docSnap.exists() ? docSnap.data().role : "Researcher";
+        setRole(userRole);
 
-      // ✅ Added — fetch target user's info if viewing someone else's dashboard
-      if (userId && userId !== currentUser.uid) {
-        const targetSnap = await getDoc(doc(db, "Users", userId));
-        if (targetSnap.exists()) {
-          setTargetUser(targetSnap.data());
+        if (userId && userId !== currentUser.uid) {
+          const targetSnap = await getDoc(doc(db, "Users", userId));
+          if (targetSnap.exists()) {
+            setTargetUser(targetSnap.data());
+          }
         }
-      }
 
-      const manuscriptsRef = collection(db, "manuscripts");
+        const manuscriptsRef = collection(db, "manuscripts");
 
-      // --- Admin ---
-      if (userRole === "Admin") {
-        const q = query(manuscriptsRef, orderBy("submittedAt", "desc"));
-        const unsub = onSnapshot(q, (snapshot) => {
-          setManuscripts(snapshot.docs.map((d) => ({ id: d.id, ...d.data() })));
-        });
-        unsubscribes.push(unsub);
-        setLoading(false);
-        return;
-      }
-
-      // --- Peer Reviewer ---
-      if (userRole === "Peer Reviewer") {
-        const q = query(manuscriptsRef, orderBy("submittedAt", "desc"));
-        const unsub = onSnapshot(q, (snapshot) => {
-          const allManuscripts = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
-          const filtered = allManuscripts.filter((m) => {
-            const myId = targetUserId;
-            const myDecision = m.reviewerDecisionMeta?.[myId]?.decision;
-            const isAssigned = (m.assignedReviewers || []).includes(myId);
-            const isPreviousReviewer = (m.previousReviewers || []).includes(myId);
-            const hasSubmitted = m.reviewerSubmissions?.some((s) => s.reviewerId === myId);
-            const hasDeclined = m.declinedReviewers?.includes(myId);
-            const hasReviewedBefore = isPreviousReviewer || hasSubmitted;
-            
-            // Only hide if they declined AND never reviewed it before
-            if (hasDeclined && !hasReviewedBefore) return false;
-            
-            // If currently assigned, always show
-            if (isAssigned) return true;
-            
-            // If previously reviewed, check for conflicting decisions
-            if (isPreviousReviewer) {
-              // Hide if reviewer rejected but manuscript was published
-              if (m.status === "For Publication" && myDecision === "reject") {
-                return false;
-              }
-              // Hide if reviewer approved but manuscript was rejected
-              if (["Rejected", "Peer Reviewer Rejected"].includes(m.status) && 
-                  myDecision && myDecision !== "reject") {
-                return false;
-              }
-              // Otherwise, show the manuscript
-              return true;
-            }
-            
-            // For current submissions, check if they have access
-            if (hasSubmitted) {
-              // Apply the same conflict rules for current submissions
-              if (m.status === "For Publication") {
-                return myDecision && myDecision !== "reject";
-              }
-              if (["Rejected", "Peer Reviewer Rejected"].includes(m.status)) {
-                return myDecision === "reject";
-              }
-              return true;
-            }
-            
-            return false;
+        if (userRole === "Admin") {
+          const q = query(manuscriptsRef, orderBy("submittedAt", "desc"));
+          const unsub = onSnapshot(q, (snapshot) => {
+            setManuscripts(snapshot.docs.map((d) => ({ id: d.id, ...d.data() })));
           });
-          setManuscripts(filtered);
-        });
-        unsubscribes.push(unsub);
-        setLoading(false);
-        return;
-      }
+          unsubscribes.push(unsub);
+          setLoading(false);
+          return;
+        }
 
-      // --- Researcher ---
-      const localMap = new Map();
-      const mergeAndSet = () => {
-        const merged = Array.from(localMap.values());
-        merged.sort(
-          (a, b) => (b.submittedAt?.seconds || 0) - (a.submittedAt?.seconds || 0)
-        );
-        setManuscripts(merged);
-      };
-
-      const qOwn = query(
-        manuscriptsRef,
-        where("userId", "==", targetUserId),
-        orderBy("submittedAt", "desc")
-      );
-      const qSubmitter = query(
-        manuscriptsRef,
-        where("submitterId", "==", targetUserId),
-        orderBy("submittedAt", "desc")
-      );
-      const qAssigned = query(
-        manuscriptsRef,
-        where("assignedReviewers", "array-contains", targetUserId),
-        orderBy("submittedAt", "desc")
-      );
-      const qCoAuthor = query(
-        manuscriptsRef,
-        where("coAuthorsIds", "array-contains", targetUserId),
-        orderBy("submittedAt", "desc")
-      );
-      const qRecent = query(manuscriptsRef, orderBy("submittedAt", "desc"), limit(50));
-
-      const unsubOwn = onSnapshot(qOwn, (snap) => {
-        snap.docs.forEach((d) => localMap.set(d.id, { id: d.id, ...d.data() }));
-        mergeAndSet();
-      });
-      const unsubSubmitter = onSnapshot(qSubmitter, (snap) => {
-        snap.docs.forEach((d) => localMap.set(d.id, { id: d.id, ...d.data() }));
-        mergeAndSet();
-      });
-      const unsubAssigned = onSnapshot(qAssigned, (snap) => {
-        snap.docs.forEach((d) => localMap.set(d.id, { id: d.id, ...d.data() }));
-        mergeAndSet();
-      });
-      const unsubCoAuthor = onSnapshot(qCoAuthor, (snap) => {
-        snap.docs.forEach((d) => localMap.set(d.id, { id: d.id, ...d.data() }));
-        mergeAndSet();
-      });
-      const unsubRecent = onSnapshot(qRecent, (snap) => {
-        const email = currentUser.email || "";
-        const name =
-          currentUser.displayName ||
-          `${currentUser.firstName || ""} ${currentUser.lastName || ""}`.trim();
-        snap.docs.forEach((d) => {
-          const data = { id: d.id, ...d.data() };
-          if (localMap.has(d.id)) return;
-          const isCoAuthor =
-            data.coAuthors?.some?.((c) => c.id === currentUser.uid) ||
-            data.answeredQuestions?.some((q) => {
-              if (q.type !== "coauthors") return false;
-              if (Array.isArray(q.answer)) {
-                return q.answer.some(
-                  (a) =>
-                    typeof a === "string" &&
-                    ((email && a.includes(email)) || (name && a.includes(name)))
-                );
-              } else if (typeof q.answer === "string") {
-                return (
-                  (email && q.answer.includes(email)) ||
-                  (name && q.answer.includes(name))
-                );
+        if (userRole === "Peer Reviewer") {
+          const q = query(manuscriptsRef, orderBy("submittedAt", "desc"));
+          const unsub = onSnapshot(q, (snapshot) => {
+            const allManuscripts = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+            const filtered = allManuscripts.filter((m) => {
+              const myId = targetUserId;
+              const myDecision = m.reviewerDecisionMeta?.[myId]?.decision;
+              const isAssigned = (m.assignedReviewers || []).includes(myId);
+              const isPreviousReviewer = (m.previousReviewers || []).includes(myId);
+              const hasSubmitted = m.reviewerSubmissions?.some((s) => s.reviewerId === myId);
+              const hasDeclined = m.declinedReviewers?.includes(myId);
+              const hasReviewedBefore = isPreviousReviewer || hasSubmitted;
+              
+              if (hasDeclined && !hasReviewedBefore) return false;
+              
+              if (isAssigned) return true;
+              
+              if (isPreviousReviewer) {
+                if (m.status === "For Publication" && myDecision === "reject") {
+                  return false;
+                }
+                if (["Rejected", "Peer Reviewer Rejected"].includes(m.status) && 
+                    myDecision && myDecision !== "reject") {
+                  return false;
+                }
+                return true;
               }
+              
+              if (hasSubmitted) {
+                if (m.status === "For Publication") {
+                  return myDecision && myDecision !== "reject";
+                }
+                if (["Rejected", "Peer Reviewer Rejected"].includes(m.status)) {
+                  return myDecision === "reject";
+                }
+                return true;
+              }
+              
               return false;
             });
-          if (isCoAuthor) localMap.set(d.id, data);
+            setManuscripts(filtered);
+          });
+          unsubscribes.push(unsub);
+          setLoading(false);
+          return;
+        }
+
+        const localMap = new Map();
+        const mergeAndSet = () => {
+          const merged = Array.from(localMap.values());
+          merged.sort(
+            (a, b) => (b.submittedAt?.seconds || 0) - (a.submittedAt?.seconds || 0)
+          );
+          setManuscripts(merged);
+        };
+
+        const qOwn = query(
+          manuscriptsRef,
+          where("userId", "==", targetUserId),
+          orderBy("submittedAt", "desc")
+        );
+        const qSubmitter = query(
+          manuscriptsRef,
+          where("submitterId", "==", targetUserId),
+          orderBy("submittedAt", "desc")
+        );
+        const qAssigned = query(
+          manuscriptsRef,
+          where("assignedReviewers", "array-contains", targetUserId),
+          orderBy("submittedAt", "desc")
+        );
+        const qCoAuthor = query(
+          manuscriptsRef,
+          where("coAuthorsIds", "array-contains", targetUserId),
+          orderBy("submittedAt", "desc")
+        );
+        const qRecent = query(manuscriptsRef, orderBy("submittedAt", "desc"), limit(50));
+
+        const unsubOwn = onSnapshot(qOwn, (snap) => {
+          snap.docs.forEach((d) => localMap.set(d.id, { id: d.id, ...d.data() }));
+          mergeAndSet();
         });
-        mergeAndSet();
-      });
+        const unsubSubmitter = onSnapshot(qSubmitter, (snap) => {
+          snap.docs.forEach((d) => localMap.set(d.id, { id: d.id, ...d.data() }));
+          mergeAndSet();
+        });
+        const unsubAssigned = onSnapshot(qAssigned, (snap) => {
+          snap.docs.forEach((d) => localMap.set(d.id, { id: d.id, ...d.data() }));
+          mergeAndSet();
+        });
+        const unsubCoAuthor = onSnapshot(qCoAuthor, (snap) => {
+          snap.docs.forEach((d) => localMap.set(d.id, { id: d.id, ...d.data() }));
+          mergeAndSet();
+        });
+        const unsubRecent = onSnapshot(qRecent, (snap) => {
+          const email = currentUser.email || "";
+          const name =
+            currentUser.displayName ||
+            `${currentUser.firstName || ""} ${currentUser.lastName || ""}`.trim();
+          snap.docs.forEach((d) => {
+            const data = { id: d.id, ...d.data() };
+            if (localMap.has(d.id)) return;
+            const isCoAuthor =
+              data.coAuthors?.some?.((c) => c.id === currentUser.uid) ||
+              data.answeredQuestions?.some((q) => {
+                if (q.type !== "coauthors") return false;
+                if (Array.isArray(q.answer)) {
+                  return q.answer.some(
+                    (a) =>
+                      typeof a === "string" &&
+                      ((email && a.includes(email)) || (name && a.includes(name)))
+                  );
+                } else if (typeof q.answer === "string") {
+                  return (
+                    (email && q.answer.includes(email)) ||
+                    (name && q.answer.includes(name))
+                  );
+                }
+                return false;
+              });
+            if (isCoAuthor) localMap.set(d.id, data);
+          });
+          mergeAndSet();
+        });
 
-      unsubscribes.push(unsubOwn, unsubSubmitter, unsubAssigned, unsubCoAuthor, unsubRecent);
-      setLoading(false);
-    } catch (err) {
-      console.error("Error fetching manuscripts:", err);
-      setLoading(false);
-    }
-  });
-
-  return () => {
-    unsubscribeAuth();
-    unsubscribes.forEach((u) => u && u());
-  };
-}, [userId]);
-
-
-  // --- Summary Counts ---
-const summaryCounts = useMemo(() => {
-  if (!user || !manuscripts) return [];
-
-  const targetUserId = userId || user.uid; // ✅ the viewed user (not always current)
-  const rejectedStatuses = ["Rejected", "Peer Reviewer Rejected"];
-  const counts = [];
-
-  // --- Role-based totals ---
-  if (role === "Admin") {
-    counts.push({ label: "Total Manuscripts", count: manuscripts.length });
-  } else if (role === "Peer Reviewer") {
-    const reviewedCount = manuscripts.filter((m) => {
-      const isAssigned = 
-        (m.assignedReviewers || []).includes(targetUserId) ||
-        (m.originalAssignedReviewers || []).includes(targetUserId);
-      
-      const hasSubmission = m.reviewerSubmissions?.some(
-        (s) => s.reviewerId === targetUserId
-      );
-      
-      const hasDecision = m.reviewerDecisionMeta?.[targetUserId]?.decision;
-      
-      // Count if reviewer is assigned, has submitted, or has made a decision
-      return isAssigned || hasSubmission || !!hasDecision;
-    }).length;
-
-    counts.push({ label: "Total Manuscripts Reviewed", count: reviewedCount });
-  } else if (role === "Researcher") {
-    const submittedCount = manuscripts.filter((m) => {
-      const isOwner = m.userId === targetUserId;
-      const isSubmitter = m.submitterId === targetUserId;
-      const isCoAuthor =
-        m.coAuthors?.some((c) => c.id === targetUserId) ||
-        m.coAuthorsIds?.includes(targetUserId);
-      return isOwner || isSubmitter || isCoAuthor;
-    }).length;
-
-    counts.push({
-      label: "Total Manuscripts Submitted",
-      count: submittedCount,
+        unsubscribes.push(unsubOwn, unsubSubmitter, unsubAssigned, unsubCoAuthor, unsubRecent);
+        setLoading(false);
+      } catch (err) {
+        console.error("Error fetching manuscripts:", err);
+        setLoading(false);
+      }
     });
-  }
 
-  // --- Status counts ---
-  counts.push(
-    { label: "Pending", count: manuscripts.filter((m) => m.status === "Pending").length },
-    {
-      label: "In Progress",
-      count: manuscripts.filter((m) => IN_PROGRESS_STATUSES.includes(m.status)).length,
-    },
-    {
-      label: "For Revision",
-      count: manuscripts.filter((m) =>
-        ["For Revision (Minor)", "For Revision (Major)"].includes(m.status)
-      ).length,
-    },
-    {
-      label: "For Publication",
-      count: manuscripts.filter((m) => m.status === "For Publication").length,
-    },
-    {
-      label: "Rejected",
-      count: manuscripts.filter((m) => rejectedStatuses.includes(m.status)).length,
+    return () => {
+      unsubscribeAuth();
+      unsubscribes.forEach((u) => u && u());
+    };
+  }, [userId]);
+
+  // Get the most recent deadline from active (not declined) reviewers for a manuscript
+  const getLatestReviewerDeadline = (manuscript) => {
+    if (!manuscript.assignedReviewersMeta) return null;
+    
+    let latestDeadline = null;
+    let latestInviteTime = 0;
+    
+    // Find the latest deadline from active reviewers based on when they were invited
+    Object.entries(manuscript.assignedReviewersMeta).forEach(([reviewerId, meta]) => {
+      // Skip declined or inactive reviewers
+      if (meta.invitationStatus === 'declined' || !meta.deadline) {
+        return;
+      }
+      
+      const deadline = meta.deadline.toDate 
+        ? meta.deadline.toDate() 
+        : new Date(meta.deadline);
+        
+      // Get the invite time to determine the most recent invitation
+      const inviteTime = meta.invitedAt?.toDate 
+        ? meta.invitedAt.toDate().getTime() 
+        : meta.invitedAt?.seconds 
+          ? meta.invitedAt.seconds * 1000 
+          : 0;
+          
+      // Only update if this is an active reviewer with a valid deadline
+      const isActive = !meta.declinedAt && !meta.invitationStatus?.toLowerCase().includes('declined');
+      
+      if (isActive && (inviteTime > latestInviteTime || 
+          (inviteTime === latestInviteTime && (!latestDeadline || deadline > latestDeadline)))) {
+        latestDeadline = deadline;
+        latestInviteTime = inviteTime;
+      }
+    });
+    
+    return latestDeadline;
+  };
+
+  // Get the appropriate deadline based on user role and manuscript status
+  const getActiveDeadlineForManuscript = async (manuscript, role) => {
+    try {
+      // For Back to Admin status, always use the finalization deadline
+      if (manuscript.status === 'Back to Admin') {
+        if (manuscript.finalizationDeadline) {
+          return manuscript.finalizationDeadline.toDate 
+            ? manuscript.finalizationDeadline.toDate() 
+            : new Date(manuscript.finalizationDeadline);
+        }
+        return null;
+      }
+      
+      // For revision statuses, use the manuscript's revisionDeadline
+      if (manuscript.status === 'For Revision (Minor)' || manuscript.status === 'For Revision (Major)') {
+        if (manuscript.revisionDeadline) {
+          return manuscript.revisionDeadline.toDate 
+            ? manuscript.revisionDeadline.toDate() 
+            : new Date(manuscript.revisionDeadline);
+        }
+        return null;
+      }
+      
+      // For Admins and Researchers, show the latest reviewer invitation deadline
+      if (role === 'Admin' || role === 'Researcher') {
+        const latestDeadline = getLatestReviewerDeadline(manuscript);
+        if (latestDeadline) return latestDeadline;
+        
+        // Fallback to manuscript-level deadline if no reviewer deadline found
+        if (manuscript.invitationDeadline) {
+          return manuscript.invitationDeadline.toDate 
+            ? manuscript.invitationDeadline.toDate() 
+            : new Date(manuscript.invitationDeadline);
+        }
+      }
+      
+      // For peer reviewers, show their individual deadline
+      if (role === 'Peer Reviewer' && user?.uid) {
+        const reviewerMeta = manuscript.assignedReviewersMeta?.[user.uid];
+        if (reviewerMeta?.deadline) {
+          return reviewerMeta.deadline.toDate 
+            ? reviewerMeta.deadline.toDate() 
+            : new Date(reviewerMeta.deadline);
+        }
+      }
+      
+      return null;
+    } catch (error) {
+      console.error('Error getting active deadline:', error);
+      return null;
     }
-  );
+  };
 
-  return counts;
-}, [manuscripts, user, role, userId]);
+  // Load active deadlines for all manuscripts
+  useEffect(() => {
+    const loadDeadlines = async () => {
+      const deadlines = {};
+      
+      for (const manuscript of manuscripts) {
+        try {
+          // Skip loading deadlines for completed or rejected manuscripts
+          if (['For Publication', 'Rejected', 'Peer Reviewer Rejected'].includes(manuscript.status)) {
+            continue;
+          }
+          
+          // For Peer Reviewers, only show their own assigned manuscripts
+          if (role === 'Peer Reviewer') {
+            const isAssigned = manuscript.assignedReviewers?.includes(user?.uid) || 
+                             manuscript.assignedReviewersMeta?.[user?.uid]?.invitationStatus === 'accepted';
+            
+            if (!isAssigned) {
+              continue; // Skip manuscripts not assigned to this reviewer
+            }
+          }
+          
+          // Get the appropriate deadline based on role and status
+          const deadline = await getActiveDeadlineForManuscript(manuscript, role);
+          
+          // Only set the deadline if it exists and is in the future
+          if (deadline) {
+            const deadlineDate = deadline instanceof Date ? deadline : 
+                               (deadline.toDate ? deadline.toDate() : new Date(deadline));
+            
+            if (deadlineDate > new Date()) {
+              deadlines[manuscript.id] = deadlineDate;
+            }
+          }
+        } catch (error) {
+          console.error('Error loading deadline for manuscript:', manuscript.id, error);
+        }
+      }
+      
+      setActiveDeadlines(deadlines);
+    };
 
-  // --- Filtered manuscripts ---
+    if (manuscripts.length > 0 && user?.uid) {
+      loadDeadlines();
+    }
+  }, [manuscripts, role, user?.uid]);
+
+  const formatDate = (ts) => {
+    if (!ts) return "—";
+    if (ts.toDate) return ts.toDate().toLocaleString();
+    if (ts.seconds) return new Date(ts.seconds * 1000).toLocaleString();
+    if (ts instanceof Date) return ts.toLocaleString();
+    return ts;
+  };
+
+  const summaryCounts = useMemo(() => {
+    if (!user || !manuscripts) return [];
+
+    const targetUserId = userId || user.uid; 
+    const rejectedStatuses = ["Rejected", "Peer Reviewer Rejected"];
+    const counts = [];
+
+    if (role === "Admin") {
+      counts.push({ label: "Total Manuscripts", count: manuscripts.length });
+    } else if (role === "Peer Reviewer") {
+      const reviewedCount = manuscripts.filter((m) => {
+        const isAssigned = 
+          (m.assignedReviewers || []).includes(targetUserId) ||
+          (m.originalAssignedReviewers || []).includes(targetUserId);
+        
+        const hasSubmission = m.reviewerSubmissions?.some(
+          (s) => s.reviewerId === targetUserId
+        );
+        
+        const hasDecision = m.reviewerDecisionMeta?.[targetUserId]?.decision;
+        
+        return isAssigned || hasSubmission || !!hasDecision;
+      }).length;
+
+      counts.push({ label: "Total Manuscripts Reviewed", count: reviewedCount });
+    } else if (role === "Researcher") {
+      const submittedCount = manuscripts.filter((m) => {
+        const isOwner = m.userId === targetUserId;
+        const isSubmitter = m.submitterId === targetUserId;
+        const isCoAuthor =
+          m.coAuthors?.some((c) => c.id === targetUserId) ||
+          m.coAuthorsIds?.includes(targetUserId);
+        return isOwner || isSubmitter || isCoAuthor;
+      }).length;
+
+      counts.push({
+        label: "Total Manuscripts Submitted",
+        count: submittedCount,
+      });
+    }
+
+    counts.push(
+      { label: "Pending", count: manuscripts.filter((m) => m.status === "Pending").length },
+      {
+        label: "In Progress",
+        count: manuscripts.filter((m) => IN_PROGRESS_STATUSES.includes(m.status)).length,
+      },
+      {
+        label: "For Revision",
+        count: manuscripts.filter((m) =>
+          ["For Revision (Minor)", "For Revision (Major)"].includes(m.status)
+        ).length,
+      },
+      {
+        label: "For Publication",
+        count: manuscripts.filter((m) => m.status === "For Publication").length,
+      },
+      {
+        label: "Rejected",
+        count: manuscripts.filter((m) => rejectedStatuses.includes(m.status)).length,
+      }
+    );
+
+    return counts;
+  }, [manuscripts, user, role, userId]);
+
   const displayedManuscripts = useMemo(() => {
     const totalLabels = [
       "Total Manuscripts",
@@ -346,11 +472,9 @@ const summaryCounts = useMemo(() => {
       return manuscripts.filter((m) =>
         ["For Revision (Minor)", "For Revision (Major)"].includes(m.status)
       );
-    // Exact status (Minor only or Major only)
     return manuscripts.filter((m) => m.status === filterStatus);
   }, [manuscripts, filterStatus]);
 
-  // --- Reset page to 1 when filter changes ---
   useEffect(() => {
     setCurrentPage(1);
   }, [filterStatus, manuscriptsPerPage, displayedManuscripts.length]);
@@ -382,22 +506,18 @@ const summaryCounts = useMemo(() => {
         sidebarOpen ? "lg:pl-64" : ""
       }`}
     >
-      {/* Welcome Header */}
       <div className="mb-10 flex flex-col sm:flex-row justify-between items-center">
-       <h1 className="text-4xl font-bold text-gray-800">
-  {userId && userId !== user?.uid
-    ? `Viewing Dashboard of ${targetUser ? `${targetUser.firstName || ""} ${targetUser.lastName || ""}`.trim() : "User"}`
-    : `Hello, ${user?.displayName || user?.firstName || "User"}!`}
-</h1>
-
-
+        <h1 className="text-4xl font-bold text-gray-800">
+          {userId && userId !== user?.uid
+            ? `Viewing Dashboard of ${targetUser ? `${targetUser.firstName || ""} ${targetUser.lastName || ""}`.trim() : "User"}`
+            : `Hello, ${user?.displayName || user?.firstName || "User"}!`}
+        </h1>
         <span className="text-gray-500 font-medium mt-2 sm:mt-0">
           Role: {role}
         </span>
       </div>
 
       <div className="flex flex-col lg:flex-row gap-8">
-        {/* Sidebar Summary Panel */}
         {role && (
           <div
             className="lg:w-1/4 bg-gradient-to-b from-indigo-50 to-white rounded-2xl p-6 shadow-lg self-start"
@@ -424,7 +544,6 @@ const summaryCounts = useMemo(() => {
           </div>
         )}
 
-        {/* Manuscripts Panel */}
         {role && (
           <div className="flex-1 flex flex-col gap-6">
             {currentManuscripts.map((m) => {
@@ -447,6 +566,7 @@ const summaryCounts = useMemo(() => {
                 : m.submittedAt?.seconds
                 ? new Date(m.submittedAt.seconds * 1000).toLocaleString()
                 : "";
+
               const statusForProgress = STATUS_MAPPING[m.status] || m.status;
               const stepIndex = Math.max(
                 0,
@@ -488,27 +608,17 @@ const summaryCounts = useMemo(() => {
                   <p className="text-gray-400 text-sm mb-1">
                     Submitted: {submittedAtText}
                   </p>
-                  {(() => {
-                    const activeDeadline = getActiveDeadline(m, role, user?.uid);
-                    if (activeDeadline) {
-                      const deadlineDate = activeDeadline?.toDate ? activeDeadline.toDate() : new Date(activeDeadline);
-                      const formattedDeadline = format(deadlineDate, 'MMM d, yyyy h:mm a');
-                      const isOverdue = new Date() > deadlineDate;
-                      
-                      return (
-                        <div className="flex flex-col gap-1 mb-3">
-                          <p className={`text-sm ${isOverdue ? 'text-red-500 font-medium' : 'text-gray-600'}`}>
-                            {isOverdue ? '⚠️ Overdue: ' : '⏳ Deadline: '}
-                            {formattedDeadline}
-                          </p>
-                          <div className="flex items-center">
-                            <DeadlineCountdown deadline={activeDeadline} />
-                          </div>
-                        </div>
-                      );
-                    }
-                    return null;
-                  })()}
+                  {activeDeadlines[m.id] && !['For Publication', 'Rejected', 'Peer Reviewer Rejected'].includes(m.status) && (
+                    <div className="mt-1">
+                      <div className="flex items-center text-sm text-gray-600">
+                        <DeadlineBadge
+                          start={m.submittedAt || new Date()}
+                          end={activeDeadlines[m.id]}
+                          formatDate={formatDate}
+                        />
+                      </div>
+                    </div>
+                  )}
                   <Progressbar
                     currentStep={stepIndex}
                     steps={STATUS_STEPS}

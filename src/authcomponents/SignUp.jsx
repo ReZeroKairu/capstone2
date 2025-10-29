@@ -16,7 +16,7 @@ import {
   faEnvelope,
   faLock,
 } from "@fortawesome/free-solid-svg-icons";
-import { logUserAction } from "../utils/logger"; // ✅ centralized logger
+import { UserLogService } from "../utils/userLogService";
 
 // 🔤 Helper function to enforce capitalization
 const toProperCase = (str) =>
@@ -104,17 +104,12 @@ function SignUp() {
           photo: null,
         });
 
-        // 4️⃣ Log sign up action
-        await logUserAction({
-          userId: user.uid,
-          email: user.email,
-          action: "Signed up with Email",
-          metadata: {
-            firstName: formattedFirst,
-            middleName: formattedMiddle || null,
-            lastName: formattedLast,
-            role,
-          },
+        // Log successful registration with user details
+        await UserLogService.logRegistration(user.uid, "email", {
+          firstName: formattedFirst,
+          middleName: formattedMiddle || null,
+          lastName: formattedLast,
+          role,
         });
 
         // 5️⃣ Send verification email

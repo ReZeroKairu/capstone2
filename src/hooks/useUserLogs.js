@@ -1,53 +1,63 @@
-import { useCallback } from 'react';
-import { UserLogService } from '../utils/userLogService';
-import { getAuth } from 'firebase/auth';
+import { useCallback } from "react";
+import { UserLogService } from "../utils/userLogService";
+import { getAuth } from "firebase/auth";
 
 /**
  * Custom hook for user activity logging
  */
 export const useUserLogs = () => {
-  
   const getCurrentUserId = () => {
     const auth = getAuth();
     return auth.currentUser?.uid;
   };
 
-  // Authentication logs
-  const logLogin = useCallback(async (loginMethod = "email") => {
-    const userId = getCurrentUserId();
-    if (userId) {
-      await UserLogService.logLogin(userId, loginMethod);
-    }
-  }, []);
-
-  const logLogout = useCallback(async () => {
-    const userId = getCurrentUserId();
-    if (userId) {
-      await UserLogService.logLogout(userId);
-    }
-  }, []);
+  // Authentication logging is now handled by UserLogService
+  // which is used directly in the auth components
 
   // Manuscript logs
-  const logManuscriptSubmission = useCallback(async (manuscriptId, manuscriptTitle) => {
-    const userId = getCurrentUserId();
-    if (userId) {
-      await UserLogService.logManuscriptSubmission(userId, manuscriptId, manuscriptTitle);
-    }
-  }, []);
+  const logManuscriptSubmission = useCallback(
+    async (manuscriptId, manuscriptTitle) => {
+      const userId = getCurrentUserId();
+      if (userId) {
+        await UserLogService.logManuscriptSubmission(
+          userId,
+          manuscriptId,
+          manuscriptTitle
+        );
+      }
+    },
+    []
+  );
 
-  const logManuscriptReview = useCallback(async (manuscriptId, manuscriptTitle, decision) => {
-    const userId = getCurrentUserId();
-    if (userId) {
-      await UserLogService.logManuscriptReview(userId, manuscriptId, manuscriptTitle, decision);
-    }
-  }, []);
+  const logManuscriptReview = useCallback(
+    async (manuscriptId, manuscriptTitle, decision) => {
+      const userId = getCurrentUserId();
+      if (userId) {
+        await UserLogService.logManuscriptReview(
+          userId,
+          manuscriptId,
+          manuscriptTitle,
+          decision
+        );
+      }
+    },
+    []
+  );
 
-  const logReviewerAssignment = useCallback(async (manuscriptId, manuscriptTitle, reviewerIds) => {
-    const userId = getCurrentUserId();
-    if (userId) {
-      await UserLogService.logReviewerAssignment(userId, manuscriptId, manuscriptTitle, reviewerIds);
-    }
-  }, []);
+  const logReviewerAssignment = useCallback(
+    async (manuscriptId, manuscriptTitle, reviewerIds) => {
+      const userId = getCurrentUserId();
+      if (userId) {
+        await UserLogService.logReviewerAssignment(
+          userId,
+          manuscriptId,
+          manuscriptTitle,
+          reviewerIds
+        );
+      }
+    },
+    []
+  );
 
   // Profile logs
   const logProfileUpdate = useCallback(async (updatedFields) => {
@@ -74,23 +84,29 @@ export const useUserLogs = () => {
   }, []);
 
   // Notification logs
-  const logNotificationAction = useCallback(async (notificationId, action, notificationType) => {
-    const userId = getCurrentUserId();
-    if (userId) {
-      await UserLogService.logNotificationAction(userId, notificationId, action, notificationType);
-    }
-  }, []);
+  const logNotificationAction = useCallback(
+    async (notificationId, action, notificationType) => {
+      const userId = getCurrentUserId();
+      if (userId) {
+        await UserLogService.logNotificationAction(
+          userId,
+          notificationId,
+          action,
+          notificationType
+        );
+      }
+    },
+    []
+  );
 
   return {
-    logLogin,
-    logLogout,
     logManuscriptSubmission,
     logManuscriptReview,
     logReviewerAssignment,
     logProfileUpdate,
     logFeatureUsage,
     logPageView,
-    logNotificationAction
+    logNotificationAction,
   };
 };
 

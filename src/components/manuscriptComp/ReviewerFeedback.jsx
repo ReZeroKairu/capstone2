@@ -15,6 +15,16 @@ const ReviewerFeedback = ({
   downloadFileCandidate,
   unassignReviewer,
 }) => {
+  // Get current manuscript version
+  const currentVersion = manuscript.versionNumber || 1;
+  
+  // Filter reviewers to only show those assigned to the current version
+  const filteredReviewers = visibleReviewers.filter(reviewer => {
+    const meta = manuscript.assignedReviewersMeta?.[reviewer.id] || {};
+    // If no version info, assume it's for version 1 (legacy support)
+    if (!meta.assignedVersions) return currentVersion === 1;
+    return meta.assignedVersions?.includes(currentVersion);
+  });
   const [showFullName, setShowFullName] = React.useState(propShowFullName);
   const [clickedEmails, setClickedEmails] = React.useState({});
   // Define isFinalState at the component level
@@ -38,7 +48,7 @@ const ReviewerFeedback = ({
 
   return (
     <>
-      {visibleReviewers.map((reviewer, reviewerIdx) => {
+      {filteredReviewers.map((reviewer, reviewerIdx) => {
         const meta = manuscript.assignedReviewersMeta?.[reviewer.id] || {};
         const decisionMeta =
           manuscript.reviewerDecisionMeta?.[reviewer.id] || null;

@@ -24,7 +24,8 @@ export default function PeerReviewerList() {
   const [itemsPerPage, setItemsPerPage] = useState(5);
   const [manuscriptData, setManuscriptData] = useState(null);
   const [previousReviewers, setPreviousReviewers] = useState([]);
-  const [refreshTrigger, setRefreshTrigger] = useState(0); // Add this line
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const [invitationDeadline, setInvitationDeadline] = useState(7); // Default to 7 days
   const location = useLocation();
   const navigate = useNavigate();
   const params = new URLSearchParams(location.search);
@@ -138,11 +139,27 @@ export default function PeerReviewerList() {
   };
 
   useEffect(() => {
+    const fetchInvitationDeadline = async () => {
+      try {
+        const settingsRef = doc(db, "deadlineSettings", "deadlines");
+        const settingsSnap = await getDoc(settingsRef);
+        if (settingsSnap.exists() && settingsSnap.data().invitationDeadline) {
+          setInvitationDeadline(settingsSnap.data().invitationDeadline);
+          console.log('Using invitation deadline from settings:', settingsSnap.data().invitationDeadline);
+        }
+      } catch (error) {
+        console.error("Error fetching invitation deadline:", error);
+      }
+    };
+    fetchInvitationDeadline();
+  }, []);
+
+  useEffect(() => {
     console.log('useEffect triggered', { manuscriptId, refreshTrigger });
-    fetchReviewers();
     if (manuscriptId) {
       fetchManuscriptData();
     }
+    fetchReviewers();
   }, [manuscriptId, refreshTrigger]); // Add refreshTrigger to dependencies
 
   const fetchManuscriptData = async () => {
@@ -205,63 +222,81 @@ export default function PeerReviewerList() {
 
       if (!assigned.includes(reviewerId)) {
         const invitedAt = serverTimestamp();
+        
+        // Get the deadline settings
+        const settingsRef = doc(db, "deadlineSettings", "deadlines");
+        const settingsSnap = await getDoc(settingsRef);
+        
+        // Default to 7 days if no settings found
+        let daysForDeadline = 7;
+        
+        if (settingsSnap.exists()) {
+          const settings = settingsSnap.data();
+          console.log("Settings loaded:", settings);
+          console.log("Manuscript status:", msData.status);
+          
+          // For reviewer invitations, always use invitationDeadline
+          daysForDeadline = settings.invitationDeadline || 7;
+          console.log(`Using invitation deadline of ${daysForDeadline} days`);
+        }
 
-        // 🔹 Determine deadline dynamically
-        let deadlineDate = deadlineParam ? new Date(deadlineParam) : null;
-
-// Initialize deadline variables
-let deadlineForFirestore;
-
-if (!deadlineDate) {
-  const settingsRef = doc(db, "deadlineSettings", "deadlines");
-  const settingsSnap = await getDoc(settingsRef);
-
-  let defaultDays = 30; // fallback
-  if (settingsSnap.exists()) {
-    const settings = settingsSnap.data();
-    console.log("Settings loaded:", settings);
-    console.log("Manuscript status:", msData.status);
-
-    const statusToDeadlineField = {
-      "Assigning Peer Reviewer": "invitationDeadline",
-      "Peer Reviewer Assigned": "reviewDeadline",
-      "For Revision (Minor)": "revisionDeadline",
-      "For Revision (Major)": "revisionDeadline",
-      "Back to Admin": "finalizationDeadline",
-    };
-    const field = statusToDeadlineField[msData.status];
-    if (field && settings[field] != null) {
-      defaultDays = settings[field];
-      console.log(`Using ${defaultDays} days from field ${field}`);
-    }
-  }
-
-  // Create a Firestore Timestamp for the deadline
-  const deadlineTimestamp = Timestamp.fromDate(new Date(Date.now() + defaultDays * 24 * 60 * 60 * 1000));
-  deadlineDate = deadlineTimestamp.toDate(); // Keep as Date for any local calculations
-  deadlineForFirestore = deadlineTimestamp; // Assign to the outer scoped variable
-} else {
-  // If deadlineDate was provided, convert it to Firestore Timestamp
-  deadlineForFirestore = typeof deadlineDate.toDate === 'function' 
-    ? deadlineDate 
-    : Timestamp.fromDate(new Date(deadlineDate));
-}
+        // Calculate the deadline
+        let deadlineDate;
+        
+        // If this is a reinvitation (reviewer was previously assigned)
+        const isReinvitation = assigned.includes(reviewerId) && assignedMeta[reviewerId]?.invitedAt;
+        
+        if (isReinvitation) {
+          console.log('Reinviting reviewer, using invitation deadline from settings');
+          // For reinvitations, always use the invitationDeadline from settings
+          deadlineDate = new Date();
+          deadlineDate.setDate(deadlineDate.getDate() + daysForDeadline);
+        } else if (deadlineParam) {
+          // If a specific deadline was provided in the URL
+          deadlineDate = new Date(deadlineParam);
+        } else {
+          // Default case: current time + days from settings
+          deadlineDate = new Date();
+          deadlineDate.setDate(deadlineDate.getDate() + daysForDeadline);
+        }
+        
+        console.log('Setting deadline to:', deadlineDate);
+        
+        // Create a Firestore Timestamp for the deadline
+        const deadlineForFirestore = Timestamp.fromDate(deadlineDate);
 
 
-       // ✅ Build reviewer metadata (admin-side)
-const newMeta = {
-  ...(assignedMeta[reviewerId] || {}),
-  assignedAt: serverTimestamp(),
-  assignedBy: currentUser.displayName || currentUser.email || "Admin",
-  assignedById: currentUser.uid,
-  invitationStatus: "pending",
-  invitedAt,
-  respondedAt: null,
-  acceptedAt: null, // ✅ will be filled when reviewer accepts
-  declinedAt: null, // ✅ will be filled when reviewer declines
-  decision: null,
-  deadline: deadlineForFirestore || serverTimestamp(), // Fallback to serverTimestamp if no deadline set
-};
+        // Get current version
+        const currentVersion = msData.versionNumber || 1;
+        
+        // Get existing versions or initialize if doesn't exist
+        const existingVersions = assignedMeta[reviewerId]?.assignedVersions || [];
+        
+        // ✅ Build reviewer metadata (admin-side)
+        const newMeta = {
+          ...(assignedMeta[reviewerId] || {}),
+          assignedAt: serverTimestamp(),
+          assignedBy: currentUser.displayName || currentUser.email || "Admin",
+          assignedById: currentUser.uid,
+          invitationStatus: "pending",
+          invitedAt,
+          respondedAt: null,
+          acceptedAt: null, // ✅ will be filled when reviewer accepts
+          declinedAt: null, // ✅ will be filled when reviewer declines
+          decision: null,
+          deadline: deadlineForFirestore || serverTimestamp(), // Fallback to serverTimestamp if no deadline set
+          // Track which versions this reviewer is assigned to
+          assignedVersions: [...new Set([...existingVersions, currentVersion])],
+          // Track individual version data
+          versionData: {
+            ...(assignedMeta[reviewerId]?.versionData || {}),
+            [currentVersion]: {
+              invitedAt: serverTimestamp(),
+              deadline: deadlineForFirestore || serverTimestamp(),
+              status: "pending"
+            }
+          }
+        };
 
 
         // Update Firestore
@@ -296,8 +331,15 @@ const newMeta = {
           )
         );
 
-        // Send notification
+        // Send notification with deadline information
         const notificationRef = collection(db, "Users", reviewerId, "Notifications");
+        const notificationDeadline = deadlineForFirestore.toDate();
+        const formattedDeadline = notificationDeadline.toLocaleDateString('en-US', { 
+          year: 'numeric', 
+          month: 'long', 
+          day: 'numeric' 
+        });
+        
         await addDoc(notificationRef, {
           type: "reviewer_invitation",
           manuscriptId: manuscriptId,
@@ -306,9 +348,11 @@ const newMeta = {
           timestamp: serverTimestamp(),
           seen: false,
           title: "Invitation to Review Manuscript",
-          message: `You have been invited to review "${msData.title || "Untitled Manuscript"}"`,
+          message: `You have been invited to review "${msData.title || "Untitled Manuscript"}" (Deadline: ${formattedDeadline})`,
           actionUrl: `/reviewer-invitations`,
           invitedAt,
+          deadline: deadlineForFirestore,
+          deadlineFormatted: formattedDeadline
         });
 
         // Trigger a complete refresh to ensure data consistency

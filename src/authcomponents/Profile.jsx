@@ -4,10 +4,9 @@ import { doc, getDoc, updateDoc } from "firebase/firestore";
 import { useAuth } from "../authcontext/AuthContext";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faUser, faEdit } from "@fortawesome/free-solid-svg-icons";
-import { logProfileUpdate } from "../utils/logger"; // updated logger
+import { UserLogService } from "../utils/userLogService";
 import { useParams } from "react-router-dom";
 import { useNavigate } from "react-router-dom";
-
 
 function Profile() {
   const { userId } = useParams(); // <- dynamic user ID
@@ -19,13 +18,13 @@ function Profile() {
   const [messageTimeout, setMessageTimeout] = useState(null);
   const [showFullMiddle, setShowFullMiddle] = useState(false);
   const [selectedFile, setSelectedFile] = useState(null);
-const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(true);
 
   const messageRef = useRef(null);
   const firstNameRef = useRef(null);
   const lastNameRef = useRef(null);
   const originalPhotoRef = useRef(null); // store original Base64 photo
-const navigate = useNavigate();
+  const navigate = useNavigate();
 
   const getInitials = (firstName, middleName, lastName) =>
     (
@@ -38,21 +37,20 @@ const navigate = useNavigate();
   const [originalMiddleName, setOriginalMiddleName] = useState("");
   const [originalLastName, setOriginalLastName] = useState("");
 
-const [peerReviewerInfo, setPeerReviewerInfo] = useState({
-  affiliation: "",
-  expertise: "",
-  interests: "",
-  education: "",
-  specialty: "",
-});
+  const [peerReviewerInfo, setPeerReviewerInfo] = useState({
+    affiliation: "",
+    expertise: "",
+    interests: "",
+    education: "",
+    specialty: "",
+  });
 
-const [researcherInfo, setResearcherInfo] = useState({
-  institution: "",
-  fieldOfStudy: "",
-  education: "",
-  researchInterests: "",
-});
-
+  const [researcherInfo, setResearcherInfo] = useState({
+    institution: "",
+    fieldOfStudy: "",
+    education: "",
+    researchInterests: "",
+  });
 
   // ===== Helper to convert file to Base64 =====
   const fileToBase64 = (file) => {
@@ -102,57 +100,58 @@ const [researcherInfo, setResearcherInfo] = useState({
   }, [userId, currentUser]);
 
   const fetchProfile = async (userId) => {
-  try {
-    const userDoc = await getDoc(doc(db, "Users", userId));
-    if (userDoc.exists()) {
-      const userData = userDoc.data();
+    try {
+      const userDoc = await getDoc(doc(db, "Users", userId));
+      if (userDoc.exists()) {
+        const userData = userDoc.data();
 
-      // Unified photo selection logic
-      const profilePhoto =
-        userData.photoURL || userData.externalPhotoURL || userData.photo || null;
+        // Unified photo selection logic
+        const profilePhoto =
+          userData.photoURL ||
+          userData.externalPhotoURL ||
+          userData.photo ||
+          null;
 
-      setProfile({
-        id: userDoc.id,
-        ...userData,
-        photoURL: profilePhoto,
-      });
-
-      originalPhotoRef.current = profilePhoto;
-
-      setOriginalFirstName(userData.firstName);
-      setOriginalMiddleName(userData.middleName || "");
-      setOriginalLastName(userData.lastName);
-
-      if (userData.role === "Peer Reviewer") {
-        setPeerReviewerInfo({
-          affiliation: userData.affiliation || "",
-          expertise: userData.expertise || "",
-          interests: userData.interests || "",
-          education: userData.education || "",
-          specialty: userData.specialty || "",
+        setProfile({
+          id: userDoc.id,
+          ...userData,
+          photoURL: profilePhoto,
         });
-      } else if (userData.role === "Researcher") {
-        setResearcherInfo({
-          institution: userData.institution || "",
-          fieldOfStudy: userData.fieldOfStudy || "",
-          education: userData.education || "",
-          researchInterests: userData.researchInterests || "",
-        });
+
+        originalPhotoRef.current = profilePhoto;
+
+        setOriginalFirstName(userData.firstName);
+        setOriginalMiddleName(userData.middleName || "");
+        setOriginalLastName(userData.lastName);
+
+        if (userData.role === "Peer Reviewer") {
+          setPeerReviewerInfo({
+            affiliation: userData.affiliation || "",
+            expertise: userData.expertise || "",
+            interests: userData.interests || "",
+            education: userData.education || "",
+            specialty: userData.specialty || "",
+          });
+        } else if (userData.role === "Researcher") {
+          setResearcherInfo({
+            institution: userData.institution || "",
+            fieldOfStudy: userData.fieldOfStudy || "",
+            education: userData.education || "",
+            researchInterests: userData.researchInterests || "",
+          });
+        }
+      } else {
+        showMessage("Profile not found.", "error");
+        setProfile(null);
       }
-
-    } else {
-      showMessage("Profile not found.", "error");
-      setProfile(null);
+    } catch (error) {
+      console.error("Error fetching profile:", error);
+      showMessage("Failed to fetch profile.", "error");
+    } finally {
+      // ✅ This ensures the loading spinner stops no matter what
+      setLoading(false);
     }
-  } catch (error) {
-    console.error("Error fetching profile:", error);
-    showMessage("Failed to fetch profile.", "error");
-  } finally {
-    // ✅ This ensures the loading spinner stops no matter what
-    setLoading(false);
-  }
-};
-
+  };
 
   useEffect(() => {
     if (isEditing) smoothScrollTo(firstNameRef.current, 300);
@@ -203,120 +202,114 @@ const [researcherInfo, setResearcherInfo] = useState({
     setPeerReviewerInfo({ ...peerReviewerInfo, [field]: value });
   };
 
-const handleCancel = () => {
-  setIsEditing(false);
-  setSelectedFile(null);
+  const handleCancel = () => {
+    setIsEditing(false);
+    setSelectedFile(null);
 
-  // Reset basic profile fields
-  setProfile((prev) => ({
-    ...prev,
-    firstName: originalFirstName,
-    middleName: originalMiddleName,
-    lastName: originalLastName,
-    photoURL: originalPhotoRef.current,
-  }));
-
-  // Reset role-specific fields to original values
-  if (profile.role === "Peer Reviewer") {
-    setPeerReviewerInfo({
-      affiliation: profile.affiliation || "",
-      expertise: profile.expertise || "",
-      interests: profile.interests || "",
-      education: profile.education || "",
-      specialty: profile.specialty || "",
-    });
-  } else if (profile.role === "Researcher") {
-    setResearcherInfo({
-      institution: profile.institution || "",
-      fieldOfStudy: profile.fieldOfStudy || "",
-      education: profile.education || "",
-      researchInterests: profile.researchInterests || "",
-    });
-  }
-};
-
-
-  // ===== Optimized Update Profile =====
-const handleUpdateProfile = async () => {
-  try {
-    let newPhotoURL = originalPhotoRef.current;
-
-    if (selectedFile) {
-      newPhotoURL = await fileToBase64(selectedFile);
-    }
-
-    const normalizedProfile = {
-      ...profile,
-      firstName: capitalizeWords(profile.firstName),
-      middleName: capitalizeWords(profile.middleName || ""),
-      lastName: capitalizeWords(profile.lastName),
-      photoURL: newPhotoURL,
-    };
-
-    // Merge role-specific fields dynamically
-    const roleFields =
-      profile.role === "Peer Reviewer"
-        ? peerReviewerInfo
-        : profile.role === "Researcher"
-        ? researcherInfo
-        : {};
-
-    const before = {
+    // Reset basic profile fields
+    setProfile((prev) => ({
+      ...prev,
       firstName: originalFirstName,
       middleName: originalMiddleName,
       lastName: originalLastName,
       photoURL: originalPhotoRef.current,
-      ...roleFields,
-    };
+    }));
 
-    const after = {
-      firstName: normalizedProfile.firstName,
-      middleName: normalizedProfile.middleName,
-      lastName: normalizedProfile.lastName,
-      photoURL: normalizedProfile.photoURL,
-      ...roleFields,
-    };
-
-    // Compare fields safely using JSON.stringify
-    const changedFields = {};
-    Object.keys(after).forEach((key) => {
-      if (JSON.stringify(after[key]) !== JSON.stringify(before[key])) {
-        changedFields[key] = { before: before[key], after: after[key] };
-      }
-    });
-
-    if (Object.keys(changedFields).length === 0) {
-      showMessage("No changes to save.", "error");
-      window.scrollTo({ top: 0, behavior: "smooth" });
-      return;
+    // Reset role-specific fields to original values
+    if (profile.role === "Peer Reviewer") {
+      setPeerReviewerInfo({
+        affiliation: profile.affiliation || "",
+        expertise: profile.expertise || "",
+        interests: profile.interests || "",
+        education: profile.education || "",
+        specialty: profile.specialty || "",
+      });
+    } else if (profile.role === "Researcher") {
+      setResearcherInfo({
+        institution: profile.institution || "",
+        fieldOfStudy: profile.fieldOfStudy || "",
+        education: profile.education || "",
+        researchInterests: profile.researchInterests || "",
+      });
     }
+  };
 
-    // Update Firestore and log the change
-    await updateDoc(doc(db, "Users", profile.id), after);
-    await logProfileUpdate({
-      actingUserId: currentUser.uid,
-      before,
-      after,
-    });
+  // ===== Optimized Update Profile =====
+  const handleUpdateProfile = async () => {
+    try {
+      let newPhotoURL = originalPhotoRef.current;
 
-    // Update local state
-    setProfile((prev) => ({ ...prev, ...after }));
-    originalPhotoRef.current = newPhotoURL;
-    setOriginalFirstName(normalizedProfile.firstName);
-    setOriginalMiddleName(normalizedProfile.middleName);
-    setOriginalLastName(normalizedProfile.lastName);
-    setSelectedFile(null);
+      if (selectedFile) {
+        newPhotoURL = await fileToBase64(selectedFile);
+      }
 
-    showMessage("Profile updated successfully.", "success");
-    setIsEditing(false);
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  } catch (error) {
-    console.error("Error updating profile:", error);
-    showMessage("Failed to update profile.", "error");
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  }
-};
+      const normalizedProfile = {
+        ...profile,
+        firstName: capitalizeWords(profile.firstName),
+        middleName: capitalizeWords(profile.middleName || ""),
+        lastName: capitalizeWords(profile.lastName),
+        photoURL: newPhotoURL,
+      };
 
+      // Merge role-specific fields dynamically
+      const roleFields =
+        profile.role === "Peer Reviewer"
+          ? peerReviewerInfo
+          : profile.role === "Researcher"
+          ? researcherInfo
+          : {};
+
+      const before = {
+        firstName: originalFirstName,
+        middleName: originalMiddleName,
+        lastName: originalLastName,
+        photoURL: originalPhotoRef.current,
+        ...roleFields,
+      };
+
+      const after = {
+        firstName: normalizedProfile.firstName,
+        middleName: normalizedProfile.middleName,
+        lastName: normalizedProfile.lastName,
+        photoURL: normalizedProfile.photoURL,
+        ...roleFields,
+      };
+
+      // Compare fields safely using JSON.stringify
+      const changedFields = {};
+      Object.keys(after).forEach((key) => {
+        if (JSON.stringify(after[key]) !== JSON.stringify(before[key])) {
+          changedFields[key] = { before: before[key], after: after[key] };
+        }
+      });
+
+      if (Object.keys(changedFields).length === 0) {
+        showMessage("No changes to save.", "error");
+        window.scrollTo({ top: 0, behavior: "smooth" });
+        return;
+      }
+
+      // Update Firestore and log the change
+      await updateDoc(doc(db, "Users", profile.id), after);
+      await UserLogService.logUserProfileUpdate(currentUser.uid, changedFields);
+
+      // Update local state
+      setProfile((prev) => ({ ...prev, ...after }));
+      originalPhotoRef.current = newPhotoURL;
+      setOriginalFirstName(normalizedProfile.firstName);
+      setOriginalMiddleName(normalizedProfile.middleName);
+      setOriginalLastName(normalizedProfile.lastName);
+      setSelectedFile(null);
+
+      showMessage("Profile updated successfully.", "success");
+      setIsEditing(false);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } catch (error) {
+      console.error("Error updating profile:", error);
+      showMessage("Failed to update profile.", "error");
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  };
 
   const initialsFallback = getInitials(
     profile?.firstName,
@@ -481,54 +474,74 @@ const handleUpdateProfile = async () => {
               )}
             </div>
 
-          {profile.role === "Peer Reviewer" && peerReviewerInfo && (
-  <div className="border-b-2 border-white pb-3 mb-6 space-y-3">
-    {["affiliation", "expertise", "interests", "education", "specialty"].map(field => (
-      <div key={field}>
-        <label className="font-semibold text-white text-sm mb-2 capitalize">
-          {field.replace(/([A-Z])/g, " $1")}
-        </label>
-        {isEditing ? (
-          <input
-            type="text"
-            value={peerReviewerInfo[field] || ""}
-            onChange={(e) =>
-              setPeerReviewerInfo({...peerReviewerInfo, [field]: e.target.value})
-            }
-            className="w-full p-1 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-black shadow-md"
-          />
-        ) : (
-          <p className="text-white">{peerReviewerInfo[field] || `No ${field}`}</p>
-        )}
-      </div>
-    ))}
-  </div>
-)}
+            {profile.role === "Peer Reviewer" && peerReviewerInfo && (
+              <div className="border-b-2 border-white pb-3 mb-6 space-y-3">
+                {[
+                  "affiliation",
+                  "expertise",
+                  "interests",
+                  "education",
+                  "specialty",
+                ].map((field) => (
+                  <div key={field}>
+                    <label className="font-semibold text-white text-sm mb-2 capitalize">
+                      {field.replace(/([A-Z])/g, " $1")}
+                    </label>
+                    {isEditing ? (
+                      <input
+                        type="text"
+                        value={peerReviewerInfo[field] || ""}
+                        onChange={(e) =>
+                          setPeerReviewerInfo({
+                            ...peerReviewerInfo,
+                            [field]: e.target.value,
+                          })
+                        }
+                        className="w-full p-1 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-black shadow-md"
+                      />
+                    ) : (
+                      <p className="text-white">
+                        {peerReviewerInfo[field] || `No ${field}`}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
 
-{profile.role === "Researcher" && researcherInfo && (
-  <div className="border-b-2 border-white pb-3 mb-6 space-y-3">
-    {["institution", "fieldOfStudy", "education", "researchInterests"].map(field => (
-      <div key={field}>
-        <label className="font-semibold text-white text-sm mb-2 capitalize">
-          {field.replace(/([A-Z])/g, " $1")}
-        </label>
-        {isEditing ? (
-          <input
-            type="text"
-            value={researcherInfo[field] || ""}
-            onChange={(e) =>
-              setResearcherInfo({...researcherInfo, [field]: e.target.value})
-            }
-            className="w-full p-1 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-black shadow-md"
-          />
-        ) : (
-          <p className="text-white">{researcherInfo[field] || `No ${field}`}</p>
-        )}
-      </div>
-    ))}
-  </div>
-)}
-
+            {profile.role === "Researcher" && researcherInfo && (
+              <div className="border-b-2 border-white pb-3 mb-6 space-y-3">
+                {[
+                  "institution",
+                  "fieldOfStudy",
+                  "education",
+                  "researchInterests",
+                ].map((field) => (
+                  <div key={field}>
+                    <label className="font-semibold text-white text-sm mb-2 capitalize">
+                      {field.replace(/([A-Z])/g, " $1")}
+                    </label>
+                    {isEditing ? (
+                      <input
+                        type="text"
+                        value={researcherInfo[field] || ""}
+                        onChange={(e) =>
+                          setResearcherInfo({
+                            ...researcherInfo,
+                            [field]: e.target.value,
+                          })
+                        }
+                        className="w-full p-1 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-black shadow-md"
+                      />
+                    ) : (
+                      <p className="text-white">
+                        {researcherInfo[field] || `No ${field}`}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
 
             {/* ===== Save / Cancel Buttons ===== */}
             {isEditing && (
@@ -548,29 +561,28 @@ const handleUpdateProfile = async () => {
                 </button>
               </div>
             )}
-           {!isEditing && (
-  <div className="mt-10 flex flex-col items-center space-y-4">
-    {/* Go to Dashboard Button */}
-    {!loading && profile && (
-      <button
-        onClick={() => {
-          if (userId) {
-            navigate(`/dashboard/${userId}`);
-          } else if (currentUser) {
-            navigate(`/dashboard/${currentUser.uid}`);
-          }
-        }}
-        className="px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700 active:bg-blue-800 transition-all duration-200"
-      >
-        Go to Dashboard
-      </button>
-    )}
+            {!isEditing && (
+              <div className="mt-10 flex flex-col items-center space-y-4">
+                {/* Go to Dashboard Button */}
+                {!loading && profile && (
+                  <button
+                    onClick={() => {
+                      if (userId) {
+                        navigate(`/dashboard/${userId}`);
+                      } else if (currentUser) {
+                        navigate(`/dashboard/${currentUser.uid}`);
+                      }
+                    }}
+                    className="px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700 active:bg-blue-800 transition-all duration-200"
+                  >
+                    Go to Dashboard
+                  </button>
+                )}
 
-    {/* Spacer for consistent layout */}
-    <div className="h-10"></div>
-  </div>
-)}
-
+                {/* Spacer for consistent layout */}
+                <div className="h-10"></div>
+              </div>
+            )}
           </div>
         ) : (
           <p className="text-center text-gray-100">Loading profile...</p>

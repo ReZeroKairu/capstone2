@@ -1,4 +1,10 @@
-import React, { useEffect, useState, useRef, useMemo } from "react";
+import React, {
+  useEffect,
+  useState,
+  useRef,
+  useMemo,
+  useCallback,
+} from "react";
 import { db, auth } from "../../firebase/firebase";
 import {
   collection,
@@ -15,13 +21,22 @@ import {
 import { useNotifications } from "../../hooks/useNotifications";
 import { useUserLogs } from "../../hooks/useUserLogs";
 import FileUpload from "../../components/FileUpload";
+import { debounce } from "lodash";
+import { ToastContainer, toast } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
 
 export default function SubmitManuscript() {
   const [forms, setForms] = useState([]);
   const [form, setForm] = useState(null);
   const [answers, setAnswers] = useState({});
   const [currentUser, setCurrentUser] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [isDraftSaving, setIsDraftSaving] = useState(false);
+  const [lastSaved, setLastSaved] = useState(null);
+  const formDataRef = useRef({ answers: {}, fileData: null });
+  const saveTimeoutRef = useRef(null);
+  const fileQuestionIndex =
+    form?.questions?.findIndex((q) => q.type === "file") ?? -1;
   const [cooldown, setCooldown] = useState(0);
 
   const [allResearchers, setAllResearchers] = useState([]);
@@ -200,6 +215,12 @@ export default function SubmitManuscript() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+
+    // Clear the draft on successful submission
+    localStorage.removeItem("manuscriptDraft");
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
     if (!form) return showMessage("No form selected.");
     if (cooldownRef.current > 0)
       return showMessage(
@@ -431,10 +452,135 @@ export default function SubmitManuscript() {
     }
   };
 
+  // Save draft to localStorage
+  const saveDraft = useCallback(() => {
+    if (loading) return;
+
+    const draftData = {
+      answers,
+      fileData: fileQuestionIndex >= 0 ? answers[fileQuestionIndex] : null,
+      formId: form?.id,
+      timestamp: new Date().toISOString(),
+    };
+
+    localStorage.setItem("manuscriptDraft", JSON.stringify(draftData));
+    setLastSaved(new Date());
+    setIsDraftSaving(false);
+
+    // Show save indicator
+    toast.info("Draft saved", { autoClose: 2000 });
+  }, [answers, fileQuestionIndex, form?.id, loading]);
+
+  // Memoize the debounced save function
+  const debouncedSave = useMemo(
+    () =>
+      debounce(() => {
+        if (!loading) {
+          saveDraft();
+        }
+      }, 2000),
+    [saveDraft, loading]
+  );
+
+  // Cleanup debounce on unmount
+  useEffect(() => {
+    return () => {
+      debouncedSave.cancel();
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+    };
+  }, [debouncedSave]);
+
+  // Load draft when form loads
+  useEffect(() => {
+    if (!form?.id) return;
+
+    const loadDraft = () => {
+      try {
+        const savedDraft = localStorage.getItem("manuscriptDraft");
+        if (!savedDraft) return;
+
+        const draft = JSON.parse(savedDraft);
+        if (draft.formId === form.id) {
+          // Only update state if there are actual changes
+          setAnswers((prev) => {
+            // Skip if answers are the same
+            if (JSON.stringify(prev) === JSON.stringify(draft.answers || {})) {
+              return prev;
+            }
+            return draft.answers || {};
+          });
+
+          // Restore file data if exists
+          if (draft.fileData) {
+            const fileQIndex = form.questions.findIndex(
+              (q) => q.type === "file"
+            );
+            if (fileQIndex >= 0) {
+              setAnswers((prev) => ({
+                ...prev,
+                [fileQIndex]: draft.fileData,
+              }));
+            }
+          }
+
+          toast.info("Draft restored", { autoClose: 3000 });
+          setLastSaved(new Date(draft.timestamp));
+        }
+      } catch (error) {
+        console.error("Error loading draft:", error);
+      }
+    };
+
+    loadDraft();
+
+    // Auto-save interval
+    const autoSaveInterval = setInterval(() => {
+      if (
+        Object.keys(answers).length > 0 ||
+        (fileQuestionIndex >= 0 && answers[fileQuestionIndex])
+      ) {
+        saveDraft();
+      }
+    }, 30000); // Auto-save every 30 seconds
+
+    return () => {
+      clearInterval(autoSaveInterval);
+    };
+  }, [form?.id]); // Removed saveDraft and answers from dependencies
+
+  // Auto-save on changes
+  useEffect(() => {
+    const hasAnswers = Object.keys(answers).length > 0;
+    const hasFileData =
+      fileQuestionIndex >= 0 && answers[fileQuestionIndex]?.file;
+
+    if ((hasAnswers || hasFileData) && !loading) {
+      setIsDraftSaving(true);
+      debouncedSave();
+    }
+
+    return () => {
+      debouncedSave.cancel();
+    };
+  }, [answers, fileQuestionIndex, debouncedSave, loading]);
+
   if (loading) return <p className="text-center py-10">Loading...</p>;
 
   return (
     <div className="min-h-screen px-4 md:py-12 lg:py-16 mx-auto max-w-3xl mt-12 bg-white text-[#222] relative">
+      <ToastContainer
+        position="top-right"
+        autoClose={3000}
+        hideProgressBar={false}
+        newestOnTop
+        closeOnClick
+        rtl={false}
+        pauseOnFocusLoss
+        draggable
+        pauseOnHover
+      />
       <h1 className="text-2xl font-semibold mb-6 text-[#111] text-center">
         Submit Manuscript
       </h1>

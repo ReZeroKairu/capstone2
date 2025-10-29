@@ -1,4 +1,6 @@
 // manuscriptHelpers.js
+import { db } from '../firebase/firebase';
+import { doc, getDoc, setDoc, serverTimestamp, collection } from 'firebase/firestore';
 import { NotificationService } from "./notificationService";
 
 /**
@@ -134,13 +136,77 @@ export async function handlePeerReviewerDecision(manuscriptId, manuscriptTitle, 
  * @param {string} reviewerId - Reviewer ID
  */
 export async function handleReviewCompletion(manuscriptId, manuscriptTitle, reviewerId) {
-  const adminIds = await NotificationService.getAdminUserIds();
-  await NotificationService.notifyReviewCompleted(
-    manuscriptId, 
-    manuscriptTitle, 
-    reviewerId, 
-    adminIds
-  );
+  try {
+    // 1. Get admin IDs for notification
+    const adminIds = await NotificationService.getAdminUserIds();
+
+    // 2. Get the manuscript data to archive
+    const manuscriptRef = doc(db, 'manuscripts', manuscriptId);
+    const manuscriptSnap = await getDoc(manuscriptRef);
+    
+    if (!manuscriptSnap.exists()) {
+      console.error('Manuscript not found for archiving:', manuscriptId);
+      return;
+    }
+
+    const manuscriptData = manuscriptSnap.data();
+    
+    // 3. Find the specific review being completed
+    const review = manuscriptData.reviewerSubmissions?.find(
+      sub => sub.reviewerId === reviewerId && sub.status === 'Completed'
+    );
+
+    if (!review) {
+      console.error('Completed review not found for archiving');
+      return;
+    }
+
+    // 4. Create a unique ID for this review using manuscriptId, reviewerId, and version
+    const versionNumber = review.manuscriptVersionNumber || 1;
+    const reviewId = `${manuscriptId}_${reviewerId}_v${versionNumber}`;
+    const reviewRef = doc(db, 'completedReviews', reviewId);
+
+    // 5. Create/update archive document in completedReviews collection
+    const archiveData = {
+      id: reviewId,
+      manuscriptId,
+      manuscriptTitle,
+      versionNumber,
+      reviewerId,
+      decision: manuscriptData.reviewerDecisionMeta?.[reviewerId]?.decision || 'pending',
+      recommendation: manuscriptData.reviewerDecisionMeta?.[reviewerId]?.recommendation || null,
+      status: review.status,
+      comment: review.comment || '',
+      reviewFileUrl: review.reviewFileUrl || null,
+      reviewFileName: review.reviewFileName || null,
+      completedAt: review.completedAt || serverTimestamp(),
+      // Only update archivedAt if this is a new review
+      ...(review.status === 'Completed' && { archivedAt: serverTimestamp() }),
+      // Include other relevant manuscript data
+      authorId: manuscriptData.authorId,
+      manuscriptStatus: manuscriptData.status, // Changed to avoid conflict with review status
+      assignedReviewers: manuscriptData.assignedReviewers || [],
+      originalAssignedReviewers: manuscriptData.originalAssignedReviewers || [],
+      reviewerDecisionMeta: manuscriptData.reviewerDecisionMeta || {},
+      // Add any other fields you want to preserve
+    };
+
+    // 6. Set the document with merge: true to update if exists, or create if not
+    await setDoc(reviewRef, archiveData, { merge: true });
+
+    // 6. Send notification
+    await NotificationService.notifyReviewCompleted(
+      manuscriptId, 
+      manuscriptTitle, 
+      reviewerId, 
+      adminIds
+    );
+
+    console.log('Review archived successfully');
+  } catch (error) {
+    console.error('Error archiving review:', error);
+    // Don't throw to avoid breaking the review submission flow
+  }
 }
 
 /**

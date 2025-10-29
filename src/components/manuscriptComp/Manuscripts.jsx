@@ -134,6 +134,47 @@ const Manuscripts = () => {
   // --- Filter + Search Logic ---
   const filteredManuscripts = manuscripts
     .filter((m) => {
+      // For reviewers, show all manuscripts they are assigned to or were previously involved with
+      if (role === 'reviewer') {
+        const isAssigned = m.assignedReviewers?.includes(user.uid);
+        const wasAssigned = (m.previousReviewers || []).includes(user.uid) || 
+                          (m.originalAssignedReviewers || []).includes(user.uid);
+        const hasSubmittedReview = m.reviewerSubmissions?.some(s => s.reviewerId === user.uid);
+        
+        console.log('Manuscript in filter:', {
+          id: m.id,
+          title: m.title || m.manuscriptTitle,
+          status: m.status,
+          isAssigned,
+          wasAssigned,
+          hasSubmittedReview,
+          assignedReviewers: m.assignedReviewers || [],
+          previousReviewers: m.previousReviewers || []
+        });
+
+        // Show if:
+        // 1. Currently assigned, or
+        // 2. Was previously assigned, or
+        // 3. Has submitted a review
+        const shouldShow = isAssigned || wasAssigned || hasSubmittedReview;
+        
+        if (!shouldShow) {
+          console.log('Hiding manuscript:', m.id, '- No assignment or submission found');
+          return false;
+        }
+        
+        console.log('Showing manuscript:', m.id, '-', { isAssigned, wasAssigned, hasSubmittedReview });
+        
+        // Apply additional filters if selected
+        if (filter === "all") return true;
+        if (filter === "Pending") return !m.status || m.status === "Pending";
+        if (filter === "Rejected") 
+          return m.status === "Rejected" || m.status === "Peer Reviewer Rejected";
+        if (filter === "Back to Admin") return m.status === "Back to Admin";
+        return m.status === filter;
+      }
+      
+      // For other roles (admin, researcher), use the original filtering logic
       if (filter === "all") return true;
       if (filter === "Pending") return !m.status || m.status === "Pending";
       if (filter === "Rejected")

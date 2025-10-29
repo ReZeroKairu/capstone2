@@ -1,5 +1,5 @@
 // src/components/Manuscripts/ManuscriptItem.jsx
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { doc, updateDoc, getDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "../../firebase/firebase";
@@ -14,7 +14,6 @@ import {
   filterAcceptedReviewers,
   filterRejectedReviewers,
 } from "../../utils/manuscriptHelpers";
-import PeerReviewerDetails from "./PeerReviewerDetails";
 import ManuscriptStatusBadge from "../ManuscriptStatusBadge";
 import DeadlineBadge from "./DeadlineBadge";
 import StatusActionButtons from "./StatusActionButtons";
@@ -60,11 +59,8 @@ const ManuscriptItem = ({
 
   const [showModal, setShowModal] = useState(false);
   const [expandedReviewerIds, setExpandedReviewerIds] = useState({});
-  const [expandedSubmissionHistory, setExpandedSubmissionHistory] =
-    useState(false);
-  const [expandedPeerReviewerDetails, setExpandedPeerReviewerDetails] =
-    useState(false);
-
+  const [expandedSubmissionHistory, setExpandedSubmissionHistory] = useState(false);
+  const [activeDeadline, setActiveDeadline] = useState(null);
   const { downloadFileCandidate } = useFileDownloader();
   const { assignReviewer } = useReviewerAssignment();
 
@@ -121,38 +117,28 @@ const ManuscriptItem = ({
     if (!status) return true;
 
     if (role === "Peer Reviewer") {
-      const myMeta = manuscript.assignedReviewersMeta?.[currentUserId];
-      const completedReview = manuscript.reviewerSubmissions?.some(
-        (r) => r.reviewerId === currentUserId && r.status === "Completed"
+      // Convert all IDs to strings for consistent comparison
+      const myId = String(currentUserId);
+      const assignedReviewers = (manuscript.assignedReviewers || []).map(String);
+      const previousReviewers = (manuscript.previousReviewers || []).map(String);
+      const originalAssignedReviewers = (manuscript.originalAssignedReviewers || []).map(String);
+      
+      // Check all possible ID formats and locations
+      const isAssigned = assignedReviewers.includes(myId) || 
+                        (manuscript.assignedReviewers || []).includes(currentUserId);
+                          
+      const wasAssigned = previousReviewers.includes(myId) || 
+                         originalAssignedReviewers.includes(myId) ||
+                         (manuscript.previousReviewers || []).includes(currentUserId) ||
+                         (manuscript.originalAssignedReviewers || []).includes(currentUserId);
+      
+      const hasSubmitted = (manuscript.reviewerSubmissions || []).some(s => 
+        String(s.reviewerId) === myId || s.reviewerId === currentUserId
       );
 
-      // Show if review is completed
-      if (completedReview) return true;
-
-      // Show if reviewer was assigned and did NOT decline
-      if (myMeta && myMeta.invitationStatus !== "declined") return true;
-
-      // Show manuscript if reviewer was involved in the review process
-      if (status === "For Publication") {
-        // Check if reviewer completed a review
-        const completedReview = manuscript.reviewerSubmissions?.some(
-          (r) => r.reviewerId === currentUserId && r.status === "Completed"
-        );
-
-        // Or was assigned and didn't explicitly reject
-        const rejected =
-          manuscript.reviewerDecisionMeta?.[currentUserId]?.decision ===
-          "reject";
-
-        return completedReview || !rejected;
-      }
-
-      // For revision statuses
-      if (["For Revision (Minor)", "For Revision (Major)"].includes(status)) {
-        const rejected =
-          manuscript.reviewerDecisionMeta?.[currentUserId]?.decision ===
-          "reject";
-        return !rejected;
+      // Show if currently assigned, was previously assigned, or has submitted a review
+      if (isAssigned || wasAssigned || hasSubmitted) {
+        return true;
       }
 
       return false;
@@ -180,17 +166,27 @@ const ManuscriptItem = ({
   // ----------------------------
   // Determine which reviewers are visible to current user
   // ----------------------------
+  const currentVersion = manuscript.versionNumber || 1;
   const visibleReviewers = Object.entries(
     manuscript.assignedReviewersMeta || {}
   )
     .filter(([reviewerId, meta]) => {
       if (role === "Admin") return true;
 
+      // For resubmissions, only show reviewers who were assigned to this version
+      if (manuscript.status === "Back to Admin" || manuscript.status === "Peer Reviewer Reviewing") {
+        const reviewerAssignment = meta.assignedVersions || [];
+        const isAssignedToThisVersion = reviewerAssignment.includes(currentVersion);
+        if (!isAssignedToThisVersion) return false;
+      }
+
       if (role === "Peer Reviewer") {
         if (reviewerId !== currentUserId) return false;
 
         const completedReview = manuscript.reviewerSubmissions?.some(
-          (r) => r.reviewerId === currentUserId && r.status === "Completed"
+          (r) => r.reviewerId === currentUserId && 
+                 r.status === "Completed" &&
+                 (r.manuscriptVersionNumber || 1) === currentVersion
         );
 
         return (
@@ -201,7 +197,13 @@ const ManuscriptItem = ({
       }
 
       if (role === "Researcher") {
-        return meta.invitationStatus === "accepted";
+        // Only show accepted reviewers who have submitted feedback
+        const hasSubmitted = manuscript.reviewerSubmissions?.some(
+          r => r.reviewerId === reviewerId && 
+               r.status === "Completed" &&
+               (r.manuscriptVersionNumber || 1) < currentVersion
+        );
+        return meta.invitationStatus === "accepted" && hasSubmitted;
       }
 
       return true;
@@ -232,10 +234,111 @@ const ManuscriptItem = ({
       [reviewerId]: !prev[reviewerId],
     }));
 
-  // Local function that uses the imported getReviewerDeadline
-  const getActiveDeadline = (manuscript, role) => {
-    return getReviewerDeadline(manuscript, role, currentUserId);
+  // Get the most recent deadline from active (not declined) reviewers
+  const getLatestReviewerDeadline = (manuscript) => {
+    if (!manuscript.assignedReviewersMeta) return null;
+    
+    let latestDeadline = null;
+    let latestInviteTime = 0;
+    
+    // Find the latest deadline from active reviewers based on when they were invited
+    Object.entries(manuscript.assignedReviewersMeta).forEach(([reviewerId, meta]) => {
+      // Skip declined or inactive reviewers
+      if (meta.invitationStatus === 'declined' || !meta.deadline) {
+        return;
+      }
+      
+      const deadline = meta.deadline.toDate 
+        ? meta.deadline.toDate() 
+        : new Date(meta.deadline);
+        
+      // Get the invite time to determine the most recent invitation
+      const inviteTime = meta.invitedAt?.toDate 
+        ? meta.invitedAt.toDate().getTime() 
+        : meta.invitedAt?.seconds 
+          ? meta.invitedAt.seconds * 1000 
+          : 0;
+          
+      // Only update if this is an active reviewer with a valid deadline
+      const isActive = !meta.declinedAt && !meta.invitationStatus?.toLowerCase().includes('declined');
+      
+      if (isActive && (inviteTime > latestInviteTime || 
+          (inviteTime === latestInviteTime && (!latestDeadline || deadline > latestDeadline)))) {
+        latestDeadline = deadline;
+        latestInviteTime = inviteTime;
+      }
+    });
+    
+    return latestDeadline;
   };
+
+  // Get the appropriate deadline based on user role and manuscript status
+  const getActiveDeadline = async (manuscript, role) => {
+    try {
+      // For Back to Admin status, always use the finalization deadline
+      if (manuscript.status === 'Back to Admin') {
+        if (manuscript.finalizationDeadline) {
+          return manuscript.finalizationDeadline.toDate 
+            ? manuscript.finalizationDeadline.toDate() 
+            : new Date(manuscript.finalizationDeadline);
+        }
+        return null;
+      }
+      
+      // For revision statuses, use the manuscript's revisionDeadline
+      if (manuscript.status === 'For Revision (Minor)' || manuscript.status === 'For Revision (Major)') {
+        if (manuscript.revisionDeadline) {
+          return manuscript.revisionDeadline.toDate 
+            ? manuscript.revisionDeadline.toDate() 
+            : new Date(manuscript.revisionDeadline);
+        }
+        return null;
+      }
+      
+      // For Admins and Researchers, show the latest reviewer invitation deadline
+      if (role === 'Admin' || role === 'Researcher') {
+        const latestDeadline = getLatestReviewerDeadline(manuscript);
+        if (latestDeadline) return latestDeadline;
+        
+        // Fallback to manuscript-level deadline if no reviewer deadline found
+        if (manuscript.invitationDeadline) {
+          return manuscript.invitationDeadline.toDate 
+            ? manuscript.invitationDeadline.toDate() 
+            : new Date(manuscript.invitationDeadline);
+        }
+      }
+      
+      // For peer reviewers, show their individual deadline
+      if (role === 'Peer Reviewer' && currentUserId) {
+        const reviewerMeta = manuscript.assignedReviewersMeta?.[currentUserId];
+        if (reviewerMeta?.deadline) {
+          return reviewerMeta.deadline.toDate 
+            ? reviewerMeta.deadline.toDate() 
+            : new Date(reviewerMeta.deadline);
+        }
+      }
+      
+      return null;
+    } catch (error) {
+      console.error('Error getting active deadline:', error);
+      return null;
+    }
+  };
+
+  // Load the active deadline when the component mounts or when relevant props change
+  useEffect(() => {
+    const loadDeadline = async () => {
+      try {
+        const deadline = await getActiveDeadline(manuscript, role);
+        setActiveDeadline(deadline);
+      } catch (error) {
+        console.error('Failed to load deadline:', error);
+        setActiveDeadline(null);
+      }
+    };
+
+    loadDeadline();
+  }, [manuscript, role, currentUserId]);
 
   const handleStatusChange = async (manuscriptId, newStatus, note = '') => {
     console.log('handleStatusChange called with:', { 
@@ -468,7 +571,7 @@ const ManuscriptItem = ({
             
             {/* Deadline */}
             {(() => {
-              const activeDeadline = getActiveDeadline(manuscript, role, currentUserId);
+              // Use the pre-fetched activeDeadline from state
               const hideDeadlineForStatuses = [
                 "For Publication",
                 "Rejected",
@@ -509,12 +612,15 @@ const ManuscriptItem = ({
                   (manuscript.submitterId === currentUserId || 
                    manuscript.coAuthorsIds?.includes(currentUserId))) {
                 return (
-                  <DeadlineBadge
-                    start={manuscript.submittedAt || new Date()}
-                    end={activeDeadline}
-                    formatDate={formatDate}
-                    className="mt-1"
-                  />
+                  <div className="mt-2">
+                    <div className="flex items-center text-sm text-gray-600">
+                                      <DeadlineBadge
+                        start={manuscript.submittedAt || new Date()}
+                        end={activeDeadline}
+                        formatDate={formatDate}
+                      />
+                    </div>
+                  </div>
                 );
               }
 
@@ -575,26 +681,16 @@ const ManuscriptItem = ({
                 const acceptedAt = normalizeTimestamp(meta.acceptedAt);
                 const declinedAt = normalizeTimestamp(meta.declinedAt);
                 const respondedAt = normalizeTimestamp(meta.respondedAt);
-                const activeDeadline = getActiveDeadline(manuscript, role);
+                // Use the pre-fetched activeDeadline from state
 
                 return (
                   <>
                     {assignedAt && <p>Invited: {formatDate(assignedAt)}</p>}
-                    {acceptedAt && (
-                      <p className="text-green-700 font-medium">
-                        Accepted: {formatDate(acceptedAt)}
-                      </p>
-                    )}
-                    {declinedAt && (
-                      <p className="text-red-700 font-medium">
-                        Declined: {formatDate(declinedAt)}
-                      </p>
-                    )}
-                    {respondedAt && !acceptedAt && !declinedAt && (
-                      <p>Responded: {formatDate(respondedAt)}</p>
-                    )}
-
-                    {manuscript.reviewerSubmissions?.some(
+                    {acceptedAt && <p>Accepted: {formatDate(acceptedAt)}</p>}
+                    {respondedAt && <p>Responded: {formatDate(respondedAt)}</p>}
+                    {declinedAt && <p>Declined: {formatDate(declinedAt)}</p>}
+                    
+                    {(manuscript.reviewerSubmissions?.some(
                       (r) =>
                         r.reviewerId === currentUserId &&
                         r.status === "Completed"
@@ -604,11 +700,11 @@ const ManuscriptItem = ({
                       "For Publication",
                       "Rejected",
                       "Peer Reviewer Rejected",
-                    ].includes(manuscript.status) ? (
+                    ].includes(manuscript.status)) && (
                       <p className="text-green-700 font-medium">
                         {isPreviousReviewer ? "✅ Previously Reviewed" : "✅ Review Completed"}
                       </p>
-                    ) : null}
+                    )}
 
                     {/* Deadline badge removed from here - now shown in the header */}
                   </>
@@ -618,8 +714,8 @@ const ManuscriptItem = ({
         )}  
       </div>
 
-      {/* Reviewer Feedback */}
-      {visibleReviewers.length > 0 && role !== "Peer Reviewer" && (
+      {/* Reviewer Feedback - Hidden for Researchers and Peer Reviewers */}
+      {visibleReviewers.length > 0 && role !== "Peer Reviewer" && role !== "Researcher" && (
         <div className="mt-4">
           <h4 className="font-semibold text-gray-700 mb-2">
             Reviewer Feedback
@@ -640,43 +736,8 @@ const ManuscriptItem = ({
         </div>
       )}
 
-      {/* Peer Reviewer Details */}
-      {(role === "Admin" ||
-        (role === "Researcher" && researcherVisibleStatuses.includes(status)) ||
-        role === "Peer Reviewer") &&
-        [
-          "For Publication",
-          "For Revision (Minor)",
-          "For Revision (Major)",
-          "Peer Reviewer Rejected",
-          "Rejected",
-          "Back to Admin",
-        ].includes(status) && (
-          <div className="mt-3 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-200">
-            <button
-              className="mb-3 px-4 py-1 bg-indigo-100 text-indigo-700 rounded font-medium text-sm hover:bg-indigo-200"
-              onClick={() => setExpandedPeerReviewerDetails((v) => !v)}
-            >
-              {expandedPeerReviewerDetails
-                ? "Hide Peer Review Details"
-                : "Show Peer Review Details"}
-            </button>
-
-            {expandedPeerReviewerDetails && (
-              <PeerReviewerDetails
-                manuscript={manuscript}
-                role={role}
-                users={users}
-                currentUserId={currentUserId}
-                expandedReviewerIds={expandedReviewerIds}
-                setExpandedReviewerIds={setExpandedReviewerIds}
-                downloadFileCandidate={downloadFileCandidate}
-                formatDate={formatDate}
-              />
-            )}
-          </div>
-        )}
-
+     
+         
       {/* Actions */}
       <div className="mt-3 flex flex-col sm:flex-row sm:items-center gap-2">
         {role !== "Peer Reviewer" && (

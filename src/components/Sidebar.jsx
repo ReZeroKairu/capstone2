@@ -102,12 +102,7 @@ const Sidebar = ({ role, isOpen, toggleSidebar }) => {
       name: "Review Invitations",
       path: "/reviewer-invitations",
       icon: <FaEnvelope className="text-xl" />,
-    },
-    {
-      name: "Completed Reviews",
-      path: "/peerreviewer/completed",
-      icon: <FaClock className="text-xl" />,
-    },
+    }
   ];
 
   const renderLinks = (linkArray, mobile = false) =>

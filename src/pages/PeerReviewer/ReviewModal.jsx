@@ -4,7 +4,7 @@ import {
   downloadFileCandidate,
   resolveStoragePathToUrl,
 } from "./helpers/fileHelpers";
-import { DeadlineBadge } from "./DeadlineBadge";
+import DeadlineBadge from "./DeadlineBadge";
 import { parseDateSafe } from "../../utils/dateUtils";
 
 /**
@@ -135,11 +135,11 @@ export default function ReviewModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+      className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 overflow-y-auto py-4"
       onClick={handleOverlayClick}
     >
       <div
-        className="bg-white rounded-2xl p-6 w-[90%] max-w-3xl shadow-xl overflow-auto max-h-[85vh]"
+        className="bg-white rounded-2xl p-6 w-[95%] max-w-4xl shadow-xl overflow-y-auto max-h-[95vh] my-4 relative"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}

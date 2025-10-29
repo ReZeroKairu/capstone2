@@ -1,4 +1,10 @@
-import { collection, addDoc, serverTimestamp, doc, getDoc } from "firebase/firestore";
+import {
+  collection,
+  addDoc,
+  serverTimestamp,
+  doc,
+  getDoc,
+} from "firebase/firestore";
 import { db } from "../firebase/firebase";
 
 /**
@@ -6,7 +12,6 @@ import { db } from "../firebase/firebase";
  * Tracks all user actions for audit and analytics
  */
 export class UserLogService {
-  
   /**
    * Create a user activity log entry
    * @param {string} userId - User ID who performed the action
@@ -15,14 +20,24 @@ export class UserLogService {
    * @param {Object} metadata - Additional data about the action
    * @param {string} ipAddress - User's IP address (optional)
    */
-  static async logUserActivity(userId, action, description, metadata = {}, ipAddress = null) {
+  static async logUserActivity(
+    userId,
+    action,
+    description,
+    metadata = {},
+    email = null,
+    ipAddress = null
+  ) {
     try {
       // Get user info for the log
       const userInfo = await this.getUserInfo(userId);
-      
+
+      // Use provided email or fall back to userInfo
+      const userEmail = email || userInfo.email;
+
       const logData = {
         userId,
-        userEmail: userInfo.email,
+        userEmail,
         userFullName: userInfo.fullName,
         userRole: userInfo.role,
         action,
@@ -30,17 +45,16 @@ export class UserLogService {
         metadata: {
           ...metadata,
           timestamp: new Date().toISOString(),
-          userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : null,
-          ipAddress
+          userAgent:
+            typeof navigator !== "undefined" ? navigator.userAgent : null,
+          ipAddress,
         },
         timestamp: serverTimestamp(),
-        createdAt: new Date()
+        createdAt: new Date(),
       };
 
-      const logsRef = collection(db, "UserLogs");
+      const logsRef = collection(db, "UserLog");
       const logRef = await addDoc(logsRef, logData);
-      
-      console.log(`User activity logged: ${action} by ${userInfo.email}`);
       return logRef.id;
     } catch (error) {
       console.error("Error logging user activity:", error);
@@ -57,8 +71,11 @@ export class UserLogService {
         const userData = userDoc.data();
         return {
           email: userData.email || "Unknown",
-          fullName: `${userData.firstName || ""} ${userData.middleName || ""} ${userData.lastName || ""}`.trim() || "Unknown User",
-          role: userData.role || "User"
+          fullName:
+            `${userData.firstName || ""} ${userData.middleName || ""} ${
+              userData.lastName || ""
+            }`.trim() || "Unknown User",
+          role: userData.role || "User",
         };
       }
       return { email: "Unknown", fullName: "Unknown User", role: "User" };
@@ -69,240 +86,453 @@ export class UserLogService {
   }
 
   // === AUTHENTICATION LOGS ===
-  
-  static async logLogin(userId, loginMethod = "email") {
+
+  static async logUserLogin(userId, email, method = "email") {
+    const safeEmail = email || (await this.getUserEmail(userId)) || "Unknown";
     return this.logUserActivity(
       userId,
-      "user_login",
-      "User logged in",
-      { loginMethod }
+      "User Signed In",
+      `User signed in via ${method}`,
+      {
+        loginMethod: method,
+        actionType: "authentication",
+        email: safeEmail, // Ensure email is in metadata
+      },
+      safeEmail // Also pass as separate parameter
     );
   }
 
-  static async logLogout(userId) {
+  static async logUserLogout(userId, email) {
+    const safeEmail = email || (await this.getUserEmail(userId)) || "Unknown";
     return this.logUserActivity(
       userId,
-      "user_logout",
-      "User logged out"
+      "User Signed Out",
+      "User signed out",
+      {
+        actionType: "authentication",
+        email: safeEmail, // Ensure email is in metadata
+      },
+      safeEmail // Also pass as separate parameter
+    );
+  }
+
+  static async logLoginFailure(email, reason, method = "email") {
+    const safeEmail = email || "Unknown";
+    return this.logUserActivity(
+      "anonymous",
+      "Login Failed",
+      `Failed login attempt via ${method}: ${reason}`,
+      {
+        email: safeEmail,
+        loginMethod: method,
+        reason,
+        actionType: "authentication",
+        severity: "warning",
+      },
+      safeEmail
     );
   }
 
   static async logRegistration(userId, registrationMethod = "email") {
-    return this.logUserActivity(
-      userId,
-      "user_registration",
-      "New user registered",
-      { registrationMethod }
-    );
+    try {
+      const safeEmail = (await this.getUserEmail(userId)) || "New User";
+      return this.logUserActivity(
+        userId,
+        "User Registered",
+        `User registered via ${registrationMethod}`,
+        {
+          registrationMethod,
+          actionType: "authentication",
+          email: safeEmail,
+        },
+        safeEmail
+      );
+    } catch (error) {
+      console.error("Error in logRegistration:", error);
+      return this.logUserActivity(
+        userId,
+        "User Registered",
+        `User registered via ${registrationMethod}`,
+        {
+          registrationMethod,
+          actionType: "authentication",
+          error: "Failed to fetch user email",
+          errorDetails: error.message,
+        }
+      );
+    }
   }
 
   // === MANUSCRIPT LOGS ===
-  
-  static async logManuscriptSubmission(userId, manuscriptId, manuscriptTitle) {
-    return this.logUserActivity(
-      userId,
-      "manuscript_submitted",
-      `Submitted manuscript: "${manuscriptTitle}"`,
-      { 
-        manuscriptId, 
-        manuscriptTitle,
-        actionType: "submission"
-      }
-    );
+
+  static async logManuscriptSubmission(
+    userId,
+    manuscriptId,
+    manuscriptTitle,
+    userEmail = null
+  ) {
+    try {
+      const safeEmail =
+        userEmail || (await this.getUserEmail(userId)) || "Unknown";
+
+      return this.logUserActivity(
+        userId,
+        "Manuscript Submitted",
+        `Submitted manuscript: ${manuscriptTitle}`,
+        {
+          manuscriptId,
+          manuscriptTitle,
+          actionType: "submission",
+          category: "manuscript",
+          email: safeEmail, // Ensure email is in metadata
+        },
+        safeEmail
+      );
+    } catch (error) {
+      console.error("Error in logManuscriptSubmission:", error);
+      return this.logUserActivity(
+        userId,
+        "Sub",
+        `Submitted manuscript: ${manuscriptTitle}`,
+        {
+          manuscriptId,
+          manuscriptTitle,
+          actionType: "submission",
+          category: "manuscript",
+          error: "Failed to fetch user email",
+          errorDetails: error.message,
+        }
+      );
+    }
   }
 
-  static async logManuscriptStatusChange(userId, manuscriptId, manuscriptTitle, oldStatus, newStatus, changedBy) {
-    return this.logUserActivity(
-      userId,
-      "manuscript_status_changed",
-      `Manuscript "${manuscriptTitle}" status changed from "${oldStatus}" to "${newStatus}"`,
-      { 
-        manuscriptId, 
-        manuscriptTitle, 
-        oldStatus, 
-        newStatus,
-        changedBy,
-        actionType: "status_change"
-      }
-    );
+  static async logManuscriptReview(
+    userId,
+    manuscriptId,
+    manuscriptTitle,
+    decision
+  ) {
+    try {
+      const safeEmail = (await this.getUserEmail(userId)) || "Unknown";
+
+      return this.logUserActivity(
+        userId,
+        "Manuscript Reviewed",
+        `Decision: ${decision}`,
+        {
+          manuscriptId,
+          manuscriptTitle,
+          decision,
+          actionType: "review",
+          category: "manuscript",
+          severity: decision.toLowerCase().includes("reject")
+            ? "warning"
+            : "info",
+          email: safeEmail, // Ensure email is in metadata
+        },
+        safeEmail
+      );
+    } catch (error) {
+      console.error("Error in logManuscriptReview:", error);
+      return this.logUserActivity(
+        userId,
+        "Manuscript Reviewed",
+        `Decision: ${decision}`,
+        {
+          manuscriptId,
+          manuscriptTitle,
+          decision,
+          actionType: "review",
+          category: "manuscript",
+          severity: decision.toLowerCase().includes("reject")
+            ? "warning"
+            : "info",
+          error: "Failed to fetch user email",
+          errorDetails: error.message,
+        }
+      );
+    }
   }
 
-  static async logManuscriptReview(userId, manuscriptId, manuscriptTitle, decision) {
-    return this.logUserActivity(
-      userId,
-      "manuscript_reviewed",
-      `Reviewed manuscript: "${manuscriptTitle}" - Decision: ${decision}`,
-      { 
-        manuscriptId, 
-        manuscriptTitle, 
-        decision,
-        actionType: "review"
-      }
-    );
-  }
+  static async logReviewerAssignment(
+    adminId,
+    manuscriptId,
+    manuscriptTitle,
+    reviewerIds
+  ) {
+    const safeEmail = await this.getUserEmail(adminId);
 
-  static async logReviewerAssignment(adminId, manuscriptId, manuscriptTitle, reviewerIds) {
     return this.logUserActivity(
       adminId,
-      "reviewer_assigned",
-      `Assigned ${reviewerIds.length} reviewer(s) to manuscript: "${manuscriptTitle}"`,
-      { 
-        manuscriptId, 
-        manuscriptTitle, 
-        reviewerIds,
+      "Reviewers Assigned",
+      `Assigned ${reviewerIds.length} reviewer(s) to manuscript`,
+      {
+        manuscriptId,
+        manuscriptTitle,
         reviewerCount: reviewerIds.length,
-        actionType: "assignment"
-      }
+        actionType: "assignment",
+        category: "review",
+      },
+      safeEmail
     );
   }
 
   // === USER MANAGEMENT LOGS ===
-  
-  static async logUserRoleChange(adminId, targetUserId, oldRole, newRole) {
-    const targetUserInfo = await this.getUserInfo(targetUserId);
-    return this.logUserActivity(
-      adminId,
-      "user_role_changed",
-      `Changed user role for ${targetUserInfo.fullName} (${targetUserInfo.email}) from "${oldRole}" to "${newRole}"`,
-      { 
-        targetUserId, 
-        targetUserEmail: targetUserInfo.email,
-        targetUserName: targetUserInfo.fullName,
-        oldRole, 
-        newRole,
-        actionType: "role_change"
-      }
-    );
-  }
 
   static async logUserProfileUpdate(userId, updatedFields) {
+    try {
+      const safeEmail = (await this.getUserEmail(userId)) || "Unknown";
+
+      return this.logUserActivity(
+        userId,
+        "Profile Updated",
+        "User updated their profile information",
+        {
+          ...updatedFields, // Include all updated fields in metadata
+          actionType: "profile_update",
+          email: safeEmail, // Also include email in metadata for consistency
+        },
+        safeEmail // Pass email as separate parameter
+      );
+    } catch (error) {
+      console.error("Error in logUserProfileUpdate:", error);
+      // Fallback to basic logging if there's an error getting email
+      return this.logUserActivity(
+        userId,
+        "Profile Updated",
+        "User updated their profile information",
+        {
+          ...updatedFields,
+          actionType: "profile_update",
+          error: "Failed to fetch user email",
+          errorDetails: error.message,
+        }
+      );
+    }
+  }
+
+  static async logUserRoleChange(adminId, targetUserId, oldRole, newRole) {
+    const [adminEmail, targetEmail] = await Promise.all([
+      this.getUserEmail(adminId),
+      this.getUserEmail(targetUserId),
+    ]);
+
     return this.logUserActivity(
-      userId,
-      "profile_updated",
-      `Updated profile fields: ${Object.keys(updatedFields).join(", ")}`,
-      { 
-        updatedFields,
-        fieldCount: Object.keys(updatedFields).length,
-        actionType: "profile_update"
-      }
+      adminId,
+      "User Role Updated",
+      `Changed role from ${oldRole} to ${newRole}`,
+      {
+        targetUserId,
+        targetEmail,
+        oldRole,
+        newRole,
+        actionType: "user_management",
+        category: "user",
+        severity: "high",
+      },
+      adminEmail
     );
   }
 
   static async logUserDeactivation(adminId, targetUserId, reason) {
-    const targetUserInfo = await this.getUserInfo(targetUserId);
+    const [adminEmail, targetEmail] = await Promise.all([
+      this.getUserEmail(adminId),
+      this.getUserEmail(targetUserId),
+    ]);
+
     return this.logUserActivity(
       adminId,
-      "user_deactivated",
-      `Deactivated user: ${targetUserInfo.fullName} (${targetUserInfo.email}) - Reason: ${reason}`,
-      { 
-        targetUserId, 
-        targetUserEmail: targetUserInfo.email,
-        targetUserName: targetUserInfo.fullName,
+      "User Deactivated",
+      `Deactivated user: ${targetEmail} - Reason: ${reason}`,
+      {
+        targetUserId,
+        targetEmail,
         reason,
-        actionType: "deactivation"
-      }
+        actionType: "user_management",
+        category: "user",
+        severity: "high",
+      },
+      adminEmail
     );
   }
 
   // === SYSTEM LOGS ===
-  
+
   static async logFormCreation(userId, formId, formTitle) {
-    return this.logUserActivity(
-      userId,
-      "form_created",
-      `Created new form: "${formTitle}"`,
-      { 
-        formId, 
-        formTitle,
-        actionType: "form_creation"
-      }
-    );
+    try {
+      const safeEmail = (await this.getUserEmail(userId)) || "Unknown";
+      return this.logUserActivity(
+        userId,
+        "Form Created",
+        `Created new form: ${formTitle}`,
+        {
+          formId,
+          formTitle,
+          actionType: "form_creation",
+          category: "system",
+          email: safeEmail,
+        },
+        safeEmail
+      );
+    } catch (error) {
+      console.error("Error in logFormCreation:", error);
+      return this.logUserActivity(
+        userId,
+        "Form Created",
+        `Created new form: ${formTitle}`,
+        {
+          formId,
+          formTitle,
+          actionType: "form_creation",
+          category: "system",
+          error: "Failed to fetch user email",
+          errorDetails: error.message,
+        }
+      );
+    }
   }
 
   static async logFormResponse(userId, formId, responseId, formTitle) {
-    return this.logUserActivity(
-      userId,
-      "form_response_submitted",
-      `Submitted response to form: "${formTitle}"`,
-      { 
-        formId, 
-        responseId,
-        formTitle,
-        actionType: "form_response"
-      }
-    );
+    try {
+      const safeEmail = (await this.getUserEmail(userId)) || "Unknown";
+      return this.logUserActivity(
+        userId,
+        "Form Response Submitted",
+        `Submitted response to form: "${formTitle}"`,
+        {
+          formId,
+          responseId,
+          formTitle,
+          actionType: "form_response",
+          category: "system",
+          email: safeEmail,
+        },
+        safeEmail
+      );
+    } catch (error) {
+      console.error("Error in logFormResponse:", error);
+      return this.logUserActivity(
+        userId,
+        "Form Response Submitted",
+        `Submitted response to form: "${formTitle}"`,
+        {
+          formId,
+          responseId,
+          formTitle,
+          actionType: "form_response",
+          category: "system",
+          error: "Failed to fetch user email",
+          errorDetails: error.message,
+        }
+      );
+    }
   }
 
-  static async logNotificationAction(userId, notificationId, action, notificationType) {
+  static async logNotificationAction(
+    userId,
+    notificationId,
+    action,
+    notificationType
+  ) {
     return this.logUserActivity(
       userId,
       "notification_action",
       `${action} notification of type: ${notificationType}`,
-      { 
-        notificationId, 
+      {
+        notificationId,
         notificationType,
         notificationAction: action,
-        actionType: "notification"
+        actionType: "notification",
       }
     );
   }
 
+  // === HELPER METHODS ===
+
+  static async getUserEmail(userId) {
+    if (!userId || userId === "anonymous") return "Unknown";
+
+    try {
+      const userDoc = await getDoc(doc(db, "Users", userId));
+      if (userDoc.exists()) {
+        return userDoc.data().email || "Unknown";
+      }
+      return "Unknown";
+    } catch (error) {
+      console.error("Error fetching user email:", error);
+      return "Unknown";
+    }
+  }
+
   // === SECURITY LOGS ===
-  
-  static async logSecurityEvent(userId, eventType, description, severity = "medium") {
+
+  static async logSecurityEvent(
+    userId,
+    eventType,
+    description,
+    severity = "medium"
+  ) {
+    const safeEmail = await this.getUserEmail(userId);
+
     return this.logUserActivity(
       userId,
-      "security_event",
-      `Security event: ${description}`,
-      { 
-        eventType, 
+      "Security Event",
+      description,
+      {
+        eventType,
         severity,
-        actionType: "security"
-      }
+        actionType: "security",
+        category: "system",
+      },
+      safeEmail
     );
   }
 
   static async logFailedLogin(email, reason, ipAddress) {
+    // Ensure email is not null or undefined
+    const safeEmail = email || "Unknown";
+
     return this.logUserActivity(
       "anonymous",
       "failed_login",
-      `Failed login attempt for email: ${email} - Reason: ${reason}`,
-      { 
-        email, 
+      `Failed login attempt for email: ${safeEmail} - Reason: ${reason}`,
+      {
+        email: safeEmail,
         reason,
-        ipAddress,
-        actionType: "security"
-      }
+        ipAddress: ipAddress || "Not available",
+        actionType: "security",
+      },
+      safeEmail // Pass email as the 5th parameter to ensure it's stored in userEmail
     );
   }
 
   // === BULK LOGGING ===
-  
+
   static async logBulkAction(userId, action, description, affectedItems) {
     return this.logUserActivity(
       userId,
       "bulk_action",
       `${description} - Affected ${affectedItems.length} items`,
-      { 
+      {
         bulkAction: action,
         affectedItems,
         itemCount: affectedItems.length,
-        actionType: "bulk"
+        actionType: "bulk",
       }
     );
   }
 
   // === ANALYTICS HELPERS ===
-  
+
   static async logPageView(userId, pagePath, pageTitle) {
     return this.logUserActivity(
       userId,
       "page_view",
       `Viewed page: ${pageTitle || pagePath}`,
-      { 
-        pagePath, 
+      {
+        pagePath,
         pageTitle,
-        actionType: "navigation"
+        actionType: "navigation",
       }
     );
   }
@@ -312,11 +542,13 @@ export class UserLogService {
       userId,
       "feature_usage",
       `Used feature: ${featureName}`,
-      { 
+      {
         featureName,
         featureData,
-        actionType: "feature"
+        actionType: "feature",
       }
     );
   }
 }
+
+export default UserLogService;

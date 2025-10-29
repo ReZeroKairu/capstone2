@@ -1,17 +1,79 @@
 import React, { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { db, auth } from "../../firebase/firebase";
+import { NotificationService } from "../../utils/notificationService";
 import {
   doc,
   getDoc,
   updateDoc,
+  arrayUnion,
   serverTimestamp,
-  addDoc,
   collection,
+  query,
+  where,
+  getDocs,
+  setDoc,
+  addDoc,
 } from "firebase/firestore";
 import { useNotifications } from "../../hooks/useNotifications";
 import { useUserLogs } from "../../hooks/useUserLogs";
 import FileUpload from "../../components/FileUpload";
+
+// Update reviewer deadlines when manuscript status changes
+async function updateReviewerDeadlines(manuscriptId, newStatus) {
+  try {
+    const manuscriptRef = doc(db, 'manuscripts', manuscriptId);
+    const manuscriptSnap = await getDoc(manuscriptRef);
+    
+    if (!manuscriptSnap.exists()) {
+      console.error('Manuscript not found');
+      return;
+    }
+    
+    const manuscriptData = manuscriptSnap.data();
+    const reviewers = manuscriptData.assignedReviewers || [];
+    
+    // Only update if there are reviewers and status is changing to 'Back to Admin'
+    if (reviewers.length > 0 && newStatus === 'Back to Admin') {
+      const batch = [];
+      const newDeadline = new Date();
+      newDeadline.setDate(newDeadline.getDate() + 14); // 2 weeks from now
+      
+      // Update each reviewer's deadline
+      for (const reviewerId of reviewers) {
+        const reviewerMetaRef = doc(db, 'manuscripts', manuscriptId, 'assignedReviewersMeta', reviewerId);
+        batch.push(updateDoc(reviewerMetaRef, {
+          deadline: newDeadline,
+          status: 'pending',
+          respondedAt: null
+        }));
+      }
+      
+      await Promise.all(batch);
+    }
+  } catch (error) {
+    console.error('Error updating reviewer deadlines:', error);
+    throw error; // Re-throw to be handled by the caller
+  }
+}
+
+// Log manuscript submission
+async function logManuscriptSubmission(manuscriptId, version, action) {
+  try {
+    const logRef = doc(collection(db, 'manuscriptLogs'));
+    await setDoc(logRef, {
+      manuscriptId,
+      version,
+      action,
+      timestamp: serverTimestamp(),
+      userId: auth.currentUser?.uid,
+      userEmail: auth.currentUser?.email
+    });
+  } catch (error) {
+    console.error('Error logging manuscript submission:', error);
+    // Don't fail the operation if logging fails
+  }
+}
 
 export default function ResubmitManuscript() {
   const { manuscriptId } = useParams();
@@ -127,23 +189,31 @@ export default function ResubmitManuscript() {
       const newStatus = "Back to Admin";
       let updateFields = {};
       
-      // Store previous reviewers for potential re-invitation
-      const previousReviewers = manuscript.assignedReviewers || [];
-      const previousReviewersMeta = { ...(manuscript.assignedReviewersMeta || {}) };
+      // Store current reviewers and their metadata before clearing
+      const currentReviewers = manuscript.assignedReviewers || [];
+      const currentReviewersMeta = { ...(manuscript.assignedReviewersMeta || {}) };
       
-      // Clear current reviewers but keep them in history
+      // Keep track of all previous reviewers, including current ones
+      const allPreviousReviewers = [...new Set([
+        ...(manuscript.previousReviewers || []),
+        ...currentReviewers
+      ])];
+      
+      // Combine previous and current reviewer metadata
+      const allPreviousReviewersMeta = {
+        ...(manuscript.previousReviewersMeta || {}),
+        ...currentReviewersMeta
+      };
+      
+      // Update the manuscript with the reviewer data
+      // Clear assignedReviewers and assignedReviewersMeta to allow fresh assignments
       updateFields.assignedReviewers = [];
       updateFields.assignedReviewersMeta = {};
-      updateFields.previousReviewers = [...new Set([
-        ...(manuscript.previousReviewers || []),
-        ...previousReviewers
-      ])];
-      updateFields.previousReviewersMeta = {
-        ...(manuscript.previousReviewersMeta || {}),
-        ...previousReviewersMeta
-      };
+      updateFields.previousReviewers = allPreviousReviewers;
+      updateFields.previousReviewersMeta = allPreviousReviewersMeta;
       updateFields.versionReviewed = currentVersion; // Track which version was reviewed
       updateFields.status = newStatus;
+      updateFields.needsReviewerAssignment = true; // Flag to indicate reviewers need to be reassigned
       
       // The revision deadline is already set when the status was changed to 'For Revision'
       // We don't need to update it here as it would reset the deadline
@@ -347,41 +417,62 @@ export default function ResubmitManuscript() {
         revisionType: manuscript.status,
       });
 
-      // Notify admins
-      await notifyManuscriptSubmission(
-        manuscriptId,
-        manuscript.manuscriptTitle || manuscript.title || "Untitled Manuscript",
-        currentUser.uid
-      );
-
-      // Notify reviewers for major revisions (they need to re-review)
-      if (manuscript.status === "For Revision (Major)" && manuscript.assignedReviewers?.length > 0) {
-        const NotificationService = (await import("../../utils/notificationService")).default;
-        await NotificationService.notifyReviewerResubmission(
-          manuscriptId,
-          manuscript.manuscriptTitle || manuscript.title || "Untitled Manuscript",
-          manuscript.assignedReviewers,
-          newVersion
-        );
-      }
-
-      // First update the manuscript with the new version and status
-      await updateDoc(msRef, updateFields);
-      
-      // Then update reviewer deadlines using the new utility function
+      // Update reviewer deadlines using the centralized deadline settings
       try {
-        const { updateReviewerDeadlines } = await import('../../utils/deadlineUtils');
-        await updateReviewerDeadlines(manuscriptId, 'Back to Admin');
+        // First, get the deadline settings
+        const settingsRef = doc(db, "deadlineSettings", "deadlines");
+        const settingsSnap = await getDoc(settingsRef);
+        
+        // Default to 14 days if settings not found
+        const finalizationDeadlineDays = settingsSnap.exists() 
+          ? (settingsSnap.data().finalizationDeadline || 14)
+          : 14;
+        
+        // Calculate the new deadline
+        const finalizationDeadline = new Date();
+        finalizationDeadline.setDate(finalizationDeadline.getDate() + finalizationDeadlineDays);
+        
+        // Update the manuscript with the new deadline
+        await updateDoc(msRef, {
+          finalizationDeadline,
+          finalizationStartedAt: serverTimestamp(),
+        });
+        
+        // Also update any assigned reviewers' deadlines
+        if (manuscript.assignedReviewers && manuscript.assignedReviewers.length > 0) {
+          const reviewerUpdates = {};
+          manuscript.assignedReviewers.forEach(reviewerId => {
+            reviewerUpdates[`assignedReviewersMeta.${reviewerId}.deadline`] = finalizationDeadline;
+            reviewerUpdates[`assignedReviewersMeta.${reviewerId}.deadlineUpdatedAt`] = serverTimestamp();
+          });
+          await updateDoc(msRef, reviewerUpdates);
+        }
       } catch (error) {
-        console.error('Error updating reviewer deadlines:', error);
+        console.error('Error updating deadlines:', error);
         // Don't fail the entire submission if deadline update fails
       }
       
       // Log the submission
       await logManuscriptSubmission(manuscriptId, newVersion, 'resubmitted');
       
-      // Notify admins about the resubmission
-      await notifyManuscriptSubmission(manuscriptId, 'resubmitted');
+      // Notify admins about the resubmission using NotificationService directly
+      const adminIds = await NotificationService.getAdminUserIds();
+      await NotificationService.createBulkNotifications(
+        adminIds,
+        "Manuscript Resubmission",
+        `Manuscript Resubmitted: ${manuscript.manuscriptTitle || manuscript.title || "Untitled Manuscript"}`,
+        `A revised version of "${manuscript.manuscriptTitle || manuscript.title || "Untitled Manuscript"}" has been resubmitted by ${currentUser.displayName || 'the author'}.`,
+        {
+          manuscriptId,
+          manuscriptTitle: manuscript.manuscriptTitle || manuscript.title || "Untitled Manuscript",
+          oldStatus: manuscript.status,
+          newStatus: 'Back to Admin',
+          isResubmission: true,
+          versionNumber: newVersion,
+          actionUrl: `/manuscripts?manuscriptId=${manuscriptId}`,
+          userRole: "Admin"
+        }
+      );
 
       showMessage("Manuscript resubmitted successfully!");
       setTimeout(() => navigate("/manuscripts"), 2000);

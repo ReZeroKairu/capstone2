@@ -223,7 +223,7 @@ const SubmissionHistory = ({
                                       {sub.manuscriptVersionNumber || versionNumber}
                                       {sub.isLatest && " (Latest)"}
                                     </p>
-                                    {sub.comment && (
+                                    {sub.comment && role !== "Researcher" && (
                                       <p className="text-xs text-gray-700 italic mt-1">
                                         "{sub.comment}"
                                       </p>
@@ -256,12 +256,12 @@ const SubmissionHistory = ({
 
                   {submission.fileUrl && (
                     <button
-                      onClick={() =>
+                      onClick={() => {
                         downloadFileCandidate(
                           submission.fileUrl,
                           submission.fileName
-                        )
-                      }
+                        );
+                      }}
                       className="px-3 py-1 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 ml-3"
                       aria-label="Download submission file"
                     >

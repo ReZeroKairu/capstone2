@@ -20,12 +20,10 @@ import {
 } from "firebase/storage";
 
 import ReviewModal from "./ReviewModal";
-import { DeadlineBadge } from "./DeadlineBadge";
+import DeadlineBadge from "./DeadlineBadge";
 
-import {
-  handlePeerReviewerDecision,
-  handleReviewCompletion,
-} from "../../utils/manuscriptHelpers";
+import { handlePeerReviewerDecision } from "../../utils/manuscriptHelpers";
+import { handleReviewCompletion } from "../../utils/manuscriptHelpers";
 import { useUserLogs } from "../../hooks/useUserLogs";
 import { getDeadlineColor, getRemainingTime } from "../../utils/deadlineUtils";
 import { parseDateSafe } from "../../utils/dateUtils";
@@ -56,7 +54,7 @@ export default function ReviewManuscript() {
   const [userRole, setUserRole] = useState(null);
   const { logManuscriptReview } = useUserLogs();
   const [manuscriptFileUrls, setManuscriptFileUrls] = useState({});
-  
+
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
   const [manuscriptsPerPage, setManuscriptsPerPage] = useState(5); // Default to 5 items per page
@@ -101,18 +99,21 @@ export default function ReviewManuscript() {
             m.reviewerDecisionMeta?.[uid]?.decision
         );
 
-        // Further filter: only show if invitation is accepted OR already submitted review
+        // Only show manuscripts that are assigned and not yet completed
         allMss = allMss.filter((m) => {
           const meta = m.assignedReviewersMeta?.[uid];
-          const hasSubmitted = m.reviewerSubmissions?.some(
-            (r) => r.reviewerId === uid
+          const hasCompletedReview = m.reviewerSubmissions?.some(
+            r => r.reviewerId === uid && r.status === 'Completed'
           );
+          
+          // If they've already completed a review, don't show it in the main list
+          if (hasCompletedReview) return false;
+          
           const invitationStatus = meta?.invitationStatus || "pending";
-          const hasAccepted =
-            invitationStatus === "accepted" || meta?.decision === "accepted";
+          const hasAccepted = invitationStatus === "accepted" || meta?.decision === "accepted";
 
-          // Show if accepted OR already submitted (for historical records)
-          return hasAccepted || hasSubmitted;
+          // Only show if accepted and not completed
+          return hasAccepted;
         });
 
         allMss = allMss
@@ -292,9 +293,11 @@ export default function ReviewManuscript() {
         reviewerId,
         decision
       );
+      // Archive the completed review
       await handleReviewCompletion(
         manuscriptId,
         selected.manuscriptTitle || selected.title || "Untitled",
+        reviewerId,
         reviewerId
       );
       await logManuscriptReview(
@@ -367,26 +370,30 @@ export default function ReviewManuscript() {
 
   const visibleManuscripts = useMemo(() => {
     return manuscripts.filter((m) => {
-      const myMeta = m.reviewerDecisionMeta?.[reviewerId];
-      const myDecision = myMeta?.decision || "pending";
+      const myMeta = m.assignedReviewersMeta?.[reviewerId];
+      const invitationStatus = myMeta?.invitationStatus || 'pending';
+      const isAssigned = (m.assignedReviewers || []).includes(reviewerId);
+      const hasAccepted = invitationStatus === 'accepted' || myMeta?.decision === 'accepted';
 
       // Admin sees all manuscripts
       if (userRole === "Admin") return true;
 
-      // Peer Reviewer sees only active review tasks
+      // Peer Reviewer sees only:
+      // 1. Manuscripts they are currently assigned to AND have explicitly accepted the invitation
+      // 2. Manuscripts where they've already submitted a review (for reference)
       if (userRole === "Peer Reviewer") {
-        const isAssigned = (m.assignedReviewers || []).includes(reviewerId);
-        const isActiveStatus = ![
-          "For Publication",
-          "Rejected",
-          "Peer Reviewer Rejected",
-          "Back to Admin",
-        ].includes(m.status);
-
-        return isAssigned && isActiveStatus;
+        const hasSubmittedReview = m.reviewerSubmissions?.some(
+          (r) => r.reviewerId === reviewerId
+        );
+        
+        // If user has already submitted a review, they can still see it
+        if (hasSubmittedReview) return true;
+        
+        // Only show if they're explicitly assigned AND have explicitly accepted the invitation
+        return isAssigned && hasAccepted;
       }
 
-      return true;
+      return false; // Default to not showing anything if role is not recognized
     });
   }, [manuscripts, reviewerId, userRole]);
 
@@ -394,7 +401,7 @@ export default function ReviewManuscript() {
   const filteredManuscripts = useMemo(() => {
     if (!searchTerm) return visibleManuscripts;
     const searchLower = searchTerm.toLowerCase();
-    return visibleManuscripts.filter(ms => {
+    return visibleManuscripts.filter((ms) => {
       const title = (ms.manuscriptTitle || ms.title || "").toLowerCase();
       return title.includes(searchLower);
     });

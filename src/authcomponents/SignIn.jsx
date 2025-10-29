@@ -11,7 +11,6 @@ import {
   faEnvelope,
 } from "@fortawesome/free-solid-svg-icons";
 import SignInwithGoogle from "./SignInWithGoogle";
-import { logUserAction } from "../utils/logger";
 import { UserLogService } from "../utils/userLogService";
 
 function SignIn() {
@@ -36,12 +35,12 @@ function SignIn() {
         });
         await auth.signOut();
 
-        // ✅ log failed login attempt
-        await logUserAction({
-          actingUserId: user.uid,
-          email: user.email,
-          action: "Sign In Blocked (Unverified Email)",
-        });
+        // Log failed login attempt - unverified email
+        await UserLogService.logLoginFailure(
+          user.email,
+          "Email not verified",
+          "email"
+        );
 
         return false;
       }
@@ -117,27 +116,20 @@ function SignIn() {
           type: "error",
         });
 
-        // ✅ log failed login (no profile)
-        await logUserAction({
-          actingUserId: user.uid,
-          email: user.email,
-          action: "Sign In Blocked (No Profile)",
-        });
+        // Log failed login (no profile)
+        await UserLogService.logLoginFailure(
+          user.email,
+          "No user profile found",
+          "email"
+        );
 
         await auth.signOut();
         setLoading(false);
         return;
       }
 
-      // ✅ log successful login
-      await logUserAction({
-        actingUserId: user.uid,
-        email: user.email,
-        action: "Sign In",
-      });
-
-      // Enhanced logging
-      await UserLogService.logLogin(user.uid, "email");
+      // Log successful login
+      await UserLogService.logUserLogin(user.uid, user.email, "email");
 
       setAlert({ message: "User logged in successfully!", type: "success" });
       navigate("/home");
@@ -166,16 +158,12 @@ function SignIn() {
 
       setAlert({ message: errorMessage, type: "error" });
 
-      // ✅ log failed attempt
-      await logUserAction({
-        actingUserId: null,
-        email,
-        action: "Sign In Failed",
-        metadata: { errorCode: error.code, errorMessage },
-      });
-
-      // Enhanced logging for failed login
-      await UserLogService.logFailedLogin(email, errorMessage, null);
+      // Log failed login attempt
+      await UserLogService.logLoginFailure(
+        email || "Unknown",
+        errorMessage,
+        "email"
+      );
     } finally {
       setLoading(false);
     }

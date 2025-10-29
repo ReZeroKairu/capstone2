@@ -15,8 +15,6 @@ import { db } from "../../firebase/firebase";
 import { userCache, getUserInfo } from "../../utils/userCache";
 import { useNavigate } from "react-router-dom";
 
-
-
 const UserLog = ({ onLogsUpdated }) => {
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -30,7 +28,7 @@ const UserLog = ({ onLogsUpdated }) => {
   const [endDate, setEndDate] = useState("");
   const [actionFilter, setActionFilter] = useState("all");
   const [roleFilter, setRoleFilter] = useState("all");
-const navigate = useNavigate();
+  const navigate = useNavigate();
 
   const fetchFullName = async (log) => {
     let first = log.previousFirstName || log.newFirstName || "";
@@ -87,11 +85,15 @@ const navigate = useNavigate();
               ? new Date(data.timestamp.seconds * 1000)
               : new Date();
 
+          // Get email from data, userEmail, or metadata
+          const email =
+            data.userEmail || data.email || data.metadata?.email || "";
+
           return {
             id: doc.id,
             timestamp,
             formattedTimestamp: timestamp.toLocaleString(),
-            email: data.email || "",
+            email: email,
             action: data.action || "",
             adminId: data.adminId || "",
             newFirstName: data.newFirstName || "",
@@ -102,6 +104,8 @@ const navigate = useNavigate();
             previousLastName: data.previousLastName || "",
             userId: data.userId || "",
             fullName,
+            // Include metadata for debugging
+            metadata: data.metadata || {},
           };
         })
       );
@@ -238,19 +242,25 @@ const navigate = useNavigate();
                 className="bg-white rounded-lg border border-gray-200 p-4 shadow-sm flex flex-col md:flex-row md:justify-between gap-2"
               >
                 <div className="flex flex-col gap-1">
-                  <p className="text-sm md:text-base truncate">
-  <span className="font-semibold text-gray-700">Email:</span>{" "}
-  {log.userId ? (
-    <span
-      className="text-red-800 cursor-pointer hover:underline"
-      onClick={() => navigate(`/profile/${log.userId}`)}
-    >
-      {log.email}
-    </span>
-  ) : (
-    log.email
-  )}
-</p>
+                  {log.email && (
+                    <p className="text-sm md:text-base truncate">
+                      <span className="font-semibold text-gray-700">
+                        {log.action === "User Role Updated"
+                          ? "Admin Email:"
+                          : "Email:"}
+                      </span>{" "}
+                      {log.userId ? (
+                        <span
+                          className="text-red-800 cursor-pointer hover:underline"
+                          onClick={() => navigate(`/profile/${log.userId}`)}
+                        >
+                          {log.email}
+                        </span>
+                      ) : (
+                        log.email
+                      )}
+                    </p>
+                  )}
 
                   <p className="text-sm md:text-base truncate">
                     <span className="font-semibold text-gray-700">
@@ -312,6 +322,53 @@ const navigate = useNavigate();
                         Action:
                       </span>{" "}
                       {log.action}
+                    </p>
+                  )}
+                  {/* Show manuscript details for review actions */}
+                  {log.action === "Manuscript Reviewed" &&
+                    log.metadata?.manuscriptTitle && (
+                      <p className="text-sm md:text-base truncate">
+                        <span className="font-semibold text-gray-700">
+                          Manuscript:
+                        </span>{" "}
+                        <span
+                          className="text-blue-600 cursor-pointer hover:underline"
+                          onClick={() =>
+                            log.metadata?.manuscriptId &&
+                            navigate(
+                              `/manuscripts?manuscriptId=${log.metadata.manuscriptId}`
+                            )
+                          }
+                        >
+                          {log.metadata.manuscriptTitle}
+                        </span>
+                      </p>
+                    )}
+
+                  {/* Show target user for role changes */}
+                  {log.action === "User Role Updated" &&
+                    log.metadata?.targetEmail && (
+                      <p className="text-sm md:text-base truncate">
+                        <span className="font-semibold text-gray-700">
+                          Target User:
+                        </span>{" "}
+                        <span
+                          className="text-blue-600 cursor-pointer hover:underline"
+                          onClick={() =>
+                            log.metadata?.targetUserId &&
+                            navigate(`/profile/${log.metadata.targetUserId}`)
+                          }
+                        >
+                          {log.metadata.targetEmail}
+                        </span>
+                      </p>
+                    )}
+                  {log.metadata?.oldRole && log.metadata?.newRole && (
+                    <p className="text-sm md:text-base truncate">
+                      <span className="font-semibold text-gray-700">
+                        Role Changed:
+                      </span>{" "}
+                      {log.metadata.oldRole} → {log.metadata.newRole}
                     </p>
                   )}
                   {log.userId && (
