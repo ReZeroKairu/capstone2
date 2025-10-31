@@ -18,6 +18,7 @@ import {
 import { useNotifications } from "../../hooks/useNotifications";
 import { useUserLogs } from "../../hooks/useUserLogs";
 import FileUpload from "../../components/FileUpload";
+import AdminFeedback from "../../components/feedback/AdminFeedback";
 
 // Update reviewer deadlines when manuscript status changes
 async function updateReviewerDeadlines(manuscriptId, newStatus) {
@@ -214,6 +215,19 @@ export default function ResubmitManuscript() {
       updateFields.versionReviewed = currentVersion; // Track which version was reviewed
       updateFields.status = newStatus;
       updateFields.needsReviewerAssignment = true; // Flag to indicate reviewers need to be reassigned
+      
+      // Preserve feedback history by archiving current feedback
+      if (manuscript.feedbacks) {
+        updateFields.previousFeedbacks = [
+          ...(manuscript.previousFeedbacks || []),
+          ...manuscript.feedbacks.map(fb => ({
+            ...fb,
+            version: currentVersion,
+            isArchived: true,
+            archivedAt: serverTimestamp()
+          }))
+        ];
+      }
       
       // The revision deadline is already set when the status was changed to 'For Revision'
       // We don't need to update it here as it would reset the deadline
@@ -569,15 +583,17 @@ export default function ResubmitManuscript() {
 
       {/* Display review feedback */}
       {manuscript.reviewerSubmissions && manuscript.reviewerSubmissions.length > 0 && (
-        <div className="mb-6 p-4 bg-yellow-50 rounded-lg border border-yellow-200">
-          <h3 className="text-base font-semibold mb-3">📝 Reviewer Feedback</h3>
+        <div className="mb-6 p-4 bg-yellow-100 rounded-lg border border-yellow-200">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-base font-semibold">📝 Reviewer Feedback</h3>
+            <span className="text-sm bg-gray-300 px-2 py-1 rounded">
+              Version {manuscript.versionNumber || 1}
+            </span>
+          </div>
           <div className="space-y-3">
             {manuscript.reviewerSubmissions.map((submission, idx) => (
               <div key={idx} className="bg-white p-3 rounded border">
                 <p className="text-sm font-medium text-gray-700 mb-1">Reviewer {idx + 1}</p>
-                {submission.comment && (
-                  <p className="text-sm text-gray-800 italic mb-2">"{submission.comment}"</p>
-                )}
                 {submission.reviewFileUrl && (
                   <a
                     href={submission.reviewFileUrl}
@@ -593,6 +609,13 @@ export default function ResubmitManuscript() {
           </div>
         </div>
       )}
+
+      {/* Admin Feedback Section */}
+      <AdminFeedback 
+        manuscriptId={manuscriptId} 
+        userRole={auth.currentUser?.role}
+        status={manuscript?.status} 
+      />
 
       <form onSubmit={handleResubmit} className="space-y-6">
         {/* Upload revised file */}

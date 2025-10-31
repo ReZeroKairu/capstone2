@@ -122,9 +122,7 @@ const Manuscripts = () => {
         await handleStatusChange(manuscriptId, "Assigning Peer Reviewer", "No reviewers assigned");
       }
 
-      console.log(
-        reviewerId ? "Reviewer unassigned" : "All reviewers unassigned"
-      );
+    
     } catch (error) {
       console.error("Error unassigning reviewer:", error);
       throw error; // Re-throw to handle in the component
@@ -140,17 +138,6 @@ const Manuscripts = () => {
         const wasAssigned = (m.previousReviewers || []).includes(user.uid) || 
                           (m.originalAssignedReviewers || []).includes(user.uid);
         const hasSubmittedReview = m.reviewerSubmissions?.some(s => s.reviewerId === user.uid);
-        
-        console.log('Manuscript in filter:', {
-          id: m.id,
-          title: m.title || m.manuscriptTitle,
-          status: m.status,
-          isAssigned,
-          wasAssigned,
-          hasSubmittedReview,
-          assignedReviewers: m.assignedReviewers || [],
-          previousReviewers: m.previousReviewers || []
-        });
 
         // Show if:
         // 1. Currently assigned, or
@@ -159,12 +146,10 @@ const Manuscripts = () => {
         const shouldShow = isAssigned || wasAssigned || hasSubmittedReview;
         
         if (!shouldShow) {
-          console.log('Hiding manuscript:', m.id, '- No assignment or submission found');
-          return false;
+                 return false;
         }
         
-        console.log('Showing manuscript:', m.id, '-', { isAssigned, wasAssigned, hasSubmittedReview });
-        
+         
         // Apply additional filters if selected
         if (filter === "all") return true;
         if (filter === "Pending") return !m.status || m.status === "Pending";
@@ -224,9 +209,6 @@ const Manuscripts = () => {
     indexOfFirst,
     indexOfLast
   );
-  console.log("Loaded manuscripts:", manuscripts);
-  console.log("User:", user);
-  console.log("Role:", role);
 
   // --- UI ---
   return (

@@ -17,6 +17,7 @@ import {
 import ManuscriptStatusBadge from "../ManuscriptStatusBadge";
 import DeadlineBadge from "./DeadlineBadge";
 import StatusActionButtons from "./StatusActionButtons";
+import AdminFeedback from "../feedback/AdminFeedback";
 
 const statusToDeadlineField = {
   "Assigning Peer Reviewer": "invitationDeadline",
@@ -40,6 +41,12 @@ const ManuscriptItem = ({
 }) => {
   const { handleStatusChange: handleStatusUpdate } = useManuscriptStatus();
   const navigate = useNavigate();
+  const [showModal, setShowModal] = useState(false);
+  const [expandedReviewerIds, setExpandedReviewerIds] = useState({});
+  const [expandedSubmissionHistory, setExpandedSubmissionHistory] = useState(false);
+  const [activeDeadline, setActiveDeadline] = useState(null);
+  const { downloadFileCandidate } = useFileDownloader();
+  const { assignReviewer } = useReviewerAssignment();
   
   if (!manuscript || Object.keys(manuscript).length === 0) return null;
 
@@ -57,12 +64,6 @@ const ManuscriptItem = ({
     status,
   } = manuscript;
 
-  const [showModal, setShowModal] = useState(false);
-  const [expandedReviewerIds, setExpandedReviewerIds] = useState({});
-  const [expandedSubmissionHistory, setExpandedSubmissionHistory] = useState(false);
-  const [activeDeadline, setActiveDeadline] = useState(null);
-  const { downloadFileCandidate } = useFileDownloader();
-  const { assignReviewer } = useReviewerAssignment();
 
   const normalizeTimestamp = (ts) => {
     if (!ts) return null;
@@ -147,6 +148,11 @@ const ManuscriptItem = ({
     if (role === "Researcher") {
       // Researchers can always see their own manuscript
       if (manuscript.submitterId === currentUserId) return true;
+      
+      // Co-authors can see the manuscript in any status
+      const isCoAuthor = manuscript.coAuthorsIds?.includes(currentUserId) || 
+                        (manuscript.coAuthors || []).some(coAuthor => coAuthor.userId === currentUserId || coAuthor.id === currentUserId);
+      if (isCoAuthor) return true;
 
       // Otherwise, only see finalized statuses
       const visibleStatuses = [
@@ -758,8 +764,18 @@ const ManuscriptItem = ({
         </div>
       )}
 
-     
-         
+      {/* Admin Feedback Section - Show to Admin and Researcher, hide from Peer Reviewer */}
+      {role !== "Peer Reviewer" && (
+        <div className="mt-6 space-y-4">
+                   <AdminFeedback 
+              manuscriptId={manuscript.id} 
+              userRole={role}
+              status={manuscript.status}
+              currentVersion={manuscript.versionNumber?.toString() || '1'}
+            />
+        </div>
+      )}
+          
       {/* Actions */}
       <div className="mt-3 flex flex-col sm:flex-row sm:items-center gap-2">
         {role !== "Peer Reviewer" && (
@@ -772,6 +788,7 @@ const ManuscriptItem = ({
         )}
 
         {role === "Researcher" &&
+         manuscript.submitterId === currentUserId &&
           ["For Revision (Minor)", "For Revision (Major)"].includes(status) && (
             <button
               onClick={() => navigate(`/researcher/resubmit/${id}`)}
