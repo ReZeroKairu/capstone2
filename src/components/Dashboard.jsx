@@ -534,11 +534,14 @@ const Dashboard = ({ sidebarOpen }) => {
       ? ['Pending'] 
       : STATUS_STEPS.filter(step => step !== 'Pending');
       
+    // Normalize status for display (combine minor/major revisions)
+    const normalizedStatus = status.includes('For Revision') ? 'For Revision' : status;
+    
     // Get the status to display (using mapping if needed)
-    const displayStatus = STATUS_MAPPING[status] || status;
+    const displayStatus = STATUS_MAPPING[normalizedStatus] || normalizedStatus;
     
     // Find the index of the current status in the steps
-    const stepIndex = stepsToUse.indexOf(displayStatus);
+    const stepIndex = stepsToUse.findIndex(step => step === displayStatus);
     
     // Return the 1-based index, or 0 if not found
     return stepIndex === -1 ? 0 : stepIndex + 1;
@@ -693,9 +696,7 @@ const Dashboard = ({ sidebarOpen }) => {
                     </div>
                   )}
                   <Progressbar
-                    currentStep={m.status === 'Pending' 
-                      ? 1 
-                      : STATUS_STEPS.filter(step => step !== 'Pending').indexOf(m.status) + 1}
+                    currentStep={getCurrentStep(m.status)}
                     steps={m.status === 'Pending' 
                       ? ['Pending'] 
                       : STATUS_STEPS.filter(step => step !== 'Pending')}
