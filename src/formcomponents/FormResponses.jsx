@@ -433,18 +433,33 @@ useEffect(() => {
     );
   };
 
-  // Admin actions (unchanged)
-  // Admin actions (fixed to use Manuscript Title)
+  // Admin actions (updated to include Accepted status)
   const handleAccept = async (res) => {
     try {
       const resRef = doc(db, "form_responses", res.id);
-      await updateDoc(resRef, { status: "Assigning Peer Reviewer" });
+      
+      // First set status to 'Accepted'
+      await updateDoc(resRef, { 
+        status: "Accepted",
+        acceptedAt: serverTimestamp()
+      });
 
+      // Add to history
       await addDoc(collection(db, "form_responses", res.id, "history"), {
         timestamp: serverTimestamp(),
         updatedBy: currentUser.uid,
-        status: "Assigning Peer Reviewer",
+        status: "Accepted",
       });
+
+      // Then after a short delay, update to 'Assigning Peer Reviewer'
+      setTimeout(async () => {
+        await updateDoc(resRef, { status: "Assigning Peer Reviewer" });
+        await addDoc(collection(db, "form_responses", res.id, "history"), {
+          timestamp: serverTimestamp(),
+          updatedBy: currentUser.uid,
+          status: "Assigning Peer Reviewer",
+        });
+      }, 1000); // 1 second delay
 
       const manuscriptsRef = collection(db, "manuscripts");
       const mQ = query(manuscriptsRef, where("responseId", "==", res.id));
@@ -515,15 +530,15 @@ setTotalResponses((prev) => Math.max(0, prev - 1));
     }
   };
 
-  const handleReject = async (res) => {
+  const handleNonAcceptance = async (res) => {
     try {
       const resRef = doc(db, "form_responses", res.id);
-      await updateDoc(resRef, { status: "Rejected" });
+      await updateDoc(resRef, { status: "non-Acceptance" });
 
       await addDoc(collection(db, "form_responses", res.id, "history"), {
         timestamp: serverTimestamp(),
         updatedBy: currentUser.uid,
-        status: "Rejected",
+        status: "non-Acceptance",
       });
 
       const manuscriptsRef = collection(db, "manuscripts");
@@ -545,7 +560,7 @@ setTotalResponses((prev) => Math.max(0, prev - 1));
         mSnap.forEach(async (ms) => {
           await updateDoc(doc(db, "manuscripts", ms.id), {
             title: manuscriptTitle,
-            status: "Rejected",
+            status: "non-Acceptance",
             email: res.email || "", // 🔹 save email
           });
         });
@@ -559,7 +574,7 @@ setTotalResponses((prev) => Math.max(0, prev - 1));
           userId: res.userId,
           coAuthors: res.coAuthors || [],
           submittedAt: serverTimestamp(),
-          status: "Rejected",
+          status: "non-Acceptance",
           email: res.email || "", // 🔹 save email
         });
       }
@@ -571,7 +586,7 @@ setTotalResponses((prev) => Math.max(0, prev - 1));
       await Promise.all(
         notifyUsers.map((uid) =>
           addDoc(collection(db, "Users", uid, "Notifications"), {
-            message: `Your manuscript "${manuscriptTitle}" has been rejected by the admin.`,
+            message: `Your manuscript "${manuscriptTitle}" has been marked as non-Acceptance.`,
             seen: false,
             timestamp: serverTimestamp(),
           })
@@ -583,7 +598,7 @@ setTotalResponses((prev) => Math.max(0, prev - 1));
 
 
     } catch (err) {
-      console.error("Error rejecting response:", err);
+      console.error("Error marking manuscript as non-Acceptance:", err);
     }
   };
 
@@ -893,23 +908,35 @@ setTotalResponses((prev) => Math.max(0, prev - 1));
                        case "file":
   return Array.isArray(q.answer) ? (
     q.answer.map((f, i) => (
-      <a
+      <button
         key={i}
-        href={f.url}          // the Firebase Storage download URL
-        download={f.name}     // triggers download with the original file name
-        className="text-blue-600 underline mr-2"
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (f.url) {
+            window.open(f.url, '_blank', 'noopener,noreferrer');
+          }
+        }}
+        className="text-blue-600 hover:text-blue-800 underline mr-2 cursor-pointer"
+        title={`Open ${f.name || 'file'} in new tab`}
       >
         {f.name || `File ${i + 1}`}
-      </a>
+      </button>
     ))
   ) : (
-    <a
-      href={q.answer.url}    // single file download URL
-      download={q.answer.name} // triggers download
-      className="text-blue-600 underline"
+    <button
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (q.answer?.url) {
+          window.open(q.answer.url, '_blank', 'noopener,noreferrer');
+        }
+      }}
+      className="text-blue-600 hover:text-blue-800 underline cursor-pointer"
+      title={`Open ${q.answer?.name || 'file'} in new tab`}
     >
-      {q.answer.name || "File"}
-    </a>
+      {q.answer?.name || "File"}
+    </button>
   );
 
                         default:
@@ -940,10 +967,10 @@ setTotalResponses((prev) => Math.max(0, prev - 1));
                   Accept
                 </button>
                 <button
-                  onClick={() => handleReject(selectedResponse)}
-                  className="px-4 py-2 bg-red-500 text-white rounded-md font-semibold"
+                  onClick={() => handleNonAcceptance(selectedResponse)}
+                  className="px-4 py-2 bg-gray-500 text-white rounded-md font-semibold"
                 >
-                  Reject
+                  Mark as non-Acceptance
                 </button>
               </div>
             )}

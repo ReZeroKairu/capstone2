@@ -563,7 +563,8 @@ const ManuscriptItem = ({
             />
             
             {hasRejection &&
-              (status === "Back to Admin" || status === "Rejected") && (
+              (status === "Back to Admin" || status === "Rejected") &&
+              role === "Admin" && (
                 <span className="px-2 py-0.5 rounded-full text-xs font-semibold shadow-sm bg-red-100 text-red-800">
                   Rejected by Peer Reviewer
                 </span>
@@ -572,10 +573,14 @@ const ManuscriptItem = ({
             {/* Deadline */}
             {(() => {
               // Use the pre-fetched activeDeadline from state
+              // Only hide deadline for these specific statuses
               const hideDeadlineForStatuses = [
                 "For Publication",
                 "Rejected",
-                "Peer Reviewer Rejected"
+                "Peer Reviewer Rejected",
+                "non-Acceptance"
+                // Note: "For Revision (Minor)" and "For Revision (Major)" are intentionally not included here
+                // so their deadlines will be shown
               ];
               
               if (!activeDeadline || hideDeadlineForStatuses.includes(status)) {
@@ -594,17 +599,34 @@ const ManuscriptItem = ({
                 );
               }
 
-              // For Peer Reviewers - show if assigned to this manuscript
+              // For Peer Reviewers - show deadline if assigned to this manuscript
+              // and either:
+              // 1. Review is not completed, or
+              // 2. Status is 'Back to Admin' or 'Revision'
               if (role === "Peer Reviewer" && manuscript.assignedReviewers?.includes(currentUserId)) {
                 const meta = manuscript.assignedReviewersMeta?.[currentUserId];
-                return (
-                  <DeadlineBadge
-                    start={meta?.assignedAt || manuscript.submittedAt || new Date()}
-                    end={activeDeadline}
-                    formatDate={formatDate}
-                    className="mt-1"
-                  />
+                const currentStatus = manuscript.status?.toLowerCase();
+                
+                // Check if review is completed by either reviewStatus or reviewerSubmissions
+                const hasCompletedReview = manuscript.reviewerSubmissions?.some(
+                  sub => sub.reviewerId === currentUserId && 
+                        ['completed', 'submitted'].includes(sub.status?.toLowerCase())
                 );
+                
+                // Always show deadline if status is 'Back to Admin' or 'For Revision (Minor/Major)'
+                // or if review is not completed
+                if (!hasCompletedReview || 
+                    ['back to admin', 'for revision (minor)', 'for revision (major)'].includes(currentStatus)) {
+                  return (
+                    <DeadlineBadge
+                      start={meta?.assignedAt || manuscript.submittedAt || new Date()}
+                      end={activeDeadline}
+                      formatDate={formatDate}
+                      className="mt-1"
+                    />
+                  );
+                }
+                return null;
               }
 
               // For Researchers - show if they are the submitter or a co-author

@@ -6,47 +6,63 @@ export default function Progressbar({
   currentStatus,
 }) {
   const isRejectedStatus =
-    currentStatus === "Rejected" || currentStatus === "Peer Reviewer Rejected";
+    currentStatus === "Rejected" || 
+    currentStatus === "Peer Reviewer Rejected" ||
+    currentStatus === "non-Acceptance";
+    
   const backToAdminIdx = steps.indexOf("Back to Admin");
+  const isNonAcceptance = currentStatus === "non-Acceptance";
+
+  // If status is non-Acceptance, only show the first step
+  const displaySteps = isNonAcceptance ? [steps[0]] : steps;
+  const displayStatus = isNonAcceptance ? "non-Acceptance" : null;
 
   return (
     <div className="flex items-center w-full mb-4">
-      {steps.map((status, idx) => {
+      {displaySteps.map((status, idx) => {
         const isRejectedStep =
-          status === "Rejected" || status === "Peer Reviewer Rejected";
+          status === "Rejected" || 
+          status === "Peer Reviewer Rejected" ||
+          (isNonAcceptance && idx === 0); // First step shows rejection for non-Acceptance
 
-        // Determine if this step is completed
+        // Determine if this is the current step
+        const isCurrent = idx === currentStep - 1;
+        
+        // Determine if this step is completed (all steps before current are completed)
         let isCompleted = false;
         if (isRejectedStatus) {
-          // Completed only up to Back to Admin
           isCompleted = idx <= backToAdminIdx && !isRejectedStep;
-        } else {
-          isCompleted = idx < currentStep && !isRejectedStep;
+        } else if (currentStep > 0) {
+          isCompleted = idx < currentStep - 1 && !isRejectedStep;
         }
-
-        const isCurrent =
-          idx === currentStep && !isRejectedStep && !isRejectedStatus;
 
         // Circle color & content
         let circleClass = "bg-gray-300 border-gray-400 text-white";
         let circleContent = idx + 1;
         let circleOpacity = "";
+        let displayText = status;
 
-        if (isRejectedStatus && idx > backToAdminIdx) {
+        if (isNonAcceptance) {
+          // For non-Acceptance, show red X and change text
           circleClass = "bg-red-500 border-red-500 text-white";
           circleContent = "X";
-        } else if (
-          status === "For Publication" &&
-          currentStatus === "For Publication"
-        ) {
-          circleClass = "bg-green-500 border-green-500 text-white";
-          circleContent = "✔";
-          circleOpacity = "opacity-80";
-        } else if (isCompleted) {
-          circleClass = "bg-green-500 border-green-500 text-white";
-          circleContent = "✔";
+          displayText = "non-Acceptance";
+        } else if (isRejectedStatus && idx > backToAdminIdx) {
+          circleClass = "bg-red-500 border-red-500 text-white";
+          circleContent = "X";
         } else if (isCurrent) {
+          // Current step should be yellow
           circleClass = "bg-yellow-400 border-yellow-400 text-black";
+          circleContent = idx + 1;
+          displayText = status; // Ensure we show the actual status text
+        } else if (isCompleted) {
+          // Completed steps get a green checkmark
+          circleClass = "bg-green-500 border-green-500 text-white";
+          circleContent = "✔";
+        } else if (status === "For Publication" && currentStatus === "For Publication") {
+          // Special case for final publication step
+          circleClass = "bg-green-500 border-green-500 text-white";
+          circleContent = "✔";
         }
 
         // Line color
@@ -64,11 +80,12 @@ export default function Progressbar({
                 {circleContent}
               </div>
               <p className="text-xs text-center mt-2 w-max max-w-[80px] break-words">
-                {status}
+                {displayText}
               </p>
             </div>
 
-            {idx !== steps.length - 1 && (
+            {/* Only show connecting line if not in non-Acceptance state and not the last step */}
+            {!isNonAcceptance && idx !== steps.length - 1 && (
               <div
                 className={`flex-1 h-1 transition-all duration-500 self-center ${lineClass}`}
               />

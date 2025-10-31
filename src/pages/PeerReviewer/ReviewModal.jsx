@@ -34,8 +34,8 @@ export default function ReviewModal({
   closeModal,
   manuscriptFileUrls,
   versionNumber: providedVersionNumber,
+  isSubmitting = false,
 }) {
-  const [submitting, setSubmitting] = useState(false);
   const myMeta = manuscript.reviewerDecisionMeta?.[reviewerId];
   const myDecision = myMeta?.decision || "pending";
   const hasSubmittedReview = manuscript.reviewerSubmissions?.some(
@@ -75,15 +75,12 @@ export default function ReviewModal({
     providedVersionNumber || manuscript.submissionHistory?.length || 1;
 
   const handleDecisionSubmitWrapper = async (manuscriptId, versionNumber) => {
-    if (submitting) return;
-    setSubmitting(true);
+    if (isSubmitting) return;
     try {
       await handleDecisionSubmit(manuscriptId, versionNumber);
     } catch (err) {
       console.error("Submission failed:", err);
       alert("Submission failed. Please try again.");
-    } finally {
-      setSubmitting(false);
     }
   };
 
@@ -399,14 +396,14 @@ export default function ReviewModal({
                       onClick={() =>
                         handleDecisionSubmitWrapper(manuscript.id, versionNum)
                       }
-                      disabled={submitting}
+                      disabled={isSubmitting}
                       className={`px-3 py-1 rounded text-white text-sm ${
-                        submitting
+                        isSubmitting
                           ? "bg-green-300 cursor-not-allowed"
                           : "bg-green-600 hover:bg-green-700"
                       }`}
                     >
-                      {submitting ? "Submitting..." : "Submit Review"}
+                      {isSubmitting ? "Submitting..." : "Submit Review"}
                     </button>
 
                     <button

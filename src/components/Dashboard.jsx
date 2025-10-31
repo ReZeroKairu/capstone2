@@ -20,6 +20,7 @@ import DeadlineBadge from "./manuscriptComp/DeadlineBadge";
 
 const IN_PROGRESS_STATUSES = [
   "Pending",
+  "Accepted",
   "Assigning Peer Reviewer",
   "Peer Reviewer Assigned",
   "Peer Reviewer Reviewing",
@@ -31,6 +32,7 @@ const IN_PROGRESS_STATUSES = [
 
 const STATUS_STEPS = [
   "Pending",
+  "Accepted",
   "Assigning Peer Reviewer",
   "Peer Reviewer Assigned",
   "Peer Reviewer Reviewing",
@@ -41,6 +43,7 @@ const STATUS_STEPS = [
 ];
 
 const STATUS_MAPPING = {
+  "Pending": "Accepted",
   "For Revision (Minor)": "For Revision",
   "For Revision (Major)": "For Revision",
   "Peer Reviewer Rejected": "Rejected",
@@ -396,17 +399,35 @@ const Dashboard = ({ sidebarOpen }) => {
       counts.push({ label: "Total Manuscripts", count: manuscripts.length });
     } else if (role === "Peer Reviewer") {
       const reviewedCount = manuscripts.filter((m) => {
-        const isAssigned = 
+        // Check if reviewer was ever assigned to this manuscript
+        const wasEverAssigned = 
           (m.assignedReviewers || []).includes(targetUserId) ||
-          (m.originalAssignedReviewers || []).includes(targetUserId);
+          (m.originalAssignedReviewers || []).includes(targetUserId) ||
+          (m.previousReviewSubmissions || []).some(s => s.reviewerId === targetUserId) ||
+          (m.previousReviews || []).some(r => r.reviewerId === targetUserId);
         
-        const hasSubmission = m.reviewerSubmissions?.some(
-          (s) => s.reviewerId === targetUserId
-        );
+        if (!wasEverAssigned) return false;
         
-        const hasDecision = m.reviewerDecisionMeta?.[targetUserId]?.decision;
+        // Check if reviewer has any submissions (current or previous versions)
+        const hasAnySubmission = 
+          (m.reviewerSubmissions || []).some(s => s.reviewerId === targetUserId) ||
+          (m.previousReviewSubmissions || []).some(s => s.reviewerId === targetUserId) ||
+          (m.previousReviews || []).some(r => r.reviewerId === targetUserId);
         
-        return isAssigned || hasSubmission || !!hasDecision;
+        // Check if reviewer has made a decision (current or previous versions)
+        const hasAnyDecision = 
+          m.reviewerDecisionMeta?.[targetUserId]?.decision ||
+          (m.previousReviewerDecisionMeta && 
+           Object.values(m.previousReviewerDecisionMeta).some(meta => 
+             meta[targetUserId]?.decision
+           ));
+        
+        // Count if they have any submission or decision, and didn't explicitly decline
+        const isDeclined = 
+          m.declinedReviewers?.includes(targetUserId) ||
+          m.assignedReviewersMeta?.[targetUserId]?.invitationStatus === 'declined';
+        
+        return (hasAnySubmission || hasAnyDecision) && !isDeclined;
       }).length;
 
       counts.push({ label: "Total Manuscripts Reviewed", count: reviewedCount });
@@ -426,7 +447,8 @@ const Dashboard = ({ sidebarOpen }) => {
       });
     }
 
-    counts.push(
+    // Add common filters
+    const commonFilters = [
       { label: "Pending", count: manuscripts.filter((m) => m.status === "Pending").length },
       {
         label: "In Progress",
@@ -446,8 +468,18 @@ const Dashboard = ({ sidebarOpen }) => {
         label: "Rejected",
         count: manuscripts.filter((m) => rejectedStatuses.includes(m.status)).length,
       }
-    );
+    ];
 
+    // Add non-Acceptance filter only for non-reviewer roles
+    if (role !== "Peer Reviewer") {
+      commonFilters.splice(-1, 0, {
+        label: "non-Acceptance",
+        count: manuscripts.filter((m) => m.status === "non-Acceptance").length,
+      });
+    }
+    
+    counts.push(...commonFilters);
+    
     return counts;
   }, [manuscripts, user, role, userId]);
 
@@ -466,11 +498,17 @@ const Dashboard = ({ sidebarOpen }) => {
       return manuscripts.filter((m) => IN_PROGRESS_STATUSES.includes(m.status));
     if (filterStatus === "Rejected")
       return manuscripts.filter((m) => ["Rejected", "Peer Reviewer Rejected"].includes(m.status));
+    if (filterStatus === "non-Acceptance")
+      return manuscripts.filter((m) => m.status === "non-Acceptance");
     if (filterStatus === "For Publication")
       return manuscripts.filter((m) => m.status === "For Publication");
     if (filterStatus === "For Revision")
       return manuscripts.filter((m) =>
         ["For Revision (Minor)", "For Revision (Major)"].includes(m.status)
+      );
+    if (filterStatus === "non-Acceptance")
+      return manuscripts.filter((m) => 
+        ["Rejected", "Peer Reviewer Rejected", "non-Acceptance"].includes(m.status)
       );
     return manuscripts.filter((m) => m.status === filterStatus);
   }, [manuscripts, filterStatus]);
@@ -487,6 +525,24 @@ const Dashboard = ({ sidebarOpen }) => {
   );
   const totalPages =
     Math.ceil(displayedManuscripts.length / manuscriptsPerPage) || 1;
+    
+  const getCurrentStep = (status) => {
+    if (!status) return 0;
+    
+    // Get the steps to use based on the current status
+    const stepsToUse = status === 'Pending' 
+      ? ['Pending'] 
+      : STATUS_STEPS.filter(step => step !== 'Pending');
+      
+    // Get the status to display (using mapping if needed)
+    const displayStatus = STATUS_MAPPING[status] || status;
+    
+    // Find the index of the current status in the steps
+    const stepIndex = stepsToUse.indexOf(displayStatus);
+    
+    // Return the 1-based index, or 0 if not found
+    return stepIndex === -1 ? 0 : stepIndex + 1;
+  };
 
   if (loading)
     return <div className="p-28 text-gray-700">Loading dashboard...</div>;
@@ -567,6 +623,8 @@ const Dashboard = ({ sidebarOpen }) => {
                 ? new Date(m.submittedAt.seconds * 1000).toLocaleString()
                 : "";
 
+              // Use the actual status for display
+              const displayStatus = m.status;
               const statusForProgress = STATUS_MAPPING[m.status] || m.status;
               const stepIndex = Math.max(
                 0,
@@ -577,11 +635,14 @@ const Dashboard = ({ sidebarOpen }) => {
                 "Peer Reviewer Rejected",
               ].includes(m.status);
               const isCompleted = m.status === "For Publication";
+              const isAccepted = m.status === "Accepted";
+              
               let statusColor = "yellow";
               if (isCompleted) statusColor = "green";
               if (isRejected) statusColor = "red";
               if (m.status === "For Revision (Minor)") statusColor = "blue";
               if (m.status === "For Revision (Major)") statusColor = "orange";
+              if (isAccepted) statusColor = "teal";
 
               return (
                 <div
@@ -594,21 +655,33 @@ const Dashboard = ({ sidebarOpen }) => {
                       {manuscriptTitle}
                     </h3>
                     <span
-                      className={`px-3 py-1 rounded-full text-white text-xs font-medium ${
+                      className={`px-3 py-1 rounded-full text-xs font-medium ${
                         statusColor === "green"
-                          ? "bg-green-500"
+                          ? "bg-green-100 text-green-800"
                           : statusColor === "red"
-                          ? "bg-red-500"
-                          : "bg-yellow-400 text-gray-800"
+                          ? "bg-red-100 text-red-800"
+                          : statusColor === "blue"
+                          ? "bg-blue-100 text-blue-800"
+                          : statusColor === "orange"
+                          ? "bg-orange-100 text-orange-800"
+                          : statusColor === "teal"
+                          ? "bg-teal-100 text-teal-800"
+                          : "bg-yellow-100 text-yellow-800"
                       }`}
                     >
-                      {statusForProgress}
+                      {displayStatus}
                     </span>
                   </div>
                   <p className="text-gray-400 text-sm mb-1">
                     Submitted: {submittedAtText}
                   </p>
-                  {activeDeadlines[m.id] && !['For Publication', 'Rejected', 'Peer Reviewer Rejected'].includes(m.status) && (
+                  {activeDeadlines[m.id] && (
+                    (role === 'Peer Reviewer' && 
+                      (['Back to Admin', 'For Revision', 'For Revision (Minor)', 'For Revision (Major)'].includes(m.status) ||
+                       !m.reviewerSubmissions?.some(s => s.reviewerId === user?.uid))
+                    ) ||
+                    (role !== 'Peer Reviewer' && !['For Publication', 'Rejected', 'Peer Reviewer Rejected'].includes(m.status))
+                  ) && (
                     <div className="mt-1">
                       <div className="flex items-center text-sm text-gray-600">
                         <DeadlineBadge
@@ -620,10 +693,13 @@ const Dashboard = ({ sidebarOpen }) => {
                     </div>
                   )}
                   <Progressbar
-                    currentStep={stepIndex}
-                    steps={STATUS_STEPS}
-                    currentStatus={statusForProgress}
-                    forceComplete={isCompleted}
+                    currentStep={m.status === 'Pending' 
+                      ? 1 
+                      : STATUS_STEPS.filter(step => step !== 'Pending').indexOf(m.status) + 1}
+                    steps={m.status === 'Pending' 
+                      ? ['Pending'] 
+                      : STATUS_STEPS.filter(step => step !== 'Pending')}
+                    currentStatus={m.status}
                   />
                 </div>
               );

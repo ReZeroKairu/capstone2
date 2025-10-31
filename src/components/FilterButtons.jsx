@@ -3,7 +3,7 @@ import React from "react";
 const FilterButtons = ({ filter, setFilter, manuscripts }) => {
   const filters = [
     { label: "All", value: "all" },
-    { label: "Pending", value: "Pending" }, // <-- added Pending
+    { label: "Pending", value: "Pending" },
     { label: "Assigning Peer Reviewer", value: "Assigning Peer Reviewer" },
     { label: "Peer Reviewer Assigned", value: "Peer Reviewer Assigned" },
     { label: "Peer Reviewer Reviewing", value: "Peer Reviewer Reviewing" },
@@ -11,6 +11,7 @@ const FilterButtons = ({ filter, setFilter, manuscripts }) => {
     { label: "For Revision (Minor)", value: "For Revision (Minor)" },
     { label: "For Revision (Major)", value: "For Revision (Major)" },
     { label: "For Publication", value: "For Publication" },
+    { label: "Non-Acceptance", value: "non-Acceptance" },
     { label: "Rejected", value: "Rejected" },
   ];
 
@@ -24,6 +25,12 @@ const FilterButtons = ({ filter, setFilter, manuscripts }) => {
     if (value === "Rejected") {
       return manuscripts.filter(
         (m) => m.status === "Rejected" || m.status === "Peer Reviewer Rejected"
+      ).length;
+    }
+    
+    if (value === "non-Acceptance") {
+      return manuscripts.filter(
+        (m) => m.status === "non-Acceptance"
       ).length;
     }
 

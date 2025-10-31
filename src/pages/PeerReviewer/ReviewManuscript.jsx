@@ -198,7 +198,7 @@ export default function ReviewManuscript() {
   const { handleStatusChange } = useManuscriptStatus();
 
   // State for tracking submission status
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submittingManuscripts, setSubmittingManuscripts] = useState({});
 
   // Submit decision - preserved in component (keeps state updates intact)
   const handleDecisionSubmit = async (manuscriptId, versionNumber) => {
@@ -223,8 +223,11 @@ export default function ReviewManuscript() {
       return;
     }
 
-    // Set loading state
-    setIsSubmitting(true);
+    // Set loading state for this manuscript
+    setSubmittingManuscripts(prev => ({
+      ...prev,
+      [manuscriptId]: true
+    }));
 
     try {
       let fileUrl = null;
@@ -312,8 +315,11 @@ export default function ReviewManuscript() {
       console.error("Error submitting review:", error);
       alert(`Failed to submit review: ${error.message || "Please try again."}`);
     } finally {
-      // Reset loading state
-      setIsSubmitting(false);
+      // Reset loading state for this manuscript
+      setSubmittingManuscripts(prev => ({
+        ...prev,
+        [manuscriptId]: false
+      }));
     }
 
     // Update local state with the new review submission
@@ -374,23 +380,18 @@ export default function ReviewManuscript() {
       const invitationStatus = myMeta?.invitationStatus || 'pending';
       const isAssigned = (m.assignedReviewers || []).includes(reviewerId);
       const hasAccepted = invitationStatus === 'accepted' || myMeta?.decision === 'accepted';
+      const hasSubmittedReview = m.reviewerSubmissions?.some(
+        (r) => r.reviewerId === reviewerId
+      );
 
       // Admin sees all manuscripts
       if (userRole === "Admin") return true;
 
-      // Peer Reviewer sees only:
-      // 1. Manuscripts they are currently assigned to AND have explicitly accepted the invitation
-      // 2. Manuscripts where they've already submitted a review (for reference)
+      // Peer Reviewer sees only manuscripts they are currently assigned to AND have explicitly accepted the invitation
+      // AND have not yet submitted a review
       if (userRole === "Peer Reviewer") {
-        const hasSubmittedReview = m.reviewerSubmissions?.some(
-          (r) => r.reviewerId === reviewerId
-        );
-        
-        // If user has already submitted a review, they can still see it
-        if (hasSubmittedReview) return true;
-        
-        // Only show if they're explicitly assigned AND have explicitly accepted the invitation
-        return isAssigned && hasAccepted;
+        // Only show if they're explicitly assigned, have accepted, and haven't submitted a review yet
+        return isAssigned && hasAccepted && !hasSubmittedReview;
       }
 
       return false; // Default to not showing anything if role is not recognized
@@ -563,6 +564,7 @@ export default function ReviewManuscript() {
                   handleDecisionSubmit={handleDecisionSubmit}
                   closeModal={() => setActiveReview(null)}
                   manuscriptFileUrls={manuscriptFileUrls}
+                  isSubmitting={submittingManuscripts[m.id] || false}
                 />
               )}
             </li>

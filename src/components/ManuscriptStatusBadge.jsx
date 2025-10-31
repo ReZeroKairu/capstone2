@@ -3,6 +3,7 @@ import React from "react";
 
 const statusColors = {
   Pending: "bg-gray-100 text-gray-800",
+  Accepted: "bg-teal-100 text-teal-800",
   "Assigning Peer Reviewer": "bg-blue-100 text-blue-800",
   "Peer Reviewer Assigned": "bg-indigo-100 text-indigo-800",
   "Peer Reviewer Reviewing": "bg-purple-100 text-purple-800",
