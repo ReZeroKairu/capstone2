@@ -15,7 +15,7 @@ const journals = [
     publisher: "Liceo de Cagayan University",
     publisherLink: "https://liceo.edu.ph",
     image: "journals/ldcuj1.jpg",
-    link: "/journals/advancing-biology-research",
+    link: "https://asianscientificjournals.com/new/publication/",
   },
   {
     title: "ASIAN JOURNAL OF BIODIVERSITY",
@@ -23,7 +23,7 @@ const journals = [
     publisher: "Liceo de Cagayan University",
     publisherLink: "https://liceo.edu.ph",
     image: "journals/ldcuj2.jpg",
-    link: "/journals/advancing-pharmacy-research",
+    link: "https://asianscientificjournals.com/new/publication/",
   },
   {
     title: "ASIAN JOURNAL OF HEALTH",
@@ -31,7 +31,7 @@ const journals = [
     publisher: "Liceo de Cagayan University",
     publisherLink: "https://liceo.edu.ph",
     image: "journals/ldcuj3.jpg",
-    link: "/journals/advancing-radiologic-technology-research",
+    link: "https://asianscientificjournals.com/new/publication/",
   },
   {
     title: "ASIAN JOURNAL OF BUSINESS AND GOVERNANCE",
@@ -39,7 +39,7 @@ const journals = [
     publisher: "Liceo de Cagayan University",
     publisherLink: "https://liceo.edu.ph",
     image: "journals/ldcuj4.jpg",
-    link: "/journals/asian-journal-of-medical-sciences",
+    link: "https://asianscientificjournals.com/new/publication/",
   },
   {
     title:
@@ -48,7 +48,7 @@ const journals = [
     publisher: "Liceo de Cagayan University",
     publisherLink: "https://liceo.edu.ph",
     image: "journals/ldcuj5.jpg",
-    link: "/journals/international-journal-of-education",
+    link: "https://asianscientificjournals.com/new/publication/",
   },
   {
     title: "ADVANCING BUSINESS AND ACCOUNTANCY RESEARCH",
@@ -56,7 +56,7 @@ const journals = [
     publisher: "Liceo de Cagayan University",
     publisherLink: "https://liceo.edu.ph",
     image: "journals/ldcuj6.jpg",
-    link: "/journals/philippine-journal-of-law",
+    link: "https://asianscientificjournals.com/new/publication/",
   },
   {
     title: "ADVANCING MANAGEMENT RESEARCH",
@@ -64,7 +64,7 @@ const journals = [
     publisher: "Liceo de Cagayan University",
     publisherLink: "https://liceo.edu.ph",
     image: "journals/ldcuj7.jpg",
-    link: "/journals/innovations-in-technology-and-engineering",
+    link: "https://asianscientificjournals.com/new/publication/",
   },
   {
     title: "ADVANCING BIOLOGY RESEARCH",
@@ -72,7 +72,7 @@ const journals = [
     publisher: "Liceo de Cagayan University",
     publisherLink: "https://liceo.edu.ph",
     image: "journals/ldcuj8.jpg",
-    link: "/journals/journal-of-nursing-research",
+    link: "https://asianscientificjournals.com/new/publication/",
   },
   {
     title: "ADVANCING EDUCATION RESEARCH",
@@ -80,7 +80,7 @@ const journals = [
     publisher: "Liceo de Cagayan University",
     publisherLink: "https://liceo.edu.ph",
     image: "journals/ldcuj9.jpg",
-    link: "/journals/asian-journal-of-social-sciences",
+    link: "https://asianscientificjournals.com/new/publication/",
   },
   {
     title: "ADVANCING PSYCHOLOGY RESEARCH",

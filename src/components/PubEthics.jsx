@@ -6,33 +6,9 @@ import { auth, db } from "../firebase/firebase";
 import { onAuthStateChanged } from "firebase/auth";
 import SafeHTML from "./common/SafeHTML";
 import { FaEdit, FaTrashAlt } from "react-icons/fa";
+import { quillModules, quillFormats } from "../utils/quillConfig";
 
-const quillModules = {
-  toolbar: [
-    [{ header: [1, 2, false] }],
-    ["bold", "italic", "underline", "strike"],
-    [{ color: [] }, { background: [] }],
-    [
-      { font: ["sans-serif", "serif", "monospace"] },
-      { size: ["small", false, "large", "huge"] },
-    ],
-    [{ align: [] }],
-    ["clean"],
-  ],
-};
-
-const quillFormats = [
-  "header",
-  "bold",
-  "italic",
-  "underline",
-  "strike",
-  "color",
-  "background",
-  "font",
-  "size",
-  "align",
-];
+// Using shared quillModules and quillFormats from quillConfig.js
 
 const Toast = ({ message, type, onClose }) => (
   <div
@@ -115,12 +91,31 @@ const PubEthics = () => {
     setIsEditing(false);
   };
 
+    // Function to clean and format HTML content
+  const cleanHtmlContent = (html) => {
+    if (!html) return '';
+    // Ensure proper list structure
+    return html.replace(/<p><\/p>/g, '') // Remove empty paragraphs
+             .replace(/<p><br><\/p>/g, '') // Remove empty lines
+             .replace(/<p>(<[uo]l>)/g, '$1') // Fix lists that might be wrapped in paragraphs
+             .replace(/<\/([uo]l)><\/p>/g, '<\/$1>'); // Fix closing tags
+  };
+
   const saveAllChanges = async () => {
     const original = originalContentRef.current;
+    
+    // Clean the content before comparing
+    const cleanedHeader = cleanHtmlContent(headerText);
+    const cleanedFooter = cleanHtmlContent(footerText);
+    const cleanedSections = sections.map(section => ({
+      ...section,
+      content: cleanHtmlContent(section.content)
+    }));
+
     const changesMade =
-      headerText !== original.header ||
-      footerText !== original.footer ||
-      JSON.stringify(sections) !== JSON.stringify(original.sections);
+      cleanedHeader !== original.header ||
+      cleanedFooter !== original.footer ||
+      JSON.stringify(cleanedSections) !== JSON.stringify(original.sections);
 
     if (!changesMade) {
       showNotification("No changes made to save", "warning");
@@ -130,9 +125,9 @@ const PubEthics = () => {
     try {
       const docRef = doc(db, "Content", "PubEthics");
       await updateDoc(docRef, {
-        header: headerText,
-        footer: footerText,
-        sections,
+        header: cleanedHeader,
+        footer: cleanedFooter,
+        sections: cleanedSections,
       });
       showNotification("All changes saved!", "success");
       originalContentRef.current = {
