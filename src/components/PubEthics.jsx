@@ -4,6 +4,7 @@ import "react-quill/dist/quill.snow.css";
 import { doc, updateDoc, getDoc, onSnapshot } from "firebase/firestore";
 import { auth, db } from "../firebase/firebase";
 import { onAuthStateChanged } from "firebase/auth";
+import SafeHTML from "./common/SafeHTML";
 import { FaEdit, FaTrashAlt } from "react-icons/fa";
 
 const quillModules = {
@@ -57,6 +58,7 @@ const PubEthics = () => {
   const [sections, setSections] = useState([]);
   const [newSectionTitle, setNewSectionTitle] = useState("");
   const [newSectionContent, setNewSectionContent] = useState("");
+  const [isAddingSection, setIsAddingSection] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const notificationIdRef = useRef(0);
 
@@ -103,6 +105,7 @@ const PubEthics = () => {
       sections: JSON.parse(JSON.stringify(sections)),
     };
     setIsEditing(true);
+    setIsAddingSection(false);
   };
 
   const cancelEditing = () => {
@@ -154,8 +157,20 @@ const PubEthics = () => {
     setSections((prev) => prev.map((s) => (s.id === id ? { ...s, title } : s)));
   };
 
+  const startAddingSection = () => {
+    setNewSectionTitle("");
+    setNewSectionContent("");
+    setIsAddingSection(true);
+  };
+
+  const cancelAddingSection = () => {
+    setIsAddingSection(false);
+    setNewSectionTitle("");
+    setNewSectionContent("");
+  };
+
   const addSection = () => {
-    if (!newSectionTitle.trim() && !newSectionContent.trim()) {
+    if (!newSectionTitle.trim() || !newSectionContent.trim()) {
       showNotification("Both title and content are required", "warning");
       return;
     }
@@ -165,6 +180,7 @@ const PubEthics = () => {
       content: newSectionContent,
     };
     setSections((prev) => [...prev, newSection]);
+    setIsAddingSection(false);
     setNewSectionTitle("");
     setNewSectionContent("");
   };
@@ -209,7 +225,7 @@ const PubEthics = () => {
                 className="bg-white text-black rounded mb-2"
               />
             ) : (
-              <div dangerouslySetInnerHTML={{ __html: headerText }} />
+              <SafeHTML content={headerText} />
             )}
           </div>
 
@@ -249,9 +265,7 @@ const PubEthics = () => {
                 ) : (
                   <>
                     <h3 className="text-xl font-bold mb-2">{section.title}</h3>
-                    <div
-                      dangerouslySetInnerHTML={{ __html: section.content }}
-                    />
+                    <SafeHTML content={section.content} />
                   </>
                 )}
               </div>
@@ -259,27 +273,46 @@ const PubEthics = () => {
 
             {isEditing && (
               <div className="mb-6">
-                <input
-                  type="text"
-                  value={newSectionTitle}
-                  onChange={(e) => setNewSectionTitle(e.target.value)}
-                  className="w-full p-3 mb-2 rounded text-black"
-                  placeholder="New Section Title"
-                />
-                <ReactQuill
-                  value={newSectionContent}
-                  onChange={setNewSectionContent}
-                  modules={quillModules}
-                  formats={quillFormats}
-                  theme="snow"
-                  className="bg-white text-black rounded mb-2"
-                />
-                <button
-                  onClick={addSection}
-                  className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded font-semibold"
-                >
-                  Add Section
-                </button>
+                {!isAddingSection ? (
+                  <button
+                    onClick={startAddingSection}
+                    className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded font-semibold mb-4"
+                  >
+                    + Add New Section
+                  </button>
+                ) : (
+                  <div className="mb-6 bg-red-900 p-4 rounded">
+                    <input
+                      type="text"
+                      value={newSectionTitle}
+                      onChange={(e) => setNewSectionTitle(e.target.value)}
+                      className="w-full p-3 mb-2 rounded text-black"
+                      placeholder="New Section Title"
+                    />
+                    <ReactQuill
+                      value={newSectionContent}
+                      onChange={setNewSectionContent}
+                      modules={quillModules}
+                      formats={quillFormats}
+                      theme="snow"
+                      className="bg-white text-black rounded mb-2"
+                    />
+                    <div className="flex gap-2">
+                      <button
+                        onClick={addSection}
+                        className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded font-semibold"
+                      >
+                        Save Section
+                      </button>
+                      <button
+                        onClick={cancelAddingSection}
+                        className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded font-semibold"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -296,7 +329,7 @@ const PubEthics = () => {
                 className="bg-white text-black rounded mb-2"
               />
             ) : (
-              <div dangerouslySetInnerHTML={{ __html: footerText }} />
+              <SafeHTML content={footerText} />
             )}
           </div>
 

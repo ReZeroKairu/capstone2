@@ -12,7 +12,7 @@ import {
 import ReactQuill from "react-quill";
 import "react-quill/dist/quill.snow.css";
 import { quillModules, quillFormats } from "../utils/quillConfig";
-import DOMPurify from "dompurify";
+import SafeHTML from "./common/SafeHTML";
 
 export default function CallForPapers() {
   const [isAdmin, setIsAdmin] = useState(false);
@@ -373,39 +373,18 @@ export default function CallForPapers() {
               </div>
             ) : (
               <div>
-                <div
-                  className="mb-6 leading-relaxed max-w-none"
-                  dangerouslySetInnerHTML={{
-                    __html: DOMPurify.sanitize(content.description || "", {
-                      ADD_ATTR: [
-                        "class",
-                        "style",
-                        "src",
-                        "alt",
-                        "height",
-                        "width",
-                      ],
-                    }),
-                  }}
+                <SafeHTML 
+                  className="mb-6 leading-relaxed"
+                  content={content.description || ""}
                 />
                 <div className="space-y-4">
                   {content.issues.map(
                     (issue, idx) =>
                       issue.trim() && (
-                        <div
+                        <SafeHTML
                           key={idx}
-                          dangerouslySetInnerHTML={{
-                            __html: DOMPurify.sanitize(issue, {
-                              ADD_ATTR: [
-                                "class",
-                                "style",
-                                "src",
-                                "alt",
-                                "height",
-                                "width",
-                              ],
-                            }),
-                          }}
+                          content={issue}
+                          className="mb-2"
                         />
                       )
                   )}

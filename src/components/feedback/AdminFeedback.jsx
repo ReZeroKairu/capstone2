@@ -7,6 +7,8 @@ import React, {
 } from "react";
 import { useAuth } from "../../authcontext/AuthContext";
 import { db, storage } from "../../firebase/firebase";
+import SafeHTML from "../common/SafeHTML";
+
 import {
   collection,
   query,
@@ -63,14 +65,18 @@ const AdminFeedback = ({ manuscriptId, userRole, status: propStatus, currentVers
   const feedbackGroups = useMemo(() => {
     const groupFeedbacksByVersion = (feedbacks) => {
       return feedbacks.reduce((groups, item) => {
-        // Ensure version is a string and handle null/undefined cases
-        let version = String(item.version || '1');
-        // If version is a decimal, convert to integer
-        if (version.includes('.')) {
-          version = version.split('.')[0];
+        // Convert version to string and handle decimal versions (e.g., 1.0.0 -> 1)
+        let version = '1';
+        if (item.version) {
+          // If version is a string with dots, take the first part
+          if (typeof item.version === 'string' && item.version.includes('.')) {
+            version = item.version.split('.')[0];
+          } else {
+            // Otherwise, convert to string and remove any decimal part
+            version = String(item.version).split('.')[0];
+          }
         }
-        // Ensure we have a valid version number
-        version = version || '1';
+        
         if (!groups[version]) {
           groups[version] = [];
         }
@@ -100,6 +106,7 @@ const AdminFeedback = ({ manuscriptId, userRole, status: propStatus, currentVers
 
   // Track expanded state for each version
   const [expandedFeedback, setExpandedFeedback] = useState({});
+  const [fileInputKey, setFileInputKey] = useState(0);
 
   // If status prop changes, update the state
   useEffect(() => {
@@ -309,12 +316,23 @@ const AdminFeedback = ({ manuscriptId, userRole, status: propStatus, currentVers
 
   // Reset the feedback form
   const resetForm = () => {
+    // Clear form state
     setFeedback("");
     setFile(null);
     setFilePreview(null);
     setEditingFeedback(null);
+    
+    // Clear the file input
     const fileInput = document.getElementById("file-upload");
-    if (fileInput) fileInput.value = "";
+    if (fileInput) {
+      fileInput.value = "";
+      // Trigger change event to ensure React state updates
+      const event = new Event('change', { bubbles: true });
+      fileInput.dispatchEvent(event);
+    }
+    
+    // Force re-render of the file input by toggling the key
+    setFileInputKey(prev => prev + 1);
   };
 
   // Handle form submission
@@ -344,8 +362,8 @@ const AdminFeedback = ({ manuscriptId, userRole, status: propStatus, currentVers
       const manuscriptRef = doc(db, "manuscripts", manuscriptId);
       const manuscriptDoc = await getDoc(manuscriptRef);
 
-      // 3. Use the current version from props or fallback to 1
-      const version = currentVersion || '1';
+      // 3. Use the original version when editing, otherwise use current version
+      const version = editingFeedback ? (editingFeedback.version || currentVersion || '1') : (currentVersion || '1');
 
       // 4. Prepare feedback data
       const feedbackData = {
@@ -637,6 +655,7 @@ const AdminFeedback = ({ manuscriptId, userRole, status: propStatus, currentVers
             editingFeedback={editingFeedback}
             onSubmit={handleSubmit}
             onCancel={resetForm}
+            fileInputKey={fileInputKey}
           />
         </div>
       )}

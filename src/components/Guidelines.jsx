@@ -6,7 +6,7 @@ import { doc, getDoc, setDoc } from "firebase/firestore";
 import ReactQuill from "react-quill";
 import "react-quill/dist/quill.snow.css";
 import { quillModules, quillFormats } from "../utils/quillConfig";
-import DOMPurify from "dompurify";
+import SafeHTML from "./common/SafeHTML";
 
 const Guidelines = () => {
   const [sections, setSections] = useState([]);
@@ -213,12 +213,9 @@ const Guidelines = () => {
                       className="w-full px-2 py-1 border-b border-gray-300 focus:outline-none text-lg font-semibold"
                     />
                   ) : (
-                    <span
-                      dangerouslySetInnerHTML={{
-                        __html: DOMPurify.sanitize(section.title, {
-                          ADD_ATTR: ["class", "style"],
-                        }),
-                      }}
+                    <SafeHTML
+                      content={section.title}
+                      className="inline"
                     />
                   )}
 
@@ -287,12 +284,9 @@ const Guidelines = () => {
                       </div>
                     </>
                   ) : (
-                    <div
-                      dangerouslySetInnerHTML={{
-                        __html: DOMPurify.sanitize(section.content, {
-                          ADD_ATTR: ["class", "style"],
-                        }),
-                      }}
+                    <SafeHTML
+                      content={section.content}
+                      className="mt-2"
                     />
                   )}
                 </div>

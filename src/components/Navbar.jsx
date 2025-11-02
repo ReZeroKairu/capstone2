@@ -2,23 +2,17 @@ import React, { useState, useEffect, useRef } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { getAuth } from "firebase/auth";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import {
-  faUser,
-  faChevronUp,
-  faChevronDown,
-} from "@fortawesome/free-solid-svg-icons";
+import { faUser } from "@fortawesome/free-solid-svg-icons";
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "../firebase/firebase";
 import Notifications from "./Notifications";
 import UserLogService from "../utils/userLogService";
+import ContactDropdown from "./ContactDropdown";
 
 const Navbar = ({ onLogout }) => {
   const iconRef = useRef(null);
   const profileDropdownRef = useRef(null);
-  const contactDropdownRef = useRef(null);
-  const contactButtonRef = useRef(null);
   const [dropdownOpen, setDropdownOpen] = useState(false);
-  const [contactDropdownOpen, setContactDropdownOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [user, setUser] = useState(null);
@@ -138,10 +132,6 @@ const Navbar = ({ onLogout }) => {
   };
 
   const toggleDropdown = () => setDropdownOpen((prev) => !prev);
-  const toggleContactDropdown = (e) => {
-    e.stopPropagation();
-    setContactDropdownOpen((prev) => !prev);
-  };
   const toggleMobileMenu = () => setMobileMenuOpen((prev) => !prev);
 
   const handleIconClick = () => {
@@ -155,21 +145,12 @@ const Navbar = ({ onLogout }) => {
   };
 
   useEffect(() => {
-    setContactDropdownOpen(false);
     setDropdownOpen(false);
     setMobileMenuOpen(false);
   }, [location]);
 
   useEffect(() => {
     const handleClickOutside = (event) => {
-      if (
-        contactDropdownRef.current &&
-        !contactDropdownRef.current.contains(event.target) &&
-        contactButtonRef.current &&
-        !contactButtonRef.current.contains(event.target)
-      ) {
-        setContactDropdownOpen(false);
-      }
       if (
         profileDropdownRef.current &&
         !profileDropdownRef.current.contains(event.target)
@@ -358,80 +339,8 @@ const Navbar = ({ onLogout }) => {
         </div>
       </header>
 
-      {/* Contact Us Dropdown Header */}
-      <div className="bg-red-800 text-white py-1 fixed top-14 left-0 w-full z-40">
-        <div className="flex justify-end mr-4">
-          <button
-            ref={contactButtonRef}
-            onClick={toggleContactDropdown}
-            className="text-white text-sm flex items-center"
-          >
-            Contact Us
-            <FontAwesomeIcon
-              icon={contactDropdownOpen ? faChevronUp : faChevronDown}
-              className="ml-1 transition-transform duration-300"
-            />
-          </button>
-        </div>
-
-        <div
-          ref={contactDropdownRef}
-          className={`overflow-hidden transition-max-height duration-500 ease-in-out ${
-            contactDropdownOpen
-              ? "max-h-screen opacity-100"
-              : "max-h-0 opacity-0"
-          }`}
-        >
-          <div className="w-full bg-red-800 !shadow-none min-h-full md:h-64">
-            <div className="flex flex-col md:flex-row justify-between p-3 h-full">
-              {/* Left Side Contact Information */}
-              <div className="flex flex-col mb-4 md:mb-0 flex-grow">
-                <p className="text-yellow-200 ml-2 md:ml-20 font-bold">
-                  Publication Officer
-                </p>
-                <p className="text-gray-200 ml-2 md:ml-20">
-                  Ms. Leilani G. Pimentel
-                </p>
-                <br />
-                <p className="text-yellow-200 ml-2 md:ml-20 mt-3 font-bold">
-                  Office of the University Research and Coordination
-                </p>
-                <p className="text-gray-200 ml-2 md:ml-20 mt-3">
-                  Email: ourc@liceo.edu.ph
-                </p>
-                <p className="text-gray-200 ml-2 md:ml-20 mt-3">
-                  Phone: +63 088 880-2047 / +63 08822 722244 local 135
-                </p>
-                <p className="text-gray-200 ml-2 md:ml-20 mt-3">
-                  Fax: +63 088 880-2047
-                </p>
-              </div>
-
-              {/* Right Side Address */}
-              <div className="flex items-start text-gray-200 mb-4 md:mb-0 md:mr-4 flex-grow">
-                <p>
-                  <span className="text-yellow-200 mr-4 font-bold">
-                    Address:
-                  </span>
-                  <br />
-                  Rodolfo Neri Pelaez Boulevard, Kauswagan
-                  <br /> Cagayan de Oro, Misamis Oriental, Philippines
-                </p>
-              </div>
-
-              {/* Logo Section 
-              <div className="flex items-start text-gray-200 flex-grow">
-                <img
-                  src="/liceo.png" // Adjust the filename if necessary
-                  alt="Logo"
-                  className="h-24 w-24 md:h-40 md:w-40 mr-10 mt-5"
-                />
-              </div>
-              */}
-            </div>
-          </div>
-        </div>
-      </div>
+      {/* Contact Us Dropdown */}
+      <ContactDropdown />
     </>
   );
 };

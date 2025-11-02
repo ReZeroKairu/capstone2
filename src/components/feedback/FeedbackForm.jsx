@@ -13,6 +13,7 @@ export const FeedbackForm = ({
   editingFeedback,
   onSubmit,
   onCancel,
+  fileInputKey,
 }) => {
   const [localFile, setLocalFile] = useState(file);
   const [localFilePreview, setLocalFilePreview] = useState(filePreview);
@@ -92,6 +93,7 @@ export const FeedbackForm = ({
           Attach File (Optional)
         </label>
         <input
+          key={fileInputKey}
           id="file-upload"
           type="file"
           onChange={handleFileChange}
