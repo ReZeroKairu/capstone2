@@ -216,6 +216,7 @@ const Guidelines = () => {
                     <SafeHTML
                       content={section.title}
                       className="inline"
+                      textColor="text-black"
                     />
                   )}
 
@@ -287,6 +288,7 @@ const Guidelines = () => {
                     <SafeHTML
                       content={section.content}
                       className="mt-2"
+                      textColor="text-black"
                     />
                   )}
                 </div>

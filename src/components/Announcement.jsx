@@ -1,7 +1,8 @@
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import { auth, db } from "../firebase/firebase";
 import { onAuthStateChanged } from "firebase/auth";
-import { doc, getDoc, updateDoc, onSnapshot } from "firebase/firestore";
+import { doc, getDoc, updateDoc, onSnapshot, setDoc } from "firebase/firestore";
+import { processHtmlImages } from "../utils/imageUpload";
 import ReactQuill from "react-quill";
 import { DndProvider, useDrag, useDrop } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
@@ -274,22 +275,73 @@ export default function Announcement() {
     setError("");
 
     try {
-      // Clean and prepare announcements for saving
-      const cleaned = announcements
-        .filter((a) => a.title.trim() && a.message.trim())
-        .map((a) => ({
-          id: a.id || Date.now().toString(), // Ensure each announcement has an ID
-          title: a.title.trim(),
-          message: a.message,
+      // Create a completely clean array of announcements
+      const announcementsToSave = [];
+      
+      for (const a of announcements) {
+        if (!a.title?.trim() || !a.message?.trim()) continue;
+        
+        // Process the message to handle base64 images
+        let message = String(a.message);
+        let hasImages = false;
+        
+        // Check if there are any base64 images
+        const base64Images = message.match(/data:image\/[^;]+;base64[^"]+/g) || [];
+        
+        if (base64Images.length > 0) {
+          try {
+            // Process and upload images
+            const { content: processedContent } = await processHtmlImages(message);
+            message = processedContent;
+            hasImages = true;
+          } catch (error) {
+            console.error('Error processing images:', error);
+            showNotification("Error processing images. Please try again.", "error");
+            continue;
+          }
+        }
+        
+        // Create a new plain object with the processed content
+        const cleanAnnouncement = {
+          id: a.id || `announcement-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          title: String(a.title).trim(),
+          message: message,
           date: a.date || new Date().toISOString().slice(0, 10),
-        }));
+          hasImages: hasImages
+        };
+        
+        announcementsToSave.push(cleanAnnouncement);
+      }
 
+      // Create a new document with the updated data
       const docRef = doc(db, "Content", "Announcements");
-      await updateDoc(docRef, { announcements: cleaned });
+      
+      // First, try to get the existing document to preserve other fields
+      const docSnap = await getDoc(docRef);
+      const existingData = docSnap.exists() ? docSnap.data() : {};
+      
+      // Create a completely new object with only the data we want to save
+      const updateData = {
+        ...existingData, // Keep existing fields
+        announcements: announcementsToSave.map(a => ({
+          id: a.id,
+          title: a.title,
+          message: a.message,
+          date: a.date
+        })),
+        lastUpdated: new Date().toISOString()
+      };
 
+      // Log the data we're about to save
+      console.log('Saving data:', JSON.stringify(updateData, null, 2));
+      
+      // Try a direct update with a clean object
+      await updateDoc(docRef, updateData);
+
+      // Update local state
       setIsEditing(false);
-      setOriginalAnnouncements(cleaned);
-      setAnnouncements(cleaned);
+      setOriginalAnnouncements(announcementsToSave);
+      setAnnouncements(announcementsToSave);
       showNotification("Announcements saved successfully!", "success");
     } catch (err) {
       console.error("Failed to save announcements:", err);

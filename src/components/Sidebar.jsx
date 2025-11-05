@@ -164,7 +164,7 @@ const Sidebar = ({ role, isOpen, toggleSidebar }) => {
         type="button"
         onClick={() => toggleSidebar(!isOpen)}
         className="hidden md:flex bg-red-700 hover:bg-red-600 active:bg-red-500 text-white w-10 h-10 items-center justify-center rounded z-30 outline-none focus:outline-none"
-        style={{ position: "fixed", top: "5.5rem", left: "0.5rem" }}
+        style={{ position: "fixed", top: "6.8rem", left: "0.5rem" }}
       >
         {isOpen ? <FaTimes /> : <FaBars />}
       </button>

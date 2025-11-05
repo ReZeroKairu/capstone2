@@ -6,7 +6,11 @@ import { auth, db } from "../firebase/firebase";
 import { onAuthStateChanged } from "firebase/auth";
 import SafeHTML from "./common/SafeHTML";
 import { FaEdit, FaTrashAlt } from "react-icons/fa";
-import { quillModules, quillFormats } from "../utils/quillConfig";
+import { quillModules, quillFormats, applyPassiveEventListeners } from "../utils/quillConfig";
+
+
+// Initialize Quill modules
+const modules = quillModules;
 
 // Using shared quillModules and quillFormats from quillConfig.js
 
@@ -48,6 +52,7 @@ const PubEthics = () => {
       4000
     );
   }, []);
+  
 
   useEffect(() => {
     const docRef = doc(db, "Content", "PubEthics");
@@ -183,6 +188,31 @@ const PubEthics = () => {
   const removeSection = (id) => {
     setSections((prev) => prev.filter((s) => s.id !== id));
   };
+  // Add this effect after your state declarations
+useEffect(() => {
+  // Apply passive event listeners when component mounts
+  applyPassiveEventListeners();
+  
+  // Set up a mutation observer to handle dynamically added Quill instances
+  const observer = new MutationObserver((mutations) => {
+    mutations.forEach((mutation) => {
+      if (mutation.addedNodes.length) {
+        applyPassiveEventListeners();
+      }
+    });
+  });
+
+  // Start observing the document with the configured parameters
+  observer.observe(document.body, {
+    childList: true,
+    subtree: true
+  });
+
+  // Clean up the observer when the component unmounts
+  return () => {
+    observer.disconnect();
+  };
+}, []);
 
   return (
     <div
@@ -212,13 +242,15 @@ const PubEthics = () => {
           <div className="mb-6">
             {isEditing ? (
               <ReactQuill
-                value={headerText}
-                onChange={setHeaderText}
-                modules={quillModules}
-                formats={quillFormats}
-                theme="snow"
-                className="bg-white text-black rounded mb-2"
-              />
+  value={headerText}
+  onChange={setHeaderText}
+  modules={modules}
+  formats={quillFormats}
+  theme="snow"
+  bounds={'.quill-editor'}
+  className="bg-white text-black rounded mb-2 quill-editor"
+  placeholder="Enter header text..."
+/>
             ) : (
               <SafeHTML content={headerText} />
             )}
@@ -243,13 +275,15 @@ const PubEthics = () => {
                       placeholder="Section Title"
                     />
                     <ReactQuill
-                      value={section.content}
-                      onChange={(val) => updateSectionContent(section.id, val)}
-                      modules={quillModules}
-                      formats={quillFormats}
-                      theme="snow"
-                      className="bg-white text-black rounded mb-2"
-                    />
+  value={section.content}
+  onChange={(val) => updateSectionContent(section.id, val)}
+  modules={modules}
+  formats={quillFormats}
+  theme="snow"
+  bounds={'.quill-editor'}
+  className="bg-white text-black rounded mb-2 quill-editor"
+  placeholder="Enter section content..."
+/>
                     <button
                       onClick={() => removeSection(section.id)}
                       className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded font-semibold flex items-center gap-2 mt-2"
@@ -284,14 +318,16 @@ const PubEthics = () => {
                       className="w-full p-3 mb-2 rounded text-black"
                       placeholder="New Section Title"
                     />
-                    <ReactQuill
-                      value={newSectionContent}
-                      onChange={setNewSectionContent}
-                      modules={quillModules}
-                      formats={quillFormats}
-                      theme="snow"
-                      className="bg-white text-black rounded mb-2"
-                    />
+                   <ReactQuill
+  value={newSectionContent}
+  onChange={setNewSectionContent}
+  modules={modules}
+  formats={quillFormats}
+  theme="snow"
+  bounds={'.quill-editor'}
+  className="bg-white text-black rounded mb-2 quill-editor"
+  placeholder="Enter new section content..."
+/>
                     <div className="flex gap-2">
                       <button
                         onClick={addSection}
@@ -315,14 +351,16 @@ const PubEthics = () => {
           {/* Footer */}
           <div className="mb-6">
             {isEditing ? (
-              <ReactQuill
-                value={footerText}
-                onChange={setFooterText}
-                modules={quillModules}
-                formats={quillFormats}
-                theme="snow"
-                className="bg-white text-black rounded mb-2"
-              />
+             <ReactQuill
+  value={footerText}
+  onChange={setFooterText}
+  modules={modules}
+  formats={quillFormats}
+  theme="snow"
+  bounds={'.quill-editor'}
+  className="bg-white text-black rounded mb-2 quill-editor"
+  placeholder="Enter footer text..."
+/>
             ) : (
               <SafeHTML content={footerText} />
             )}

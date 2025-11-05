@@ -2,6 +2,33 @@
 import Quill from "quill";
 import "../styles/quill-custom.css";
 
+// 1. Add Touch Module for better touch handling
+class TouchModule {
+  constructor(quill) {
+    this.quill = quill;
+    this.handleTouchStart = this.handleTouchStart.bind(this);
+    this.handleTouchMove = this.handleTouchMove.bind(this);
+    this.init();
+  }
+
+  init() {
+    // Use passive event listeners for better performance
+    this.quill.root.addEventListener('touchstart', this.handleTouchStart, { passive: true });
+    this.quill.root.addEventListener('touchmove', this.handleTouchMove, { passive: true });
+  }
+
+  handleTouchStart() {
+    // Touch start handler
+  }
+
+  handleTouchMove() {
+    // Touch move handler
+  }
+}
+
+// Register the touch module
+Quill.register('modules/touch', TouchModule);
+
 // Register custom fonts
 const Font = Quill.import('formats/font');
 Font.whitelist = ['poppins', 'roboto', 'serif', 'monospace', 'sans-serif'];
@@ -43,6 +70,9 @@ export const customToolbar = (quill) => {
     </span>
   `;
 
+  // Use passive event listeners for better performance
+  const options = { passive: true };
+  
   sizePicker.querySelectorAll(".ql-picker-item").forEach((item) => {
     item.addEventListener("mousedown", (e) => {
       e.preventDefault();
@@ -52,51 +82,66 @@ export const customToolbar = (quill) => {
       if (range && range.length > 0) {
         quill.formatText(range.index, range.length, "size", value);
       }
-    });
+    }, options);
   });
 };
 
 // ✅ standard Quill toolbar + formats
+// Default modules configuration
 export const quillModules = {
   toolbar: [
-    [{ header: [1, 2, 3, false] }],
-    ["bold", "italic", "underline", "strike"],
-    [{ color: [] }, { background: [] }],
-    [
-      { 
-        font: [
-          "poppins", 
-          "roboto",
-          "serif", 
-          "monospace", 
-          "sans-serif"
-        ] 
-      },
-      { size: ["small", "normal", "large", "huge"] },
-    ],
-    [{ list: "ordered" }, { list: "bullet" }],
-    [{ align: [] }],
-    ["blockquote", "code-block"],
-    ["link", "image"],
-    ["clean"],
+    [{ 'header': [1, 2, 3, false] }],
+    ['bold', 'italic', 'underline', 'strike'],
+    [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+    [{ 'color': [] }, { 'background': [] }],
+    [{ 'font': ['poppins', 'roboto', 'serif', 'monospace', 'sans-serif'] }],
+    [{ 'size': ['small', 'normal', 'large', 'huge'] }],
+    ['link', 'image'],
+    ['clean']
   ],
+  touch: true, // Enable touch module
+  clipboard: {
+    matchVisual: false
+  }
 };
 
+// Function to apply passive event listeners to all Quill instances
+export const applyPassiveEventListeners = () => {
+  if (typeof window === 'undefined') return;
+
+  const options = {
+    passive: true,
+    capture: true
+  };
+
+  // Apply to all existing Quill editors
+  document.querySelectorAll('.ql-editor').forEach(editor => {
+    const events = ['touchstart', 'touchmove', 'touchend', 'touchcancel'];
+    events.forEach(event => {
+      // Only add the listener if it doesn't exist yet
+      if (!editor[`__${event}_listener_added`]) {
+        editor.addEventListener(event, () => {}, options);
+        editor[`__${event}_listener_added`] = true;
+      }
+    });
+  });
+};
+
+// Apply passive listeners when the DOM is loaded
+if (typeof document !== 'undefined') {
+  if (document.readyState === 'complete') {
+    applyPassiveEventListeners();
+  } else {
+    window.addEventListener('load', applyPassiveEventListeners);
+  }
+}
+
+// Allowed formats for Quill
 export const quillFormats = [
-  "header",
-  "bold",
-  "italic",
-  "underline",
-  "strike",
-  "color",
-  "background",
-  "font",
-  "size",
-  "list",
-  "bullet",
-  "align",
-  "blockquote",
-  "code-block",
-  "link",
-  "image",
+  'header',
+  'bold', 'italic', 'underline', 'strike',
+  'list', 'bullet',
+  'color', 'background',
+  'font', 'size',
+  'link', 'image'
 ];
