@@ -551,11 +551,12 @@ export default function ReviewManuscript() {
 
               {activeReview === m.id && (
                 <ReviewModal
+                  key={m.id} // Add key to force remount when manuscript changes
                   manuscript={m}
                   versionNumber={m.submissionHistory?.length || 1}
                   reviewerId={reviewerId}
                   users={users}
-                  activeDecision={activeDecision}
+                  activeDecision={m.reviewerDecisionMeta?.[reviewerId]?.decision || activeDecision}
                   setActiveDecision={setActiveDecision}
                   reviews={reviews}
                   handleReviewChange={handleReviewChange}

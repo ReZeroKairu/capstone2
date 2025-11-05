@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { db, auth } from "../../firebase/firebase";
-import { NotificationService } from "../../utils/notificationService";
+import { notificationService } from "../../utils/notificationService";
 import {
   doc,
   getDoc,
@@ -469,9 +469,9 @@ export default function ResubmitManuscript() {
       // Log the submission
       await logManuscriptSubmission(manuscriptId, newVersion, 'resubmitted');
       
-      // Notify admins about the resubmission using NotificationService directly
-      const adminIds = await NotificationService.getAdminUserIds();
-      await NotificationService.createBulkNotifications(
+      // Notify admins about the resubmission
+      const adminIds = await notificationService.getAdminUserIds();
+      await notificationService.createBulkNotifications(
         adminIds,
         "Manuscript Resubmission",
         `Manuscript Resubmitted: ${manuscript.manuscriptTitle || manuscript.title || "Untitled Manuscript"}`,

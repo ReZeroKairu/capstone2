@@ -1,5 +1,17 @@
 import React from "react";
 
+const STATUS_STEPS = [
+  "Pending",
+  "Accepted",
+  "Assigning Peer Reviewer",
+  "Peer Reviewer Assigned",
+  "Peer Reviewer Reviewing",
+  "Back to Admin",
+  "For Revision",
+  "For Publication",
+  "Rejected",
+];
+
 export default function Progressbar({
   currentStep = 0,
   steps = [],
@@ -28,12 +40,23 @@ export default function Progressbar({
         // Determine if this is the current step
         const isCurrent = idx === currentStep - 1;
         
+        // Check if this is a Rejected step
+        const isRejectedStatusStep = status === "Rejected" || status === "Peer Reviewer Rejected";
+        
+        // Special handling for For Publication status
+        const isForPublication = currentStatus === "For Publication";
+        
         // Determine if this step is completed (all steps before current are completed)
         let isCompleted = false;
-        if (isRejectedStatus) {
-          isCompleted = idx <= backToAdminIdx && !isRejectedStep;
+        if (currentStatus === "For Publication") {
+          // When status is For Publication, all steps up to For Publication are completed
+          // and Rejected steps should be grayed out
+          isCompleted = STATUS_STEPS.indexOf(status) < STATUS_STEPS.indexOf("For Publication") && 
+                       !isRejectedStatusStep;
+        } else if (isRejectedStatus) {
+          isCompleted = idx <= backToAdminIdx && !isRejectedStatusStep;
         } else if (currentStep > 0) {
-          isCompleted = idx < currentStep - 1 && !isRejectedStep;
+          isCompleted = idx < currentStep - 1 && !isRejectedStatusStep;
         }
 
         // Circle color & content
@@ -42,7 +65,15 @@ export default function Progressbar({
         let circleOpacity = "";
         let displayText = status;
 
-        if (isNonAcceptance) {
+        // Handle Rejected step when status is For Publication (this needs to be checked first)
+        if (isForPublication && isRejectedStatusStep) {
+          // Gray out Rejected step when status is For Publication
+          circleClass = "bg-gray-200 border-gray-300 text-gray-400";
+          circleContent = "✖";
+          isCompleted = false;
+        } 
+        // Handle other cases
+        else if (isNonAcceptance) {
           // For non-Acceptance, show red X and change text
           circleClass = "bg-red-500 border-red-500 text-white";
           circleContent = "X";
@@ -67,8 +98,16 @@ export default function Progressbar({
 
         // Line color
         let lineClass = "bg-gray-300";
-        if (isCompleted) lineClass = "bg-green-500";
-        if (isRejectedStatus && idx >= backToAdminIdx) lineClass = "bg-red-500";
+        if (isForPublication) {
+          // For For Publication status, show green line up to For Publication step, then gray
+          lineClass = STATUS_STEPS.indexOf(status) < STATUS_STEPS.indexOf("For Publication") 
+            ? "bg-green-500" 
+            : "bg-gray-200";
+        } else if (isCompleted) {
+          lineClass = "bg-green-500";
+        } else if (isRejectedStatus && idx >= backToAdminIdx) {
+          lineClass = "bg-red-500";
+        }
 
         return (
           <React.Fragment key={status}>

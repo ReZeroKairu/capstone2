@@ -529,6 +529,12 @@ const Dashboard = ({ sidebarOpen }) => {
   const getCurrentStep = (status) => {
     if (!status) return 0;
     
+    // Special case for 'For Publication' - it should be the final step
+    if (status === 'For Publication') {
+      // Return the index of 'For Publication' in STATUS_STEPS + 1 (1-based index)
+      return STATUS_STEPS.indexOf('For Publication') + 1;
+    }
+    
     // Get the steps to use based on the current status
     const stepsToUse = status === 'Pending' 
       ? ['Pending'] 

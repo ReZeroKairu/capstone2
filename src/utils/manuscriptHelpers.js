@@ -1,7 +1,7 @@
 // manuscriptHelpers.js
 import { db } from '../firebase/firebase';
 import { doc, getDoc, setDoc, serverTimestamp, collection } from 'firebase/firestore';
-import { NotificationService } from "./notificationService";
+import { notificationService } from "./notificationService";
 
 /**
  * Compute final manuscript status based on reviewer decisions and submissions.
@@ -83,7 +83,7 @@ export function filterRejectedReviewers(
  */
 export async function handleManuscriptStatusChange(manuscriptId, manuscriptTitle, oldStatus, newStatus, authorId, adminId, reviewerIds = []) {
   if (oldStatus !== newStatus) {
-    await NotificationService.notifyManuscriptStatusChange(
+    await notificationService.notifyManuscriptStatusChange(
       manuscriptId, 
       manuscriptTitle, 
       oldStatus, 
@@ -103,7 +103,7 @@ export async function handleManuscriptStatusChange(manuscriptId, manuscriptTitle
  * @param {string} assignedByAdminId - Admin who assigned reviewers
  */
 export async function handlePeerReviewerAssignment(manuscriptId, manuscriptTitle, reviewerIds, assignedByAdminId) {
-  await NotificationService.notifyPeerReviewerAssignment(
+  await notificationService.notifyPeerReviewerAssignment(
     manuscriptId, 
     manuscriptTitle, 
     reviewerIds, 
@@ -119,13 +119,13 @@ export async function handlePeerReviewerAssignment(manuscriptId, manuscriptTitle
  * @param {string} decision - Decision (accept/reject/backedOut)
  */
 export async function handlePeerReviewerDecision(manuscriptId, manuscriptTitle, reviewerId, decision) {
-  const adminIds = await NotificationService.getAdminUserIds();
-  await NotificationService.notifyPeerReviewerDecision(
+  const adminIds = await notificationService.getAdminUserIds();
+  await notificationService.notifyPeerReviewerDecision(
     manuscriptId, 
     manuscriptTitle, 
     reviewerId, 
-    decision, 
-    adminIds
+    adminIds, 
+    decision === 'accept'
   );
 }
 
@@ -137,10 +137,9 @@ export async function handlePeerReviewerDecision(manuscriptId, manuscriptTitle, 
  */
 export async function handleReviewCompletion(manuscriptId, manuscriptTitle, reviewerId) {
   try {
-    // 1. Get admin IDs for notification
-    const adminIds = await NotificationService.getAdminUserIds();
-
-    // 2. Get the manuscript data to archive
+    console.log('Starting review completion for manuscript:', manuscriptId);
+    
+    // 1. Get the manuscript data first
     const manuscriptRef = doc(db, 'manuscripts', manuscriptId);
     const manuscriptSnap = await getDoc(manuscriptRef);
     
@@ -150,6 +149,13 @@ export async function handleReviewCompletion(manuscriptId, manuscriptTitle, revi
     }
 
     const manuscriptData = manuscriptSnap.data();
+    
+    // 2. Get the author ID from manuscript data
+    const authorId = manuscriptData.authorId;
+    if (!authorId) {
+      console.error('Author ID not found in manuscript data');
+      return;
+    }
     
     // 3. Find the specific review being completed
     const review = manuscriptData.reviewerSubmissions?.find(
@@ -161,12 +167,16 @@ export async function handleReviewCompletion(manuscriptId, manuscriptTitle, revi
       return;
     }
 
-    // 4. Create a unique ID for this review using manuscriptId, reviewerId, and version
+    // 4. Get admin IDs for notification
+    const adminIds = await notificationService.getAdminUserIds();
+    console.log('Admin IDs for notification:', adminIds);
+
+    // 5. Create a unique ID for this review using manuscriptId, reviewerId, and version
     const versionNumber = review.manuscriptVersionNumber || 1;
     const reviewId = `${manuscriptId}_${reviewerId}_v${versionNumber}`;
     const reviewRef = doc(db, 'completedReviews', reviewId);
 
-    // 5. Create/update archive document in completedReviews collection
+    // 6. Create/update archive document in completedReviews collection
     const archiveData = {
       id: reviewId,
       manuscriptId,
@@ -180,31 +190,37 @@ export async function handleReviewCompletion(manuscriptId, manuscriptTitle, revi
       reviewFileUrl: review.reviewFileUrl || null,
       reviewFileName: review.reviewFileName || null,
       completedAt: review.completedAt || serverTimestamp(),
-      // Only update archivedAt if this is a new review
-      ...(review.status === 'Completed' && { archivedAt: serverTimestamp() }),
-      // Include other relevant manuscript data
-      authorId: manuscriptData.authorId,
-      manuscriptStatus: manuscriptData.status, // Changed to avoid conflict with review status
+      archivedAt: serverTimestamp(),
+      authorId: authorId, // Use the authorId we got from manuscript data
+      manuscriptStatus: manuscriptData.status,
       assignedReviewers: manuscriptData.assignedReviewers || [],
       originalAssignedReviewers: manuscriptData.originalAssignedReviewers || [],
-      reviewerDecisionMeta: manuscriptData.reviewerDecisionMeta || {},
-      // Add any other fields you want to preserve
+      reviewerDecisionMeta: manuscriptData.reviewerDecisionMeta || {}
     };
 
-    // 6. Set the document with merge: true to update if exists, or create if not
+    console.log('Saving review with data:', archiveData);
+
+    // 7. Save the review
     await setDoc(reviewRef, archiveData, { merge: true });
 
-    // 6. Send notification
-    await NotificationService.notifyReviewCompleted(
-      manuscriptId, 
-      manuscriptTitle, 
-      reviewerId, 
-      adminIds
-    );
+    // 8. Send notification to admins
+    try {
+      console.log('Sending review completed notification...');
+      await notificationService.notifyReviewCompleted(
+        manuscriptId, 
+        manuscriptTitle, 
+        reviewerId, 
+        adminIds
+      );
+      console.log('Notification sent successfully');
+    } catch (notifError) {
+      console.error('Error sending notification:', notifError);
+      // Continue even if notification fails
+    }
 
     console.log('Review archived successfully');
   } catch (error) {
-    console.error('Error archiving review:', error);
+    console.error('Error in handleReviewCompletion:', error);
     // Don't throw to avoid breaking the review submission flow
   }
 }
@@ -216,8 +232,8 @@ export async function handleReviewCompletion(manuscriptId, manuscriptTitle, revi
  * @param {string} authorId - Author ID
  */
 export async function handleManuscriptSubmission(manuscriptId, manuscriptTitle, authorId) {
-  const adminIds = await NotificationService.getAdminUserIds();
-  await NotificationService.notifyManuscriptSubmission(
+  const adminIds = await notificationService.getAdminUserIds();
+  await notificationService.notifyManuscriptSubmission(
     manuscriptId, 
     manuscriptTitle, 
     authorId, 

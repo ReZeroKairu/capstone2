@@ -1,7 +1,7 @@
 import { doc, updateDoc, arrayUnion, getDoc } from "firebase/firestore";
 import { db } from "../firebase/firebase";
 import { useAuth } from "../authcontext/AuthContext";
-import { NotificationService } from "../utils/notificationService";
+import { notificationService } from "../utils/notificationService";
 
 // Status constants
 export const REVISION_STATUSES = {
@@ -166,14 +166,20 @@ export const useManuscriptStatus = () => {
             throw new Error("Could not determine author ID for notification");
           }
 
-          await NotificationService.notifyManuscriptStatusChange(
+          // Get co-authors (if any)
+          const coAuthors = manuscript.coAuthors || [];
+          const coAuthorIds = manuscript.coAuthorsIds || coAuthors.map(c => c.id || c.userId);
+          
+          await notificationService.notifyManuscriptStatusChange(
             manuscript.id,
             manuscript.title || "Untitled Manuscript",
             manuscript.status,
             newStatus,
             authorId,
             currentUser.uid,
-            manuscript.assignedReviewers || []
+            manuscript.assignedReviewers || [],
+            false, // isResubmission
+            coAuthorIds // Pass co-author IDs to the notification service
           );
         } catch (error) {
           console.error("❌ Failed to send notification:", {

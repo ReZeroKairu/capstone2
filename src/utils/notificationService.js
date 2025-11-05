@@ -25,12 +25,15 @@ export class NotificationService {
       return [];
     }
   }
-  static async createNotification(userId, type, title, message, metadata = {}) {
+  async createNotification(userId, type, title, message, metadata = {}) {
     try {
       if (!userId) {
         console.error("Cannot create notification: userId is required");
         return null;
       }
+
+      // Extract actionUrl from metadata if it exists
+      const { actionUrl, ...restMetadata } = metadata;
 
       const notificationData = {
         type,
@@ -38,8 +41,9 @@ export class NotificationService {
         message,
         seen: false,
         timestamp: serverTimestamp(),
+        ...(actionUrl && { actionUrl }), // Add actionUrl at root level if it exists
         metadata: {
-          ...metadata,
+          ...restMetadata,
           createdAt: new Date().toISOString(),
         },
       };
@@ -60,7 +64,7 @@ export class NotificationService {
     }
   }
 
-  static async createBulkNotifications(
+  async createBulkNotifications(
     userIds,
     type,
     title,
@@ -71,19 +75,27 @@ export class NotificationService {
       userIds = userIds ? [userIds] : [];
     }
 
-    const promises = userIds.map((userId) =>
-      this.createNotification(userId, type, title, message, metadata)
-    );
-
     try {
-      await Promise.all(promises);
+      // Use arrow function to preserve 'this' context
+      const notifications = await Promise.all(
+        userIds.map(userId => this.createNotification(
+          userId, 
+          type, 
+          title, 
+          message, 
+          metadata
+        ))
+      );
+      
       console.log(`Bulk notifications created for ${userIds.length} users`);
+      return notifications;
     } catch (error) {
       console.error("Error creating bulk notifications:", error);
+      throw error;
     }
   }
 
-  static async getUserDisplayName(userId) {
+  async getUserDisplayName(userId) {
     try {
       const userDoc = await getDoc(doc(db, "Users", userId));
       if (userDoc.exists()) {
@@ -103,7 +115,7 @@ export class NotificationService {
 
   // ----------------- Manuscript Notifications -----------------
 
-  static async notifyManuscriptStatusChange(
+  async notifyManuscriptStatusChange(
     manuscriptId,
     manuscriptTitle,
     oldStatus,
@@ -111,7 +123,8 @@ export class NotificationService {
     authorId,
     adminId,
     reviewerIds = [],
-    isResubmission = false // ✅ Added default value to fix reference error
+    isResubmission = false,
+    coAuthorIds = [] // Add coAuthorIds parameter
   ) {
     const statusMessages = {
       Pending: "Your manuscript has been submitted and is pending review.",
@@ -133,15 +146,23 @@ export class NotificationService {
       }.`;
     }
 
-    // Notify author
-    await this.createNotification(authorId, notificationType, title, message, {
-      manuscriptId,
-      manuscriptTitle,
-      oldStatus,
-      newStatus,
-      isResubmission,
-      actionUrl: `/manuscripts/${manuscriptId}`,
-    });
+    // Notify author and co-authors
+    const authorAndCoAuthors = [authorId, ...coAuthorIds].filter(Boolean);
+    await this.createBulkNotifications(
+      authorAndCoAuthors,
+      notificationType,
+      title,
+      message,
+      {
+        manuscriptId,
+        manuscriptTitle,
+        oldStatus,
+        newStatus,
+        isResubmission,
+        actionUrl: `/manuscripts?manuscriptId=${manuscriptId}`, // This will be moved to root level
+        isCoAuthor: true // Flag to identify co-authors if needed
+      }
+    );
 
     // Notify admins
     const adminIds = await this.getAdminUserIds();
@@ -156,7 +177,7 @@ export class NotificationService {
         oldStatus,
         newStatus,
         isResubmission,
-        actionUrl: `/manuscripts/${manuscriptId}`,
+        actionUrl: `/manuscripts?manuscriptId=${manuscriptId}`, // This will be moved to root level
       }
     );
 
@@ -178,30 +199,8 @@ export class NotificationService {
       );
     }
 
-    // Notify reviewers when manuscript is sent for revision
-    if (
-      (newStatus === "For Revision (Minor)" ||
-        newStatus === "For Revision (Major)") &&
-      reviewerIds &&
-      reviewerIds.length > 0
-    ) {
-      const revisionType = newStatus.includes("Minor") ? "minor" : "major";
-      const reviewerMessage = `The manuscript "${manuscriptTitle}" you reviewed has been sent for ${revisionType} revisions.`;
-      await this.createBulkNotifications(
-        reviewerIds,
-        "manuscript_revision",
-        `Manuscript Requires ${
-          revisionType.charAt(0).toUpperCase() + revisionType.slice(1)
-        } Revisions: ${manuscriptTitle}`,
-        reviewerMessage,
-        {
-          manuscriptId,
-          manuscriptTitle,
-          revisionType,
-          actionUrl: "/manuscripts",
-        }
-      );
-    }
+    // Note: Removed reviewer notifications for revision status changes as per requirements
+    // Only authors/co-authors and admins will be notified about revision status changes
   }
 
   static async notifyManuscriptSubmission(
@@ -275,7 +274,7 @@ export class NotificationService {
 
   // ----------------- Peer Reviewer Decisions -----------------
 
-  static async notifyPeerReviewerAccept(
+  async notifyPeerReviewerAccept(
     manuscriptId,
     manuscriptTitle,
     reviewerId,
@@ -298,7 +297,7 @@ export class NotificationService {
     );
   }
 
-  static async notifyPeerReviewerDecline(
+  async notifyPeerReviewerDecline(
     manuscriptId,
     manuscriptTitle,
     reviewerId,
@@ -321,7 +320,7 @@ export class NotificationService {
     );
   }
 
-  static async notifyPeerReviewerDecision(
+  async notifyPeerReviewerDecision(
     manuscriptId,
     manuscriptTitle,
     reviewerId,
@@ -370,19 +369,39 @@ export class NotificationService {
 
   // ----------------- Utility -----------------
 
-  static async getAdminUserIds() {
+  async getAdminUserIds() {
     try {
+      console.log('Fetching admin users from Firestore...');
       const usersRef = collection(db, "Users");
-      const querySnapshot = await getDocs(
-        query(usersRef, where("role", "==", "Admin"))
-      );
-      const adminIds = querySnapshot.docs.map((doc) => doc.id);
-      return adminIds.length ? adminIds : [];
+      const q = query(usersRef, where("role", "==", "Admin"));
+      console.log('Firestore query created:', q);
+      
+      const querySnapshot = await getDocs(q);
+      console.log(`Found ${querySnapshot.size} admin users`);
+      
+      const adminIds = [];
+      querySnapshot.forEach((doc) => {
+        console.log(`Admin found - ID: ${doc.id}, Data:`, doc.data());
+        adminIds.push(doc.id);
+      });
+      
+      console.log('Returning admin IDs:', adminIds);
+      return adminIds;
     } catch (error) {
       console.error("Error fetching admin users:", error);
+      console.error("Error details:", {
+        message: error.message,
+        stack: error.stack,
+        code: error.code,
+        name: error.name
+      });
       return [];
     }
   }
 }
 
-export default new NotificationService();
+// Export the NotificationService class as default
+export default NotificationService;
+
+// Create and export a singleton instance
+export const notificationService = new NotificationService();

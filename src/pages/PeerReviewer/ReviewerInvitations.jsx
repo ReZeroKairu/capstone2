@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useMemo } from "react";
 import { getAuth } from "firebase/auth";
 import { useNavigate } from "react-router-dom";
-import NotificationService from "../../utils/notificationService";
+import { notificationService } from "../../utils/notificationService";
 import {
   collection,
   query,
@@ -384,16 +384,31 @@ const ReviewerInvitations = () => {
       await updateDoc(msRef, updateData);
 
       // Notify admins
-      let adminIds = await NotificationService.getAdminUserIds();
-      if (!Array.isArray(adminIds)) adminIds = adminIds ? [adminIds] : [];
+      console.log('Getting admin user IDs...');
+      let adminIds = await notificationService.getAdminUserIds();
+      console.log('Admin IDs found:', adminIds);
+      
+      if (!Array.isArray(adminIds)) {
+        console.log('Admin IDs is not an array, converting...');
+        adminIds = adminIds ? [adminIds] : [];
+      }
+      
       if (adminIds.length > 0) {
-        await NotificationService.notifyPeerReviewerDecision(
-          manuscriptId,
-          msData.title,
-          currentUser.uid,
-          adminIds,
-          isAccepted
-        );
+        console.log(`Sending notification to ${adminIds.length} admin(s) about ${isAccepted ? 'acceptance' : 'decline'}`);
+        try {
+          await notificationService.notifyPeerReviewerDecision(
+            manuscriptId,
+            msData.title,
+            currentUser.uid,
+            adminIds,
+            isAccepted
+          );
+          console.log('Notification sent successfully');
+        } catch (error) {
+          console.error('Error sending notification:', error);
+        }
+      } else {
+        console.warn('No admin users found to notify');
       }
 
       // Update local state

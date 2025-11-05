@@ -17,6 +17,7 @@ export const FeedbackForm = ({
 }) => {
   const [localFile, setLocalFile] = useState(file);
   const [localFilePreview, setLocalFilePreview] = useState(filePreview);
+  const [isRemovingFile, setIsRemovingFile] = useState(false);
 
   const handleFileChange = (e) => {
     const selectedFile = e.target.files[0];
@@ -58,13 +59,14 @@ export const FeedbackForm = ({
   };
 
   const handleRemoveFile = () => {
-    if (localFilePreview) {
+    if (localFilePreview && localFilePreview.startsWith('blob:')) {
       URL.revokeObjectURL(localFilePreview);
     }
     setLocalFile(null);
     setLocalFilePreview(null);
     setFile(null);
     setFilePreview(null);
+    setIsRemovingFile(true);
     const fileInput = document.getElementById('file-upload');
     if (fileInput) fileInput.value = '';
   };
@@ -105,9 +107,9 @@ export const FeedbackForm = ({
             hover:file:bg-blue-100"
           accept="*"
         />
-        {(localFile || localFilePreview) && (
+        {(localFile || localFilePreview || (editingFeedback?.fileUrl && !isRemovingFile)) && (
           <div className="mt-2 text-sm text-gray-600">
-            Selected file: {localFile?.name || 'File'}
+            Selected file: {localFile?.name || editingFeedback?.fileName || 'File'}
             <button
               type="button"
               onClick={handleRemoveFile}
@@ -115,6 +117,11 @@ export const FeedbackForm = ({
             >
               Remove
             </button>
+            {editingFeedback?.fileUrl && !localFile && !isRemovingFile && (
+              <div className="text-xs text-blue-600 mt-1">
+                Note: Removing this file will delete it when you save your changes.
+              </div>
+            )}
           </div>
         )}
       </div>

@@ -46,6 +46,7 @@ const AdminFeedback = ({ manuscriptId, userRole, status: propStatus, currentVers
   const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
   const [showFeedbackForm, setShowFeedbackForm] = useState(true);
+  const [isFormExpanded, setIsFormExpanded] = useState(true);
 
   // Use the status from props if available, otherwise fetch it
   const [manuscriptStatus, setManuscriptStatus] = useState(propStatus || "");
@@ -362,31 +363,25 @@ const AdminFeedback = ({ manuscriptId, userRole, status: propStatus, currentVers
       const manuscriptRef = doc(db, "manuscripts", manuscriptId);
       const manuscriptDoc = await getDoc(manuscriptRef);
 
-      // 3. Use the original version when editing, otherwise use current version
-      const version = editingFeedback ? (editingFeedback.version || currentVersion || '1') : (currentVersion || '1');
-
-      // 4. Prepare feedback data
+      // 3. Prepare feedback data
       const feedbackData = {
         message: feedback.trim(),
-        createdAt: editingFeedback
-          ? editingFeedback.createdAt
-          : serverTimestamp(),
+        createdAt: editingFeedback ? editingFeedback.createdAt : serverTimestamp(),
         createdBy: currentUser.uid,
         createdByName: currentUser.displayName || "Admin",
-        version,
+        // Use the existing version when editing, otherwise use currentVersion
+        version: editingFeedback ? editingFeedback.version : currentVersion,
         fileUrl: fileData?.url || null,
         fileName: fileData?.name || null,
         fileType: fileData?.type || null,
         fileSize: fileData?.size || 0,
         storagePath: fileData?.path || null,
-        manuscriptStatus: manuscriptDoc.exists()
-          ? manuscriptDoc.data().status
-          : "Unknown",
-        updatedAt: serverTimestamp(),
+        manuscriptStatus: manuscriptDoc.exists() ? manuscriptDoc.data().status : "Unknown",
+        ...(editingFeedback && { updatedAt: serverTimestamp() }), // Only set updatedAt when editing
       };
 
-      // 5. Handle edit or create
       if (editingFeedback) {
+        // 4. Update existing feedback
         const feedbackRef = doc(
           db,
           "manuscripts",
@@ -396,6 +391,7 @@ const AdminFeedback = ({ manuscriptId, userRole, status: propStatus, currentVers
         );
         await updateDoc(feedbackRef, feedbackData);
       } else {
+        // 5. Create new feedback
         const feedbackRef = collection(
           db,
           "manuscripts",
@@ -640,23 +636,60 @@ const AdminFeedback = ({ manuscriptId, userRole, status: propStatus, currentVers
         </div>
       </div>
 
-      {/* Feedback Form */}
+      {/* Feedback Form Header with Toggle */}
       {showFeedbackForm && isAdmin && (
-        <div className="p-6 border-b border-gray-200" id="feedback-form">
-          <FeedbackForm
-            feedback={feedback}
-            setFeedback={setFeedback}
-            file={file}
-            setFile={setFile}
-            filePreview={filePreview}
-            setFilePreview={setFilePreview}
-            uploading={uploading}
-            submitting={submitting}
-            editingFeedback={editingFeedback}
-            onSubmit={handleSubmit}
-            onCancel={resetForm}
-            fileInputKey={fileInputKey}
-          />
+        <div className="border-b border-gray-200">
+          <button
+            onClick={() => setIsFormExpanded(!isFormExpanded)}
+            className="w-full px-6 py-4 text-left flex justify-between items-center focus:outline-none hover:bg-gray-50 transition-colors duration-150"
+            aria-expanded={isFormExpanded}
+          >
+            <h3 className="text-base font-medium text-gray-900">
+              {editingFeedback ? 'Edit Feedback' : 'Add New Feedback'}
+            </h3>
+            <svg
+              className={`w-5 h-5 text-gray-500 transform transition-transform duration-200 ${
+                isFormExpanded ? 'rotate-180' : ''
+              }`}
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M19 9l-7 7-7-7"
+              />
+            </svg>
+          </button>
+          
+          {/* Collapsible Form Content */}
+          <div
+            className={`transition-all duration-200 overflow-hidden ${
+              isFormExpanded ? 'max-h-[1000px] opacity-100' : 'max-h-0 opacity-0'
+            }`}
+          >
+            <div className="p-6 pt-0" id="feedback-form">
+              <FeedbackForm
+                feedback={feedback}
+                setFeedback={setFeedback}
+                file={file}
+                setFile={setFile}
+                filePreview={filePreview}
+                setFilePreview={setFilePreview}
+                uploading={uploading}
+                submitting={submitting}
+                editingFeedback={editingFeedback}
+                onSubmit={handleSubmit}
+                onCancel={() => {
+                  resetForm();
+                  setIsFormExpanded(false);
+                }}
+                fileInputKey={fileInputKey}
+              />
+            </div>
+          </div>
         </div>
       )}
 
