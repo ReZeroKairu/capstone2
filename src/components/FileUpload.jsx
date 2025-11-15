@@ -7,6 +7,8 @@ import { getFileTypeIcon, formatFileSize, isImage } from '../utils/fileUtils';
 const FileUpload = ({
   onUploadSuccess,
   onUploadError,
+  onUploadStart,
+  onUploadComplete,
   accept = ".doc,.docx",
   className = '',
   buttonText = 'Choose File',
@@ -36,6 +38,7 @@ const FileUpload = ({
       setIsUploading(true);
       setUploadProgress(0);
       setError(null);
+      onUploadStart?.();
 
       // Validate file type and size
       const allowedTypes = [
@@ -84,6 +87,7 @@ const FileUpload = ({
             onUploadError?.({ message: err.message });
           } finally {
             setIsUploading(false);
+            onUploadComplete?.();
           }
         }
       );

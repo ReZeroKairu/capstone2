@@ -17,6 +17,7 @@ const Manuscripts = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [manuscriptsPerPage, setManuscriptsPerPage] = useState(10);
   const [showFullName, setShowFullName] = useState(true);
+  const [journalFilter, setJournalFilter] = useState('all');
   const [searchParams] = useSearchParams();
   const manuscriptId = searchParams.get('manuscriptId');
   const manuscriptRef = useRef(null);
@@ -130,7 +131,45 @@ const Manuscripts = () => {
   };
 
   // --- Filter + Search Logic ---
-  const filteredManuscripts = manuscripts
+  // Journal type options
+  const journalOptions = [
+    { id: 'all', value: 'All Journal Types' },
+    { id: 'ljher', value: 'Liceo Journal of Higher Education Research (LJHER)' },
+    { id: 'sogs', value: 'School of Graduate Studies Research Journal' },
+    { id: 'ajb', value: 'Asian Journal of Biodiversity' },
+    { id: 'ajh', value: 'Asian Journal of Health' },
+    { id: 'aitr', value: 'Advancing Information Technology Research' },
+    { id: 'apr', value: 'Advancing Pharmacy Research' }
+  ];
+
+  // First, apply journal filter to all manuscripts
+  const journalFilteredManuscripts = manuscripts.filter(m => {
+    if (journalFilter === 'all') return true;
+    const journalQuestion = m.answeredQuestions?.find(q => 
+      q.question?.toLowerCase().includes('journal')
+    );
+    return journalQuestion?.answer === journalOptions.find(j => j.id === journalFilter)?.value;
+  });
+
+  // Calculate counts based on journal-filtered manuscripts
+  const statusCounts = journalFilteredManuscripts.reduce(
+    (acc, m) => {
+      if (!m.status || m.status === "Pending") acc.Pending++;
+      else if (m.status === "Rejected" || m.status === "Peer Reviewer Rejected") acc.Rejected++;
+      else if (m.status === "Back to Admin") acc["Back to Admin"]++;
+      else acc[m.status] = (acc[m.status] || 0) + 1;
+      return acc;
+    },
+    { 
+      all: journalFilteredManuscripts.length, 
+      Pending: 0, 
+      Rejected: 0, 
+      "Back to Admin": 0 
+    }
+  );
+
+  // Filter manuscripts based on search and status (journal filter already applied)
+  const filteredManuscripts = journalFilteredManuscripts
     .filter((m) => {
       // For reviewers, show all manuscripts they are assigned to or were previously involved with
       if (role === 'reviewer') {
@@ -217,20 +256,47 @@ const Manuscripts = () => {
         Manuscripts
       </h1>
 
-      <Searchbar
-        searchQuery={searchQuery}
-        setSearchQuery={setSearchQuery}
-        setCurrentPage={setCurrentPage}
-      />
+      <div className="mb-6">
+        <div className="flex flex-col sm:flex-row gap-4 mb-4">
+          <div className="w-full sm:w-80">
+            <label htmlFor="journal-filter" className="block text-sm font-medium text-gray-700 mb-1">
+              Filter by Journal
+            </label>
+            <select
+              id="journal-filter"
+              value={journalFilter}
+              onChange={(e) => {
+                setJournalFilter(e.target.value);
+                setCurrentPage(1);
+              }}
+              className="w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+            >
+              {journalOptions.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.value}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
 
-      <FilterButtons
-        filter={filter}
-        setFilter={(val) => {
-          setFilter(val);
-          setCurrentPage(1);
-        }}
-        manuscripts={manuscripts}
-      />
+        <Searchbar
+          searchQuery={searchQuery}
+          setSearchQuery={setSearchQuery}
+          setCurrentPage={setCurrentPage}
+        />
+      </div>
+
+      <div className="mb-6">
+        <FilterButtons
+          filter={filter}
+          setFilter={(val) => {
+            setFilter(val);
+            setCurrentPage(1);
+          }}
+          manuscripts={journalFilteredManuscripts}
+        />
+      </div>
 
       <ul className="space-y-4">
         {currentManuscripts.map((manuscript) => {

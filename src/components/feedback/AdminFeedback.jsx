@@ -33,6 +33,7 @@ import {
 } from "firebase/storage";
 import { FeedbackForm } from "./FeedbackForm";
 import { FeedbackVersion } from "./FeedbackVersion";
+import PropTypes from 'prop-types';
 
 const AdminFeedback = ({ manuscriptId, userRole, status: propStatus, currentVersion = '1' }) => {
   const [feedback, setFeedback] = useState("");
@@ -99,9 +100,14 @@ const AdminFeedback = ({ manuscriptId, userRole, status: propStatus, currentVers
     });
   }, [feedbackGroups]);
 
-  // Latest version is either the current version from props or the highest version in feedback
+  // Determine the latest version, using currentVersion prop if available
   const latestVersion = useMemo(() => {
-    if (currentVersion) return currentVersion;
+    // If currentVersion is provided, use it as the latest version
+    if (currentVersion) {
+      return String(currentVersion).split('.')[0]; // Use only the major version
+    }
+    
+    // Fall back to the first version in the sorted list if available
     return sortedVersions[0] || '1';
   }, [sortedVersions, currentVersion]);
 
@@ -780,6 +786,16 @@ const AdminFeedback = ({ manuscriptId, userRole, status: propStatus, currentVers
       </div>
     </div>
   );
+};
+
+AdminFeedback.propTypes = {
+  manuscriptId: PropTypes.string.isRequired,
+  userRole: PropTypes.string,
+  status: PropTypes.string,
+  currentVersion: PropTypes.oneOfType([
+    PropTypes.string,
+    PropTypes.number
+  ]),
 };
 
 export default AdminFeedback;

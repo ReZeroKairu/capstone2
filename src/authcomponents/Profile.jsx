@@ -291,7 +291,11 @@ function Profile() {
 
       // Update Firestore and log the change
       await updateDoc(doc(db, "Users", profile.id), after);
-      await UserLogService.logUserProfileUpdate(currentUser.uid, changedFields);
+      await logProfileUpdate({
+        actingUserId: currentUser.uid,
+        before,
+        after,
+      });
 
       // Update local state
       setProfile((prev) => ({ ...prev, ...after }));

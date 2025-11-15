@@ -4,6 +4,7 @@ import { getAnalytics, isSupported } from "firebase/analytics";
 import { getAuth, GoogleAuthProvider } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
+import { getFunctions } from "firebase/functions";
 
 // Firebase configuration using environment variables
 const firebaseConfig = {

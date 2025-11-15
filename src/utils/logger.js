@@ -107,7 +107,6 @@ export const logUserAction = async ({
     };
 
     await addDoc(userLogRef, logEntry);
-    console.log(`✅ Logged action: ${action}`, logEntry);
   } catch (err) {
     console.error("❌ Failed to log action:", err);
   }

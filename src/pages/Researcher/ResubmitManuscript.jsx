@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { db, auth } from "../../firebase/firebase";
-import { notificationService } from "../../utils/notificationService";
+import NotificationService from "../../utils/notificationService";
+import { formatFirestoreDate } from "../../utils/dateUtils";
+
 import {
   doc,
   getDoc,
@@ -143,8 +145,53 @@ export default function ResubmitManuscript() {
     fetchManuscript();
   }, [manuscriptId, navigate]);
 
+  // Check if user's profile is complete
+  const isProfileComplete = async (userId) => {
+    try {
+      // First check local storage for quick access
+      const cachedComplete = localStorage.getItem(`profileComplete_${userId}`);
+      if (cachedComplete !== null) {
+        return cachedComplete === 'true';
+      }
+
+      // If not in cache, check Firestore
+      const userDoc = await getDoc(doc(db, "Users", userId));
+      if (userDoc.exists()) {
+        const userData = userDoc.data();
+        const requiredFields = {
+          'Researcher': ['institution', 'fieldOfStudy', 'education', 'researchInterests'],
+          'Peer Reviewer': ['affiliation', 'expertise', 'education', 'specialty']
+        };
+
+        const role = userData.role || 'Researcher';
+        if (!role || !requiredFields[role]) return true; // If role not set or not in list, consider complete
+
+        const isComplete = requiredFields[role].every(field => {
+          const value = userData[field];
+          return value && value.trim() !== '';
+        });
+
+        // Cache the result
+        localStorage.setItem(`profileComplete_${userId}`, isComplete);
+        return isComplete;
+      }
+      return false;
+    } catch (error) {
+      console.error('Error checking profile completion:', error);
+      return false;
+    }
+  };
+
   const handleResubmit = async (e) => {
     e.preventDefault();
+
+    // Check if profile is complete
+    const profileComplete = await isProfileComplete(auth.currentUser.uid);
+    if (!profileComplete) {
+      alert('Please complete your profile before resubmitting a manuscript. All required fields must be filled out.');
+      navigate('/profile');
+      return;
+    }
 
     if (!newFile) {
       showMessage("Please upload a revised manuscript file.");
@@ -241,31 +288,12 @@ export default function ResubmitManuscript() {
       );
 
       // Create submission history entry with reviewer info
-      const now = serverTimestamp();
-      const submissionHistoryEntry = {
-        versionNumber: newVersion,
-        fileUrl: newFile?.url || '',
-        fileName: newFile?.name || '',
-        fileType: newFile?.type || '',
-        fileSize: newFile?.size || 0,
-        storagePath: newFile?.storagePath || '',
-        submittedAt: now,
-        submittedBy: currentUser.uid,
-        revisionNotes: revisionNotes || 'Resubmitted manuscript',
-        revisionType: manuscript.status || 'Resubmission',
-        // Store reviewer information at this version
-        reviewers: Array.isArray(reviewersWithSubmissions) ? reviewersWithSubmissions : [],
-        reviewerSubmissions: Array.isArray(manuscript.reviewerSubmissions) ? manuscript.reviewerSubmissions : [],
-        reviewerDecisionMeta: manuscript.reviewerDecisionMeta || {},
-        // Ensure we have all required fields
-        completedAt: now,
-        status: 'Completed',
-        submitted: true,
-        // Add timestamps for tracking
-        createdAt: now,
-        updatedAt: now
+      const now = new Date();
+      const timestamp = {
+        seconds: Math.floor(now.getTime() / 1000),
+        nanoseconds: 0
       };
-
+      
       // Create or update submission history
       let submissionHistory = [];
       
@@ -274,6 +302,12 @@ export default function ResubmitManuscript() {
         submissionHistory = [...manuscript.submissionHistory];
       } else {
         // Create initial submission history if none exists
+        const initialDate = manuscript.submittedAt || manuscript.resubmittedAt || new Date();
+        const initialTimestamp = {
+          seconds: Math.floor((initialDate.toDate ? initialDate.toDate().getTime() : new Date(initialDate).getTime()) / 1000),
+          nanoseconds: 0
+        };
+        
         submissionHistory = [{
           versionNumber: 1,
           fileUrl: manuscript.fileUrl || '',
@@ -281,24 +315,38 @@ export default function ResubmitManuscript() {
           fileType: manuscript.fileType || '',
           fileSize: manuscript.fileSize || 0,
           storagePath: manuscript.storagePath || '',
-          submittedAt: manuscript.submittedAt || manuscript.resubmittedAt || serverTimestamp(),
+          submittedAt: initialTimestamp,
           submittedBy: manuscript.submitterId || manuscript.userId || currentUser.uid,
           revisionNotes: "Initial submission",
           submitted: true,
-          completedAt: manuscript.submittedAt || manuscript.resubmittedAt || serverTimestamp(),
+          completedAt: initialTimestamp,
           status: 'Completed'
         }];
       }
 
-      // Add the new submission to the history
-      submissionHistory.push({
-        ...submissionHistoryEntry,
-        submittedAt: serverTimestamp(),
-        completedAt: serverTimestamp(),
+      // Create the new submission history entry
+      const submissionHistoryEntry = {
+        versionNumber: newVersion,
+        fileUrl: newFile?.url || '',
+        fileName: newFile?.name || '',
+        fileType: newFile?.type || '',
+        fileSize: newFile?.size || 0,
+        storagePath: newFile?.storagePath || '',
+        submittedAt: timestamp,
+        submittedBy: currentUser.uid,
+        revisionNotes: revisionNotes || 'Resubmitted manuscript',
+        revisionType: manuscript.status || 'Resubmission',
+        reviewers: Array.isArray(reviewersWithSubmissions) ? reviewersWithSubmissions : [],
+        reviewerSubmissions: Array.isArray(manuscript.reviewerSubmissions) ? manuscript.reviewerSubmissions : [],
+        reviewerDecisionMeta: manuscript.reviewerDecisionMeta || {},
+        completedAt: timestamp,
         submitted: true,
         status: 'Completed'
-      });
-
+      };
+      
+      // Add the new submission to the history
+      submissionHistory.push(submissionHistoryEntry);
+      
       // Archive current reviews before clearing them
       const previousReviews = (manuscript.reviewerSubmissions || []).map(review => {
         const reviewCopy = { ...review };
@@ -470,23 +518,32 @@ export default function ResubmitManuscript() {
       await logManuscriptSubmission(manuscriptId, newVersion, 'resubmitted');
       
       // Notify admins about the resubmission
-      const adminIds = await notificationService.getAdminUserIds();
-      await notificationService.createBulkNotifications(
-        adminIds,
-        "Manuscript Resubmission",
-        `Manuscript Resubmitted: ${manuscript.manuscriptTitle || manuscript.title || "Untitled Manuscript"}`,
-        `A revised version of "${manuscript.manuscriptTitle || manuscript.title || "Untitled Manuscript"}" has been resubmitted by ${currentUser.displayName || 'the author'}.`,
-        {
-          manuscriptId,
-          manuscriptTitle: manuscript.manuscriptTitle || manuscript.title || "Untitled Manuscript",
-          oldStatus: manuscript.status,
-          newStatus: 'Back to Admin',
-          isResubmission: true,
-          versionNumber: newVersion,
-          actionUrl: `/manuscripts?manuscriptId=${manuscriptId}`,
-          userRole: "Admin"
+      try {
+        const adminIds = await NotificationService.getAdminUserIds();
+        if (adminIds && adminIds.length > 0) {
+          await NotificationService.createBulkNotifications(
+            adminIds,
+            "Manuscript Resubmission",
+            `Manuscript Resubmitted: ${manuscript.manuscriptTitle || manuscript.title || "Untitled Manuscript"}`,
+            `A revised version of "${manuscript.manuscriptTitle || manuscript.title || "Untitled Manuscript"}" has been resubmitted by ${currentUser.displayName || 'the author'}.`,
+            {
+              manuscriptId,
+              manuscriptTitle: manuscript.manuscriptTitle || manuscript.title || "Untitled Manuscript",
+              oldStatus: manuscript.status,
+              newStatus: 'Back to Admin',
+              isResubmission: true,
+              versionNumber: newVersion,
+              actionUrl: `/manuscripts?manuscriptId=${manuscriptId}`
+            }
+          );
+          console.log('Notification sent to admins');
+        } else {
+          console.warn('No admin users found to notify');
         }
-      );
+      } catch (error) {
+        console.error('Error sending notification to admins:', error);
+        // Don't fail the submission if notification fails
+      }
 
       showMessage("Manuscript resubmitted successfully!");
       setTimeout(() => navigate("/manuscripts"), 2000);
@@ -538,7 +595,7 @@ export default function ResubmitManuscript() {
                     {submission.fileName || "Manuscript file"}
                   </p>
                   <p className="text-xs text-gray-500">
-                    Submitted: {submission.submittedAt?.toDate ? submission.submittedAt.toDate().toLocaleString() : new Date(submission.submittedAt).toLocaleString()}
+                    Submitted: {formatFirestoreDate(submission.submittedAt)}
                   </p>
                   {submission.revisionNotes && submission.revisionNotes !== "Initial submission" && (
                     <p className="text-xs text-gray-600 italic mt-1">"{submission.revisionNotes}"</p>
@@ -614,7 +671,8 @@ export default function ResubmitManuscript() {
       <AdminFeedback 
         manuscriptId={manuscriptId} 
         userRole={auth.currentUser?.role}
-        status={manuscript?.status} 
+        status={manuscript?.status}
+        currentVersion={String(manuscript.versionNumber || 1)}
       />
 
       <form onSubmit={handleResubmit} className="space-y-6">

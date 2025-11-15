@@ -58,7 +58,7 @@ const Sidebar = ({ role, isOpen, toggleSidebar }) => {
       icon: <FaBook className="text-xl" />,
     },
     {
-      name: "Form Creation",
+      name: "Submission Form",
       path: "/createform",
       icon: <FaWpforms className="text-xl" />,
     },

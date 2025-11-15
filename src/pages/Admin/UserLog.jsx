@@ -371,6 +371,25 @@ const UserLog = ({ onLogsUpdated }) => {
                       {log.metadata.oldRole} → {log.metadata.newRole}
                     </p>
                   )}
+                  
+                  {/* Show changed fields for profile updates */}
+                  {log.action === "Updated Profile" && log.metadata?.changedFields && (
+                    <div className="mt-2 space-y-1">
+                      <p className="text-sm font-semibold text-gray-700">Changes:</p>
+                      {log.metadata.changedFields.map((field, index) => (
+                        <div key={index} className="text-sm pl-2 border-l-2 border-gray-200">
+                          <span className="font-medium text-gray-700">{field}:</span>{" "}
+                          <span className="text-red-500 line-through mr-2">
+                            {log.metadata.previousValues?.[field] || '(empty)'}
+                          </span>
+                          →{" "}
+                          <span className="text-green-600">
+                            {log.metadata.newValues?.[field] || '(empty)'}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                   {log.userId && (
                     <p className="text-sm md:text-base truncate">
                       <span className="font-semibold text-gray-700">

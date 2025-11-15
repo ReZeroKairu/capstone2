@@ -161,11 +161,8 @@ export const getActiveDeadline = async (
 
   // For Back to Admin status, handle it first to ensure consistent behavior
   if (status === "Back to Admin") {
-    console.log('Handling Back to Admin status');
-    
     // First, try to get the finalization deadline if it exists
     if (manuscript.finalizationDeadline) {
-      console.log('Using finalizationDeadline for Back to Admin status');
       if (manuscript.finalizationDeadline.toDate) {
         return manuscript.finalizationDeadline.toDate();
       } else if (typeof manuscript.finalizationDeadline === 'string') {
@@ -173,11 +170,9 @@ export const getActiveDeadline = async (
       } else if (manuscript.finalizationDeadline.seconds) {
         return new Date(manuscript.finalizationDeadline.seconds * 1000);
       }
-      return new Date(manuscript.finalizationDeadline);
     }
     
     // If no finalizationDeadline is set, calculate it based on settings
-    console.log('No finalizationDeadline found, calculating from settings');
     const settingsRef = doc(db, "deadlineSettings", "deadlines");
     const settingsSnap = await getDoc(settingsRef);
     const finalizationDeadlineDays = settingsSnap.exists() ? 
@@ -185,52 +180,38 @@ export const getActiveDeadline = async (
       
     const deadline = new Date();
     deadline.setDate(deadline.getDate() + finalizationDeadlineDays);
-    console.log('Calculated new finalization deadline:', deadline);
     return deadline;
   }
   
   // For revision statuses, always return the revision deadline regardless of role
   if (status === "For Revision (Minor)" || status === "For Revision (Major)") {
-    console.log('Getting revision deadline for status:', status);
-    console.log('Manuscript revisionDeadline:', manuscript.revisionDeadline);
-    
     if (manuscript.revisionDeadline) {
       // Handle Firestore Timestamp
       if (manuscript.revisionDeadline.toDate) {
-        const date = manuscript.revisionDeadline.toDate();
-        console.log('Converted Firestore Timestamp to Date:', date);
-        return date;
+        return manuscript.revisionDeadline.toDate();
       } 
       // Handle string dates
       else if (typeof manuscript.revisionDeadline === 'string') {
-        const date = new Date(manuscript.revisionDeadline);
-        console.log('Converted string to Date:', date);
-        return date;
+        return new Date(manuscript.revisionDeadline);
       } 
       // Handle Firestore Timestamp object (seconds/nanoseconds)
       else if (manuscript.revisionDeadline.seconds) {
-        const date = new Date(manuscript.revisionDeadline.seconds * 1000);
-        console.log('Converted timestamp object to Date:', date);
-        return date;
+        return new Date(manuscript.revisionDeadline.seconds * 1000);
       } 
       // Handle JavaScript Date objects
       else if (manuscript.revisionDeadline instanceof Date) {
-        console.log('Returning existing Date object:', manuscript.revisionDeadline);
         return manuscript.revisionDeadline;
       }
       // Fallback for any other case
       else {
-        console.log('Using fallback date conversion');
         return new Date(manuscript.revisionDeadline);
       }
     }
     
     // If no revisionDeadline is set, calculate it based on the settings
-    console.log('No revisionDeadline found, calculating new one');
     const revisionDays = await getDeadlineDaysByStatus(status);
     const deadline = new Date();
     deadline.setDate(deadline.getDate() + revisionDays);
-    console.log('Calculated new deadline:', deadline);
     return deadline;
   }
 

@@ -12,12 +12,11 @@ import {
   arrayRemove,
   deleteField,
 } from "firebase/firestore";
+import { ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
+import NotificationService from "../../utils/notificationService";
 
-import {
-  ref as storageRef,
-  uploadBytes,
-  getDownloadURL,
-} from "firebase/storage";
+// Create an instance of NotificationService
+const notificationService = new NotificationService();
 
 import ReviewModal from "./ReviewModal";
 import DeadlineBadge from "./DeadlineBadge";
@@ -200,8 +199,53 @@ export default function ReviewManuscript() {
   // State for tracking submission status
   const [submittingManuscripts, setSubmittingManuscripts] = useState({});
 
+  // Check if user's profile is complete
+  const isProfileComplete = async (userId) => {
+    try {
+      // First check local storage for quick access
+      const cachedComplete = localStorage.getItem(`profileComplete_${userId}`);
+      if (cachedComplete !== null) {
+        return cachedComplete === 'true';
+      }
+
+      // If not in cache, check Firestore
+      const userDoc = await getDoc(doc(db, "Users", userId));
+      if (userDoc.exists()) {
+        const userData = userDoc.data();
+        const requiredFields = {
+          'Researcher': ['institution', 'fieldOfStudy', 'education', 'researchInterests'],
+          'Peer Reviewer': ['affiliation', 'expertise', 'education', 'specialty']
+        };
+
+        const role = userData.role;
+        if (!role || !requiredFields[role]) return true; // If role not set or not in list, consider complete
+
+        const isComplete = requiredFields[role].every(field => {
+          const value = userData[field];
+          return value && value.trim() !== '';
+        });
+
+        // Cache the result
+        localStorage.setItem(`profileComplete_${userId}`, isComplete);
+        return isComplete;
+      }
+      return false;
+    } catch (error) {
+      console.error('Error checking profile completion:', error);
+      return false;
+    }
+  };
+
   // Submit decision - preserved in component (keeps state updates intact)
   const handleDecisionSubmit = async (manuscriptId, versionNumber) => {
+    // Check if profile is complete
+    const profileComplete = await isProfileComplete(reviewerId);
+    if (!profileComplete) {
+      alert('Please complete your profile before submitting a review. All required fields must be filled out.');
+      navigate('/profile'); // Redirect to profile page
+      return;
+    }
+
     // Show confirmation dialog
     const confirmSubmit = window.confirm(
       "Are you sure you want to submit your review? This action cannot be undone."
@@ -289,20 +333,13 @@ export default function ReviewManuscript() {
       // Recalculate status with handleStatusChange to ensure proper status updates
       await recalcManuscriptStatus(manuscriptId, handleStatusChange);
 
-      // Peer reviewer hooks
-      await handlePeerReviewerDecision(
-        manuscriptId,
-        selected.manuscriptTitle || selected.title || "Untitled",
-        reviewerId,
-        decision
-      );
-      // Archive the completed review
+      // Archive the completed review and notify admins
       await handleReviewCompletion(
         manuscriptId,
         selected.manuscriptTitle || selected.title || "Untitled",
-        reviewerId,
         reviewerId
       );
+
       await logManuscriptReview(
         manuscriptId,
         selected.manuscriptTitle || selected.title || "Untitled",

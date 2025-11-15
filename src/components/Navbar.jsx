@@ -227,6 +227,12 @@ const Navbar = ({ onLogout }) => {
                 >
                   Guidelines For Submission
                 </Link>
+                <Link
+                  to="/format-guidelines"
+                  className={`px-3 py-2 ${isActiveLink("/format-guidelines")}`}
+                >
+                  Format Guidelines
+                </Link>
               </div>
             </nav>
           )}
@@ -260,6 +266,13 @@ const Navbar = ({ onLogout }) => {
               className={`px-6 ${isActiveLink("/guidelines")}`}
             >
               Guidelines For Submission
+            </Link>
+            <span className="border-l border-black h-4 mx-2" />
+            <Link
+              to="/format-guidelines"
+              className={`px-6 ${isActiveLink("/format-guidelines")}`}
+            >
+              Format Guidelines
             </Link>
           </nav>
 

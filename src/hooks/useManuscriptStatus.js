@@ -1,7 +1,10 @@
 import { doc, updateDoc, arrayUnion, getDoc } from "firebase/firestore";
 import { db } from "../firebase/firebase";
 import { useAuth } from "../authcontext/AuthContext";
-import { notificationService } from "../utils/notificationService";
+import NotificationService from "../utils/notificationService";
+
+// Create an instance of NotificationService
+const notificationService = new NotificationService();
 
 // Status constants
 export const REVISION_STATUSES = {
@@ -170,9 +173,9 @@ export const useManuscriptStatus = () => {
           const coAuthors = manuscript.coAuthors || [];
           const coAuthorIds = manuscript.coAuthorsIds || coAuthors.map(c => c.id || c.userId);
           
-          await notificationService.notifyManuscriptStatusChange(
+          await NotificationService.notifyManuscriptStatusChange(
             manuscript.id,
-            manuscript.title || "Untitled Manuscript",
+            manuscript.manuscriptTitle || manuscript.title || "Untitled Manuscript",
             manuscript.status,
             newStatus,
             authorId,

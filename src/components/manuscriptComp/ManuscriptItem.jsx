@@ -279,58 +279,109 @@ const ManuscriptItem = ({
   };
 
   // Get the appropriate deadline based on user role and manuscript status
-  const getActiveDeadline = async (manuscript, role) => {
-    try {
-      // For Back to Admin status, always use the finalization deadline
-      if (manuscript.status === 'Back to Admin') {
-        if (manuscript.finalizationDeadline) {
-          return manuscript.finalizationDeadline.toDate 
-            ? manuscript.finalizationDeadline.toDate() 
-            : new Date(manuscript.finalizationDeadline);
-        }
-        return null;
-      }
-      
-      // For revision statuses, use the manuscript's revisionDeadline
-      if (manuscript.status === 'For Revision (Minor)' || manuscript.status === 'For Revision (Major)') {
-        if (manuscript.revisionDeadline) {
-          return manuscript.revisionDeadline.toDate 
-            ? manuscript.revisionDeadline.toDate() 
-            : new Date(manuscript.revisionDeadline);
-        }
-        return null;
-      }
-      
-      // For Admins and Researchers, show the latest reviewer invitation deadline
-      if (role === 'Admin' || role === 'Researcher') {
-        const latestDeadline = getLatestReviewerDeadline(manuscript);
-        if (latestDeadline) return latestDeadline;
-        
-        // Fallback to manuscript-level deadline if no reviewer deadline found
-        if (manuscript.invitationDeadline) {
-          return manuscript.invitationDeadline.toDate 
-            ? manuscript.invitationDeadline.toDate() 
-            : new Date(manuscript.invitationDeadline);
-        }
-      }
-      
-      // For peer reviewers, show their individual deadline
-      if (role === 'Peer Reviewer' && currentUserId) {
-        const reviewerMeta = manuscript.assignedReviewersMeta?.[currentUserId];
-        if (reviewerMeta?.deadline) {
-          return reviewerMeta.deadline.toDate 
-            ? reviewerMeta.deadline.toDate() 
-            : new Date(reviewerMeta.deadline);
-        }
-      }
-      
-      return null;
-    } catch (error) {
-      console.error('Error getting active deadline:', error);
-      return null;
+  
+const getActiveDeadline = async (manuscript, role) => {
+  try {
+    // For Back to Admin status, always use the finalization deadline
+    if (manuscript.status === 'Back to Admin' && manuscript.finalizationDeadline) {
+      return manuscript.finalizationDeadline.toDate 
+        ? manuscript.finalizationDeadline.toDate() 
+        : new Date(manuscript.finalizationDeadline);
     }
-  };
+    
+    // For revision statuses, use the manuscript's revisionDeadline
+    if ((manuscript.status === 'For Revision (Minor)' || manuscript.status === 'For Revision (Major)') && 
+        manuscript.revisionDeadline) {
+      return manuscript.revisionDeadline.toDate 
+        ? manuscript.revisionDeadline.toDate() 
+        : new Date(manuscript.revisionDeadline);
+    }
 
+    // For Peer Reviewers, show their individual deadline
+    if (role === 'Peer Reviewer' && currentUserId && manuscript.assignedReviewersMeta?.[currentUserId]?.deadline) {
+      const deadline = manuscript.assignedReviewersMeta[currentUserId].deadline;
+      return deadline.toDate ? deadline.toDate() : new Date(deadline);
+    }
+
+    // For Admins, Researchers, and Co-authors
+  if (['Admin', 'Researcher', 'Author'].includes(role) && manuscript.assignedReviewersMeta) {
+  const currentVersion = manuscript.versionNumber || 1;
+  let latestDeadline = null;
+  let latestDeadlineTime = 0;
+
+
+        Object.entries(manuscript.assignedReviewersMeta).forEach(([reviewerId, meta]) => {
+    // Skip declined reviewers or those without a deadline
+    if (meta.invitationStatus === 'declined' || !meta.deadline) {
+      return;
+    }
+     if (manuscript.status === 'Assigning Peer Reviewer') {
+      const deadline = meta.deadline.toDate 
+        ? meta.deadline.toDate() 
+        : new Date(meta.deadline);
+      
+      if (deadline.getTime() > latestDeadlineTime) {
+        latestDeadline = deadline;
+        latestDeadlineTime = deadline.getTime();
+      }
+      return;
+    }
+
+        // Only consider reviewers who have accepted the invitation
+         if (meta.invitationStatus !== 'accepted') {
+      return;
+    }
+
+
+        // Check if this reviewer has already submitted for the current version
+        const hasSubmittedForCurrentVersion = manuscript.reviewerSubmissions?.some(sub => 
+          sub.reviewerId === reviewerId && 
+          sub.status === 'Completed' &&
+          (sub.manuscriptVersionNumber || 1) === currentVersion
+        );
+
+        // Skip reviewers who have already submitted for the current version
+        if (hasSubmittedForCurrentVersion) {
+          return;
+        }
+
+        // Get the deadline as a Date object
+        const deadline = meta.deadline.toDate 
+          ? meta.deadline.toDate() 
+          : new Date(meta.deadline);
+
+        // Track the latest deadline among active reviewers
+        if (deadline.getTime() > latestDeadlineTime) {
+          latestDeadline = deadline;
+          latestDeadlineTime = deadline.getTime();
+        }
+      });
+
+      // If we found an active reviewer's deadline, return it
+      if (latestDeadline) {
+        return latestDeadline;
+      }
+    }
+
+    // Fallback to manuscript-level deadlines
+    if (manuscript.invitationDeadline) {
+      return manuscript.invitationDeadline.toDate 
+        ? manuscript.invitationDeadline.toDate() 
+        : new Date(manuscript.invitationDeadline);
+    }
+
+    if (manuscript.reviewDeadline) {
+      return manuscript.reviewDeadline.toDate 
+        ? manuscript.reviewDeadline.toDate() 
+        : new Date(manuscript.reviewDeadline);
+    }
+
+    return null;
+  } catch (error) {
+    console.error('Error getting active deadline:', error);
+    return null;
+  }
+};
   // Load the active deadline when the component mounts or when relevant props change
   useEffect(() => {
     const loadDeadline = async () => {
@@ -564,7 +615,16 @@ const ManuscriptItem = ({
           {/* Status and rejection badge */}
           <div className="flex flex-col items-end gap-1">
             <ManuscriptStatusBadge
-              status={status}
+              status={
+                // If user is a peer reviewer and is assigned to this manuscript
+                role === 'Peer Reviewer' && manuscript.assignedReviewers?.includes(currentUserId)
+                  ? manuscript.assignedReviewersMeta?.[currentUserId]?.invitationStatus === 'accepted' 
+                    ? status // Show the actual status if reviewer has accepted
+                    : manuscript.assignedReviewersMeta?.[currentUserId]?.invitationStatus === 'declined'
+                      ? 'Review Declined'
+                      : 'Pending Acceptance'
+                  : status // For non-reviewers or uninvited reviewers, show the regular status
+              }
               className="ml-2"
             />
             

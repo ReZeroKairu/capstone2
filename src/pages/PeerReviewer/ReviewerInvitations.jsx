@@ -2,6 +2,7 @@ import React, { useEffect, useState, useMemo } from "react";
 import { getAuth } from "firebase/auth";
 import { useNavigate } from "react-router-dom";
 import { notificationService } from "../../utils/notificationService";
+import { toast } from "react-toastify";
 import {
   collection,
   query,
@@ -72,6 +73,7 @@ const ReviewerInvitations = () => {
   const [processingId, setProcessingId] = useState(null);
   const [viewingInvitation, setViewingInvitation] = useState(null);
   const [now, setNow] = useState(new Date());
+  const [isAvailable, setIsAvailable] = useState(true);
 
   // Update current time every minute for countdown
   useEffect(() => {
@@ -85,6 +87,47 @@ const ReviewerInvitations = () => {
   const auth = getAuth();
   const currentUser = auth.currentUser;
   const navigate = useNavigate();
+
+  // Fetch and set initial availability status
+  useEffect(() => {
+    if (!currentUser) return;
+    
+    const fetchAvailability = async () => {
+      try {
+        const userRef = doc(db, 'Users', currentUser.uid);
+        const userDoc = await getDoc(userRef);
+        if (userDoc.exists()) {
+          setIsAvailable(userDoc.data().isAvailableForReview ?? true);
+        }
+      } catch (err) {
+        console.error('Error fetching availability status:', err);
+      }
+    };
+
+    fetchAvailability();
+  }, [currentUser]);
+
+  // Toggle availability status
+  const toggleAvailability = async () => {
+    if (!currentUser) return;
+    
+    try {
+      const newStatus = !isAvailable;
+      const userRef = doc(db, 'Users', currentUser.uid);
+      await updateDoc(userRef, {
+        isAvailableForReview: newStatus,
+        lastUpdated: serverTimestamp()
+      });
+      setIsAvailable(newStatus);
+      toast.success(
+        `You are now ${newStatus ? 'available' : 'unavailable'} for new review assignments`,
+        { autoClose: 3000 }
+      );
+    } catch (err) {
+      console.error('Error updating availability status:', err);
+      toast.error('Failed to update availability status', { autoClose: 3000 });
+    }
+  };
 
   useEffect(() => {
     if (!currentUser) {
@@ -267,8 +310,6 @@ const ReviewerInvitations = () => {
       meta[reviewerId] = updateFields;
 
       await updateDoc(msRef, { assignedReviewersMeta: meta });
-
-      console.log(`Reviewer ${status} status updated successfully.`);
     } catch (error) {
       console.error("Error updating reviewer status:", error);
     }
@@ -384,26 +425,37 @@ const ReviewerInvitations = () => {
       await updateDoc(msRef, updateData);
 
       // Notify admins
-      console.log('Getting admin user IDs...');
       let adminIds = await notificationService.getAdminUserIds();
-      console.log('Admin IDs found:', adminIds);
       
       if (!Array.isArray(adminIds)) {
-        console.log('Admin IDs is not an array, converting...');
         adminIds = adminIds ? [adminIds] : [];
       }
       
       if (adminIds.length > 0) {
-        console.log(`Sending notification to ${adminIds.length} admin(s) about ${isAccepted ? 'acceptance' : 'decline'}`);
         try {
-          await notificationService.notifyPeerReviewerDecision(
-            manuscriptId,
-            msData.title,
-            currentUser.uid,
-            adminIds,
-            isAccepted
-          );
-          console.log('Notification sent successfully');
+          // Get the manuscript title, checking all possible fields
+          const manuscriptTitle = 
+            msData.manuscriptTitle || 
+            msData.title || 
+            (msData.answeredQuestions && 
+              msData.answeredQuestions.find(q => q.question && q.question.toLowerCase().includes('title'))?.answer) || 
+            'Untitled Manuscript';
+          
+          if (isAccepted) {
+            await notificationService.notifyPeerReviewerAccept(
+              manuscriptId,
+              manuscriptTitle,
+              currentUser.uid,
+              adminIds
+            );
+          } else {
+            await notificationService.notifyPeerReviewerDecline(
+              manuscriptId,
+              manuscriptTitle,
+              currentUser.uid,
+              adminIds
+            );
+          }
         } catch (error) {
           console.error('Error sending notification:', error);
         }
@@ -616,10 +668,30 @@ const ReviewerInvitations = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 pt-20 px-4">
-      <div className="max-w-7xl mx-auto pt-24">
-        <h1 className="text-2xl font-bold text-gray-900 mb-4">
-          Reviewer Invitations
-        </h1>
+      <div className="max-w-7xl mx-auto pt-6">
+        <div className="flex justify-between items-center mb-6">
+          <h1 className="text-2xl font-bold text-gray-900">
+            Reviewer Invitations
+          </h1>
+          <div className="flex items-center space-x-3">
+            <span className="text-sm font-medium text-gray-700">
+              {isAvailable ? 'Available' : 'Unavailable'} for new reviews
+            </span>
+            <button
+              onClick={toggleAvailability}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 ${
+                isAvailable ? 'bg-green-500' : 'bg-gray-200'
+              }`}
+              aria-pressed={isAvailable}
+            >
+              <span
+                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                  isAvailable ? 'translate-x-6' : 'translate-x-1'
+                }`}
+              />
+            </button>
+          </div>
+        </div>
 
         {invitations.length === 0 ? (
           <div className="bg-white rounded-lg shadow-sm p-12 text-center">

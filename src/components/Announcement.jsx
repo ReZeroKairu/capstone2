@@ -1,8 +1,9 @@
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import { auth, db } from "../firebase/firebase";
 import { onAuthStateChanged } from "firebase/auth";
-import { doc, getDoc, updateDoc, onSnapshot, setDoc } from "firebase/firestore";
+import { doc, getDoc, updateDoc, onSnapshot, setDoc, collection, getDocs, query } from "firebase/firestore";
 import { processHtmlImages } from "../utils/imageUpload";
+import notificationService from "../utils/notificationService";
 import ReactQuill from "react-quill";
 import { DndProvider, useDrag, useDrop } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
@@ -343,6 +344,41 @@ export default function Announcement() {
       setOriginalAnnouncements(announcementsToSave);
       setAnnouncements(announcementsToSave);
       showNotification("Announcements saved successfully!", "success");
+      
+      // Check if this is a new announcement (if the latest announcement is new compared to the original list)
+      const isNewAnnouncement = !originalAnnouncements.some(
+        a => a.id === announcementsToSave[0]?.id
+      );
+      
+      // Only notify if it's a new announcement
+      if (isNewAnnouncement) {
+        try {
+          // Get all user IDs
+          const usersRef = collection(db, 'Users');
+          const usersSnapshot = await getDocs(usersRef);
+          const userIds = usersSnapshot.docs.map(doc => doc.id);
+          
+          // Get the latest announcement (first in the array since we're adding new ones to the top)
+          const latestAnnouncement = announcementsToSave[0];
+          
+          if (latestAnnouncement && latestAnnouncement.title && latestAnnouncement.message) {
+            // Send notification to all users
+            await notificationService.createBulkNotifications(
+              userIds,
+              'announcement',
+              'New Announcement',
+              'Go to Announcements page to see what\'s new',
+              {
+                actionUrl: '/announcement',
+                announcementId: latestAnnouncement.id
+              }
+            );
+          }
+        } catch (error) {
+          console.error('Error sending notifications:', error);
+          // Don't show error to user as the announcement was still saved successfully
+        }
+      }
     } catch (err) {
       console.error("Failed to save announcements:", err);
       setError("Failed to save changes. Please try again.");

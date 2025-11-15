@@ -18,41 +18,48 @@ export default function Progressbar({
   currentStatus,
 }) {
   const isRejectedStatus =
-    currentStatus === "Rejected" || 
+    currentStatus === "Rejected" ||
     currentStatus === "Peer Reviewer Rejected" ||
-    currentStatus === "non-Acceptance";
-    
-  const backToAdminIdx = steps.indexOf("Back to Admin");
-  const isNonAcceptance = currentStatus === "non-Acceptance";
+    currentStatus === "Non-Acceptance";
 
-  // If status is non-Acceptance, only show the first step
-  const displaySteps = isNonAcceptance ? [steps[0]] : steps;
-  const displayStatus = isNonAcceptance ? "non-Acceptance" : null;
+  const backToAdminIdx = steps.indexOf("Back to Admin");
+  const isNonAcceptance = currentStatus === "Non-Acceptance";
+
+  // If status is Non-Acceptance, only show the first step
+  // If status is For Publication, exclude Rejected status
+  const displaySteps = isNonAcceptance 
+    ? [steps[0]] 
+    : currentStatus === "For Publication" 
+      ? steps.filter(step => step !== "Rejected" && step !== "Peer Reviewer Rejected") 
+      : steps;
+  const displayStatus = isNonAcceptance ? "Non-Acceptance" : null;
 
   return (
     <div className="flex items-center w-full mb-4">
       {displaySteps.map((status, idx) => {
         const isRejectedStep =
-          status === "Rejected" || 
+          status === "Rejected" ||
           status === "Peer Reviewer Rejected" ||
-          (isNonAcceptance && idx === 0); // First step shows rejection for non-Acceptance
+          (isNonAcceptance && idx === 0); // First step shows rejection for Non-Acceptance
 
         // Determine if this is the current step
         const isCurrent = idx === currentStep - 1;
-        
+
         // Check if this is a Rejected step
-        const isRejectedStatusStep = status === "Rejected" || status === "Peer Reviewer Rejected";
-        
+        const isRejectedStatusStep =
+          status === "Rejected" || status === "Peer Reviewer Rejected";
+
         // Special handling for For Publication status
         const isForPublication = currentStatus === "For Publication";
-        
+
         // Determine if this step is completed (all steps before current are completed)
         let isCompleted = false;
         if (currentStatus === "For Publication") {
           // When status is For Publication, all steps up to For Publication are completed
           // and Rejected steps should be grayed out
-          isCompleted = STATUS_STEPS.indexOf(status) < STATUS_STEPS.indexOf("For Publication") && 
-                       !isRejectedStatusStep;
+          isCompleted =
+            STATUS_STEPS.indexOf(status) <
+              STATUS_STEPS.indexOf("For Publication") && !isRejectedStatusStep;
         } else if (isRejectedStatus) {
           isCompleted = idx <= backToAdminIdx && !isRejectedStatusStep;
         } else if (currentStep > 0) {
@@ -71,13 +78,13 @@ export default function Progressbar({
           circleClass = "bg-gray-200 border-gray-300 text-gray-400";
           circleContent = "✖";
           isCompleted = false;
-        } 
+        }
         // Handle other cases
         else if (isNonAcceptance) {
-          // For non-Acceptance, show red X and change text
+          // For Non-Acceptance, show red X and change text
           circleClass = "bg-red-500 border-red-500 text-white";
           circleContent = "X";
-          displayText = "non-Acceptance";
+          displayText = "Non-Acceptance";
         } else if (isRejectedStatus && idx > backToAdminIdx) {
           circleClass = "bg-red-500 border-red-500 text-white";
           circleContent = "X";
@@ -90,7 +97,10 @@ export default function Progressbar({
           // Completed steps get a green checkmark
           circleClass = "bg-green-500 border-green-500 text-white";
           circleContent = "✔";
-        } else if (status === "For Publication" && currentStatus === "For Publication") {
+        } else if (
+          status === "For Publication" &&
+          currentStatus === "For Publication"
+        ) {
           // Special case for final publication step
           circleClass = "bg-green-500 border-green-500 text-white";
           circleContent = "✔";
@@ -100,9 +110,11 @@ export default function Progressbar({
         let lineClass = "bg-gray-300";
         if (isForPublication) {
           // For For Publication status, show green line up to For Publication step, then gray
-          lineClass = STATUS_STEPS.indexOf(status) < STATUS_STEPS.indexOf("For Publication") 
-            ? "bg-green-500" 
-            : "bg-gray-200";
+          lineClass =
+            STATUS_STEPS.indexOf(status) <
+            STATUS_STEPS.indexOf("For Publication")
+              ? "bg-green-500"
+              : "bg-gray-200";
         } else if (isCompleted) {
           lineClass = "bg-green-500";
         } else if (isRejectedStatus && idx >= backToAdminIdx) {
@@ -123,8 +135,13 @@ export default function Progressbar({
               </p>
             </div>
 
-            {/* Only show connecting line if not in non-Acceptance state and not the last step */}
-            {!isNonAcceptance && idx !== steps.length - 1 && (
+            {/* Show connecting line if:
+                - Not in Non-Acceptance state
+                - Not the last step
+                - AND (current status is not 'For Publication' OR current step is not 'For Publication') */}
+            {!isNonAcceptance && 
+             idx !== steps.length - 1 && 
+             (currentStatus !== "For Publication" || status !== "For Publication") && (
               <div
                 className={`flex-1 h-1 transition-all duration-500 self-center ${lineClass}`}
               />

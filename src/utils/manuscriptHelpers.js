@@ -1,7 +1,8 @@
 // manuscriptHelpers.js
 import { db } from '../firebase/firebase';
 import { doc, getDoc, setDoc, serverTimestamp, collection } from 'firebase/firestore';
-import { notificationService } from "./notificationService";
+import NotificationService from "./notificationService";
+
 
 /**
  * Compute final manuscript status based on reviewer decisions and submissions.
@@ -134,11 +135,8 @@ export async function handlePeerReviewerDecision(manuscriptId, manuscriptTitle, 
  * @param {string} manuscriptId - Manuscript ID
  * @param {string} manuscriptTitle - Manuscript title
  * @param {string} reviewerId - Reviewer ID
- */
-export async function handleReviewCompletion(manuscriptId, manuscriptTitle, reviewerId) {
+ */export async function handleReviewCompletion(manuscriptId, manuscriptTitle, reviewerId) {
   try {
-    console.log('Starting review completion for manuscript:', manuscriptId);
-    
     // 1. Get the manuscript data first
     const manuscriptRef = doc(db, 'manuscripts', manuscriptId);
     const manuscriptSnap = await getDoc(manuscriptRef);
@@ -150,14 +148,7 @@ export async function handleReviewCompletion(manuscriptId, manuscriptTitle, revi
 
     const manuscriptData = manuscriptSnap.data();
     
-    // 2. Get the author ID from manuscript data
-    const authorId = manuscriptData.authorId;
-    if (!authorId) {
-      console.error('Author ID not found in manuscript data');
-      return;
-    }
-    
-    // 3. Find the specific review being completed
+    // 2. Find the specific review being completed
     const review = manuscriptData.reviewerSubmissions?.find(
       sub => sub.reviewerId === reviewerId && sub.status === 'Completed'
     );
@@ -167,16 +158,15 @@ export async function handleReviewCompletion(manuscriptId, manuscriptTitle, revi
       return;
     }
 
-    // 4. Get admin IDs for notification
-    const adminIds = await notificationService.getAdminUserIds();
-    console.log('Admin IDs for notification:', adminIds);
+    // 3. Get admin IDs for notification
+    const adminIds = await NotificationService.getAdminUserIds();
 
-    // 5. Create a unique ID for this review using manuscriptId, reviewerId, and version
+    // 4. Create a unique ID for this review using manuscriptId, reviewerId, and version
     const versionNumber = review.manuscriptVersionNumber || 1;
     const reviewId = `${manuscriptId}_${reviewerId}_v${versionNumber}`;
     const reviewRef = doc(db, 'completedReviews', reviewId);
 
-    // 6. Create/update archive document in completedReviews collection
+    // 5. Create/update archive document in completedReviews collection
     const archiveData = {
       id: reviewId,
       manuscriptId,
@@ -191,40 +181,32 @@ export async function handleReviewCompletion(manuscriptId, manuscriptTitle, revi
       reviewFileName: review.reviewFileName || null,
       completedAt: review.completedAt || serverTimestamp(),
       archivedAt: serverTimestamp(),
-      authorId: authorId, // Use the authorId we got from manuscript data
       manuscriptStatus: manuscriptData.status,
       assignedReviewers: manuscriptData.assignedReviewers || [],
       originalAssignedReviewers: manuscriptData.originalAssignedReviewers || [],
       reviewerDecisionMeta: manuscriptData.reviewerDecisionMeta || {}
     };
 
-    console.log('Saving review with data:', archiveData);
-
-    // 7. Save the review
+    // 6. Save the review
     await setDoc(reviewRef, archiveData, { merge: true });
 
-    // 8. Send notification to admins
+    // 7. Send notification to admins only
     try {
-      console.log('Sending review completed notification...');
-      await notificationService.notifyReviewCompleted(
+      await NotificationService.notifyReviewCompleted(
         manuscriptId, 
         manuscriptTitle, 
         reviewerId, 
         adminIds
       );
-      console.log('Notification sent successfully');
     } catch (notifError) {
       console.error('Error sending notification:', notifError);
       // Continue even if notification fails
     }
-
-    console.log('Review archived successfully');
   } catch (error) {
     console.error('Error in handleReviewCompletion:', error);
     // Don't throw to avoid breaking the review submission flow
   }
 }
-
 /**
  * Handle new manuscript submission with notifications
  * @param {string} manuscriptId - Manuscript ID
@@ -232,8 +214,8 @@ export async function handleReviewCompletion(manuscriptId, manuscriptTitle, revi
  * @param {string} authorId - Author ID
  */
 export async function handleManuscriptSubmission(manuscriptId, manuscriptTitle, authorId) {
-  const adminIds = await notificationService.getAdminUserIds();
-  await notificationService.notifyManuscriptSubmission(
+  const adminIds = await NotificationService.getAdminUserIds();
+  await NotificationService.notifyManuscriptSubmission(
     manuscriptId, 
     manuscriptTitle, 
     authorId, 

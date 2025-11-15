@@ -3,6 +3,7 @@ import React from "react";
 import { Download, FileText } from "lucide-react";
 import { format } from "date-fns";
 import { auth } from "../../firebase/firebase";
+import { formatFirestoreDate } from "../../utils/dateUtils";
 
 const SubmissionHistory = ({
   manuscript,
@@ -180,10 +181,7 @@ const SubmissionHistory = ({
                       {submission.fileName || "Manuscript file"}
                     </p>
                     <p className="text-xs text-gray-500">
-                      Submitted:{" "}
-                      {submission.submittedAt?.toDate
-                        ? submission.submittedAt.toDate().toLocaleString()
-                        : new Date(submission.submittedAt).toLocaleString()}
+                      Submitted: {formatFirestoreDate(submission.submittedAt)}
                     </p>
 
                     {submission.revisionNotes &&

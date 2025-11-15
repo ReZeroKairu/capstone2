@@ -24,6 +24,7 @@ import FileUpload from "../../components/FileUpload";
 import { debounce } from "lodash";
 import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
+import { useNavigate } from "react-router-dom";
 
 export default function SubmitManuscript() {
   const [forms, setForms] = useState([]);
@@ -47,6 +48,7 @@ export default function SubmitManuscript() {
 
   const [monthlyCount, setMonthlyCount] = useState(0);
   const [monthlyLimit, setMonthlyLimit] = useState(6);
+  const [isFileUploading, setIsFileUploading] = useState(false);
 
   const cooldownRef = useRef(0);
   useEffect(() => {
@@ -213,61 +215,142 @@ export default function SubmitManuscript() {
       last || ""
     }`.trim();
 
+  // Check if user's profile is complete
+  const isProfileComplete = async (userId) => {
+    try {
+      // Always check Firestore for the latest data
+      const userDoc = await getDoc(doc(db, "Users", userId));
+      if (userDoc.exists()) {
+        const userData = userDoc.data();
+        
+        // Basic required fields for all users
+        const basicRequiredFields = [
+          'firstName', 'lastName', 'email', 'phone', 'department'
+        ];
+        
+        // Role-specific required fields
+        const roleSpecificFields = {
+          'Researcher': ['institution', 'fieldOfStudy', 'researchInterests'],
+          'Peer Reviewer': ['affiliation', 'specialty', 'expertise']
+        };
+
+        const role = userData.role || 'Researcher';
+        const allRequiredFields = [
+          ...basicRequiredFields,
+          ...(roleSpecificFields[role] || [])
+        ];
+
+        // Check all required fields are present and non-empty
+        return allRequiredFields.every(field => {
+          const value = userData[field];
+          return value !== undefined && 
+                 value !== null && 
+                 (typeof value !== 'string' || value.trim() !== '');
+        });
+      }
+      return false;
+    } catch (error) {
+      console.error('Error checking profile completion:', error);
+      return false;
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
+    
+    if (loading) return; // Prevent multiple submissions
+    
+    setLoading(true);
+    
+    try {
+      // Check if profile is complete
+      const profileComplete = await isProfileComplete(currentUser.uid);
+      if (!profileComplete) {
+        alert('Please complete your profile before submitting a manuscript. All required fields must be filled out.');
+        navigate('/profile');
+        return;
+      }
 
-    // Clear the draft on successful submission
-    localStorage.removeItem("manuscriptDraft");
-    if (saveTimeoutRef.current) {
-      clearTimeout(saveTimeoutRef.current);
-    }
-    if (!form) return showMessage("No form selected.");
-    if (cooldownRef.current > 0)
-      return showMessage(
-        `You already submitted. Please wait ${cooldownRef.current}s.`
-      );
-    if (!currentUser) return showMessage("User not signed in.");
-    if (monthlyCount >= monthlyLimit)
-      return showMessage(
-        `Monthly submission limit of ${monthlyLimit} reached.`
-      );
+      // Clear the draft on successful submission
+      localStorage.removeItem("manuscriptDraft");
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+      if (!form) {
+        showMessage("No form selected.");
+        setLoading(false);
+        return;
+      }
+      if (cooldownRef.current > 0) {
+        showMessage(`You already submitted. Please wait ${cooldownRef.current}s.`);
+        setLoading(false);
+        return;
+      }
+      
+      if (!currentUser) {
+        showMessage("User not signed in.");
+        setLoading(false);
+        return;
+      }
+      
+      if (monthlyCount >= monthlyLimit) {
+        showMessage(`Monthly submission limit of ${monthlyLimit} reached.`);
+        setLoading(false);
+        return;
+      }
 
-    const fileQuestionIndex = form.questions.findIndex(
-      (q) => q.type === "file"
-    );
-    const fileData = answers[fileQuestionIndex];
-    if (fileQuestionIndex === -1 || !fileData)
-      return showMessage("Please upload a manuscript file.");
-    if (
-      ![
+      const fileQuestionIndex = form.questions.findIndex(
+        (q) => q.type === "file"
+      );
+      const fileData = answers[fileQuestionIndex];
+      if (fileQuestionIndex === -1 || !fileData) {
+        showMessage("Please upload a manuscript file.");
+        setLoading(false);
+        return;
+      }
+      if (![
         "application/msword",
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      ].includes(fileData.type)
-    )
-      return showMessage("Only Word documents (.doc or .docx) are allowed.");
+      ].includes(fileData.type)) {
+        showMessage("Only Word documents (.doc or .docx) are allowed.");
+        setLoading(false);
+        return;
+      }
 
-    const missingRequired = form.questions.some((q, i) =>
-      q.required
-        ? q.type === "checkbox"
-          ? !(answers[i]?.length > 0)
-          : !answers[i]
-        : false
-    );
-    if (missingRequired) return showMessage("Please fill all required fields.");
+      const missingRequired = form.questions.some((q, i) =>
+        q.required
+          ? q.type === "checkbox"
+            ? !(answers[i]?.length > 0)
+            : !answers[i]
+          : false
+      );
+      if (missingRequired) {
+        showMessage("Please fill all required fields.");
+        setLoading(false);
+        return;
+      }
 
-    const manuscriptTitleIndex = form.questions.findIndex(
-      (q) => q.isManuscriptTitle
-    );
-    if (manuscriptTitleIndex === -1)
-      return showMessage("Form must have a 'Manuscript Title' field.");
-    const manuscriptTitleAnswer = answers[manuscriptTitleIndex] || "";
-    if (!manuscriptTitleAnswer.trim())
-      return showMessage("Please enter a Manuscript Title.");
+      const manuscriptTitleIndex = form.questions.findIndex(
+        (q) => q.isManuscriptTitle
+      );
+      if (manuscriptTitleIndex === -1) {
+        showMessage("Form must have a 'Manuscript Title' field.");
+        setLoading(false);
+        return;
+      }
+      const manuscriptTitleAnswer = answers[manuscriptTitleIndex] || "";
+      if (!manuscriptTitleAnswer.trim()) {
+        showMessage("Please enter a Manuscript Title.");
+        setLoading(false);
+        return;
+      }
 
-    try {
-      setLoading(true);
+      // If we got here, all validations passed
       const userSnap = await getDoc(doc(db, "Users", currentUser.uid));
-      if (!userSnap.exists()) return showMessage("User record not found.");
+      if (!userSnap.exists()) {
+        showMessage("User record not found.");
+        return;
+      }
       const userInfo = userSnap.data();
       const initialStatus = "Pending";
 
@@ -334,31 +417,6 @@ export default function SubmitManuscript() {
       setCooldown(5);
       cooldownRef.current = 5;
 
-      const responseRef = await addDoc(collection(db, "form_responses"), {
-        formId: form.id,
-        formTitle: form.title || "",
-        manuscriptTitle: manuscriptTitleAnswer,
-        userId: currentUser.uid,
-        firstName: userInfo.firstName || "",
-        middleName: userInfo.middleName || "",
-        lastName: userInfo.lastName || "",
-        email: userInfo.email || "",
-        role: userInfo.role || "Researcher",
-        answeredQuestions,
-        coAuthors,
-        coAuthorsIds,
-        searchIndex,
-        status: initialStatus,
-        versionNumber: 1,
-        parentResponseId: null,
-        submittedAt: serverTimestamp(),
-        fileUrl: downloadURL,
-        fileName: fileData.name,
-        fileType: fileData.type,
-        fileSize: fileData.size,
-        storagePath: exactStoragePath,
-      });
-
       // Create submission history entry for the initial submission
       const initialSubmission = {
         versionNumber: 1,
@@ -370,11 +428,10 @@ export default function SubmitManuscript() {
         storagePath: exactStoragePath,
         revisionNotes: "Initial submission",
         status: initialStatus,
-        responseId: responseRef.id,
       };
 
+      // Add manuscript to the manuscripts collection
       const manuscriptRef = await addDoc(collection(db, "manuscripts"), {
-        responseId: responseRef.id,
         formId: form.id,
         formTitle: form.title || "",
         manuscriptTitle: manuscriptTitleAnswer,
@@ -401,6 +458,8 @@ export default function SubmitManuscript() {
         hasFile: true,
         fileUploadedAt: serverTimestamp(),
         submissionHistory: [initialSubmission],
+        // Additional fields that were in form_responses
+        userId: currentUser.uid,
       });
 
       await updateDoc(doc(db, "Users", currentUser.uid), {
@@ -452,23 +511,39 @@ export default function SubmitManuscript() {
     }
   };
 
+  // Track last saved draft content
+  const lastSavedDraft = useRef(null);
+
   // Save draft to localStorage
   const saveDraft = useCallback(() => {
     if (loading) return;
 
-    const draftData = {
+    const currentDraft = {
       answers,
       fileData: fileQuestionIndex >= 0 ? answers[fileQuestionIndex] : null,
       formId: form?.id,
+    };
+
+    // Only save if there are actual changes
+    const currentDraftStr = JSON.stringify(currentDraft);
+    if (lastSavedDraft.current === currentDraftStr) {
+      return; // No changes, don't save
+    }
+
+    const draftData = {
+      ...currentDraft,
       timestamp: new Date().toISOString(),
     };
 
+    lastSavedDraft.current = currentDraftStr;
     localStorage.setItem("manuscriptDraft", JSON.stringify(draftData));
     setLastSaved(new Date());
     setIsDraftSaving(false);
 
-    // Show save indicator
-    toast.info("Draft saved", { autoClose: 2000 });
+    // Only show toast if not the initial load
+    if (lastSavedDraft.current !== null) {
+      toast.info("Draft saved", { autoClose: 2000 });
+    }
   }, [answers, fileQuestionIndex, form?.id, loading]);
 
   // Memoize the debounced save function
@@ -478,7 +553,7 @@ export default function SubmitManuscript() {
         if (!loading) {
           saveDraft();
         }
-      }, 2000),
+      }, 10000),
     [saveDraft, loading]
   );
 
@@ -550,21 +625,30 @@ export default function SubmitManuscript() {
     };
   }, [form?.id]); // Removed saveDraft and answers from dependencies
 
-  // Auto-save on changes
+  // Auto-save on changes with debounce and change detection
   useEffect(() => {
     const hasAnswers = Object.keys(answers).length > 0;
-    const hasFileData =
-      fileQuestionIndex >= 0 && answers[fileQuestionIndex]?.file;
+    const hasFileData = fileQuestionIndex >= 0 && answers[fileQuestionIndex]?.file;
+    const hasChanges = hasAnswers || hasFileData;
 
-    if ((hasAnswers || hasFileData) && !loading) {
-      setIsDraftSaving(true);
-      debouncedSave();
+    if (hasChanges && !loading) {
+      // Only set saving state if there are actual changes
+      const currentDraft = {
+        answers,
+        fileData: fileQuestionIndex >= 0 ? answers[fileQuestionIndex] : null,
+        formId: form?.id,
+      };
+      
+      if (lastSavedDraft.current !== JSON.stringify(currentDraft)) {
+        setIsDraftSaving(true);
+        debouncedSave();
+      }
     }
 
     return () => {
       debouncedSave.cancel();
     };
-  }, [answers, fileQuestionIndex, debouncedSave, loading]);
+  }, [answers, fileQuestionIndex, debouncedSave, loading, form?.id]);
 
   if (loading) return <p className="text-center py-10">Loading...</p>;
 
@@ -622,8 +706,26 @@ export default function SubmitManuscript() {
               )
               .map((q, index) => {
                 const globalIndex = currentPage * questionsPerPage + index;
-                const renderOptions = () =>
-                  q.options.map((opt, optIndex) => (
+                const renderOptions = () => {
+                  if (q.type === 'select') {
+                    return (
+                      <select
+                        value={answers[globalIndex] || ''}
+                        onChange={(e) => handleChange(globalIndex, e.target.value, 'select')}
+                        className="mt-1 block w-full border border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                        required={q.required}
+                      >
+                        <option value="">-- Select an option --</option>
+                        {q.options.map((opt) => (
+                          <option key={opt.id || opt.value} value={opt.value}>
+                            {opt.value}
+                          </option>
+                        ))}
+                      </select>
+                    );
+                  }
+                  
+                  return q.options.map((opt, optIndex) => (
                     <div
                       key={opt.id || optIndex}
                       className="flex items-center gap-2"
@@ -652,6 +754,8 @@ export default function SubmitManuscript() {
                       </label>
                     </div>
                   ));
+                };
+                
                 return (
                   <div
                     key={q.id || globalIndex}
@@ -719,24 +823,32 @@ export default function SubmitManuscript() {
                         </div>
                       </>
                     ) : q.type === "file" ? (
-                      <FileUpload
-                        id={`question-${globalIndex}`}
-                        name={`question-${globalIndex}`}
-                        onUploadSuccess={(file) =>
-                          handleChange(globalIndex, file)
-                        }
-                        onUploadError={(error) => {
-                          console.error("Upload failed:", error);
-                          handleChange(globalIndex, null);
-                          showMessage(
-                            error.message || "Failed to upload file."
-                          );
-                        }}
-                        accept=".doc,.docx"
-                        buttonText="Upload File"
-                        uploadingText="Uploading..."
-                        className="mb-2"
-                      />
+                      <div className="mb-2">
+                        <label className="block font-semibold mb-1">
+                          {q.text}
+                          {q.required && (
+                            <span className="text-red-500 ml-1">*</span>
+                          )}
+                        </label>
+                        <FileUpload
+                          id={`question-${globalIndex}`}
+                          name={`question-${globalIndex}`}
+                          onUploadSuccess={(file) =>
+                            handleChange(globalIndex, file)
+                          }
+                          onUploadError={(error) => {
+                            console.error("Upload failed:", error);
+                            showMessage("Failed to upload file: " + (error?.message || "Unknown error"));
+                            setIsFileUploading(false);
+                          }}
+                          onUploadStart={() => setIsFileUploading(true)}
+                          onUploadComplete={() => setIsFileUploading(false)}
+                          accept=".doc,.docx"
+                          buttonText="Upload File"
+                          uploadingText="Uploading..."
+                          className="mb-0"
+                        />
+                      </div>
                     ) : (
                       <>
                         <label
@@ -829,34 +941,43 @@ export default function SubmitManuscript() {
             </div>
           )}
 
-          <div className="flex justify-end mt-8">
-            <button
-              type="submit"
-              disabled={
-                !currentUser ||
-                cooldown > 0 ||
-                loading ||
-                monthlyCount >= monthlyLimit
-              }
-              className={`px-6 py-2 rounded-lg font-medium text-base transition-colors duration-200 ${
-                !currentUser ||
-                cooldown > 0 ||
-                loading ||
-                monthlyCount >= monthlyLimit
-                  ? "bg-gray-400 cursor-not-allowed"
-                  : "bg-green-600 hover:bg-green-700 text-white focus:ring-2 focus:ring-green-500 focus:ring-offset-2"
-              }`}
-              aria-busy={loading}
-            >
-              {loading
-                ? "Submitting..."
-                : cooldown > 0
-                ? `Please wait ${cooldown}s`
-                : monthlyCount >= monthlyLimit
-                ? `Monthly limit reached (${monthlyLimit})`
-                : "Submit Manuscript"}
-            </button>
+          <div className="flex flex-col items-end mt-8 space-y-2">
+            <div className="flex items-center">
+              <button
+                type="submit"
+                disabled={
+                  !currentUser ||
+                  cooldown > 0 ||
+                  loading ||
+                  monthlyCount >= monthlyLimit ||
+                  isFileUploading
+                }
+                className={`px-6 py-2 rounded-lg font-medium text-base transition-colors duration-200 ${
+                  !currentUser ||
+                  cooldown > 0 ||
+                  loading ||
+                  monthlyCount >= monthlyLimit ||
+                  isFileUploading
+                    ? "bg-gray-400 cursor-not-allowed"
+                    : "bg-green-600 hover:bg-green-700 text-white focus:ring-2 focus:ring-green-500 focus:ring-offset-2"
+                }`}
+                aria-busy={loading}
+              >
+                {loading ? "Submitting..." : "Submit Manuscript"}
+              </button>
+            </div>
+            {isFileUploading && (
+              <div className="text-sm text-amber-600 flex items-center">
+                <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-amber-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                Please wait while your file finishes uploading...
+              </div>
+            )}
           </div>
+
+       
         </form>
       )}
 

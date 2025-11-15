@@ -11,7 +11,7 @@ const FilterButtons = ({ filter, setFilter, manuscripts }) => {
     { label: "For Revision (Minor)", value: "For Revision (Minor)" },
     { label: "For Revision (Major)", value: "For Revision (Major)" },
     { label: "For Publication", value: "For Publication" },
-    { label: "Non-Acceptance", value: "non-Acceptance" },
+    { label: "Non-Acceptance", value: "Non-Acceptance" },
     { label: "Rejected", value: "Rejected" },
   ];
 
@@ -27,11 +27,9 @@ const FilterButtons = ({ filter, setFilter, manuscripts }) => {
         (m) => m.status === "Rejected" || m.status === "Peer Reviewer Rejected"
       ).length;
     }
-    
-    if (value === "non-Acceptance") {
-      return manuscripts.filter(
-        (m) => m.status === "non-Acceptance"
-      ).length;
+
+    if (value === "Non-Acceptance") {
+      return manuscripts.filter((m) => m.status === "Non-Acceptance").length;
     }
 
     if (value === "For Revision (Minor)")

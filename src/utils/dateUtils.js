@@ -15,13 +15,23 @@ export function formatFirestoreDate(raw, options = {}) {
   let date;
   try {
     if (typeof raw.toDate === "function") {
+      // Handle Firestore Timestamp
       date = raw.toDate();
     } else if (raw?.seconds) {
-      date = new Date(raw.seconds * 1000);
+      // Handle Firestore Timestamp in object format {seconds, nanoseconds}
+      date = new Date(raw.seconds * 1000 + (raw.nanoseconds || 0) / 1000000);
+    } else if (typeof raw === 'object' && raw !== null && 'toDate' in raw) {
+      // Handle Firestore Timestamp in object format with toDate method
+      date = raw.toDate();
+    } else if (typeof raw === 'string' || typeof raw === 'number') {
+      // Handle ISO string or timestamp
+      date = new Date(raw);
     } else {
+      // Default case, try to create a Date object
       date = new Date(raw);
     }
-  } catch {
+  } catch (error) {
+    console.error('Error formatting date:', error, raw);
     return "—";
   }
   if (!date || isNaN(date.getTime())) return "—";

@@ -18,7 +18,7 @@ import Footer from "./components/Footer";
 
 import Home from "./pages/Home";
 import Announcement from "./components/Announcement";
-import Profile from "./authcomponents/Profile";
+import Profile from "./components/profile/Profile";
 import SignUp from "./authcomponents/SignUp";
 import SignIn from "./authcomponents/SignIn";
 import ForgotPassword from "./authcomponents/ForgotPassword";
@@ -34,6 +34,7 @@ import NotFound from "./pages/NotFound";
 import Manuscripts from "./components/manuscriptComp/Manuscripts";
 import SubmitManuscript from "./pages/Researcher/SubmitManuscript";
 import ResubmitManuscript from "./pages/Researcher/ResubmitManuscript";
+import FormatGuidelines from "./components/FormatGuidelines";
 import CreateForm from "./formcomponents/CreateForm";
 import FormResponses from "./formcomponents/FormResponses";
 import Dashboard from "./components/Dashboard";
@@ -119,6 +120,7 @@ function App() {
                 <Route path="/call-for-papers" element={<CallForPapers />} />
                 <Route path="/pub-ethics" element={<PubEthics />} />
                 <Route path="/guidelines" element={<Guidelines />} />
+                <Route path="/format-guidelines" element={<FormatGuidelines />} />
                 <Route path="/unauthorized" element={<Unauthorized />} />
                 <Route path="/manuscripts" element={<Manuscripts />} />
                 <Route path="/createform" element={<CreateForm />} />
@@ -130,10 +132,24 @@ function App() {
                     </ProtectedRoute>
                   }
                 />
-                <Route path="/dashboard" element={<Dashboard />} />
-                <Route path="/dashboard/:userId" element={<Dashboard />} />
+                <Route
+                  path="/dashboard"
+                  element={
+                    <ProtectedRoute>
+                      <Dashboard />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/dashboard/:userId"
+                  element={
+                    <ProtectedRoute>
+                      <Dashboard />
+                    </ProtectedRoute>
+                  }
+                />
                 <Route path="/profile/:userId" element={<Profile />} />
-                <Route path="/peer-reviewers" element={<PeerReviewerList />} />
+
                 <Route
                   path="review-manuscript"
                   element={
@@ -209,7 +225,7 @@ function App() {
                     </AdminRoute>
                   }
                 />
-                {/* ⬇️ New Admin-only pages */}
+
                 <Route
                   path="/admin/reviewer-list"
                   element={

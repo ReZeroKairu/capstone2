@@ -26,8 +26,8 @@ export default function FormResponses() {
   const [selectedFormId, setSelectedFormId] = useState("");
   const [isAdmin, setIsAdmin] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
-const location = useLocation();
-const navigate = useNavigate();
+  const location = useLocation();
+  const navigate = useNavigate();
 
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
@@ -40,7 +40,6 @@ const navigate = useNavigate();
   // Pagination: pageCursors[i] = lastDoc of page (i+1)
   const [pageCursors, setPageCursors] = useState([]);
   const [currentPage, setCurrentPage] = useState(1);
-
 
   // modal
   const [selectedResponse, setSelectedResponse] = useState(null);
@@ -101,55 +100,62 @@ const navigate = useNavigate();
     fetchForms();
   }, []);
 
-  // fetch total responses for pagination, now works for all forms if none selected
+  // fetch total manuscripts for pagination
   const fetchTotalCount = async () => {
     try {
       const constraints = [where("status", "==", "Pending")];
       if (selectedFormId)
         constraints.push(where("formId", "==", selectedFormId));
-      if (!isAdmin && currentUser)
-        constraints.push(where("userId", "==", currentUser.uid));
+      if (!isAdmin && currentUser) {
+        // For non-admin users, only show their own manuscripts
+        constraints.push(
+          where("userId", "==", currentUser.uid)
+        );
+      }
       if (startDate && endDate) {
         const start = Timestamp.fromDate(new Date(startDate + "T00:00:00"));
         const end = Timestamp.fromDate(new Date(endDate + "T23:59:59"));
         constraints.push(where("submittedAt", ">=", start));
         constraints.push(where("submittedAt", "<=", end));
       }
+      
       const snapshot = await getDocs(
-        query(collection(db, "form_responses"), ...constraints)
+        query(collection(db, "manuscripts"), ...constraints)
       );
       setTotalResponses(snapshot.size);
       return snapshot.size;
     } catch (err) {
-      console.error("Error fetching total responses:", err);
+      console.error("Error fetching total manuscripts:", err);
       return 0;
     }
   };
-useEffect(() => {
-  const refreshPage = async () => {
-    console.log("Refresh event received!"); // Debug: should log when notification clicked
-    setPageCursors([]); // clear cursors to force fresh fetch
-    await fetchTotalCount(); // update total responses
-    await loadPage(1);       // reload first page
-  };
+  useEffect(() => {
+    const refreshPage = async () => {
+      console.log("Refresh event received!"); // Debug: should log when notification clicked
+      setPageCursors([]); // clear cursors to force fresh fetch
+      await fetchTotalCount(); // update total responses
+      await loadPage(1); // reload first page
+    };
 
-  window.addEventListener("refreshFormResponses", refreshPage);
+    window.addEventListener("refreshFormResponses", refreshPage);
 
-  // Cleanup listener on unmount
-  return () => window.removeEventListener("refreshFormResponses", refreshPage);
-}, [currentUser, isAdmin, selectedFormId, startDate, endDate, searchTerm]);
+    // Cleanup listener on unmount
+    return () =>
+      window.removeEventListener("refreshFormResponses", refreshPage);
+  }, [currentUser, isAdmin, selectedFormId, startDate, endDate, searchTerm]);
 
-
-// ✅ KEEP this one as-is
-useEffect(() => {
-  fetchTotalCount();
-}, [selectedFormId, startDate, endDate, currentUser, isAdmin]);
+  // ✅ KEEP this one as-is
+  useEffect(() => {
+    fetchTotalCount();
+  }, [selectedFormId, startDate, endDate, currentUser, isAdmin]);
   // helper: build query constraints array for current filters/search
   const buildConstraints = () => {
     const constraints = [where("status", "==", "Pending")];
     if (selectedFormId) constraints.push(where("formId", "==", selectedFormId));
-    if (!isAdmin && currentUser)
+    if (!isAdmin && currentUser) {
+      // For non-admin users, only show their own manuscripts
       constraints.push(where("userId", "==", currentUser.uid));
+    }
     if (startDate && endDate) {
       const start = Timestamp.fromDate(new Date(startDate + "T00:00:00"));
       const end = Timestamp.fromDate(new Date(endDate + "T23:59:59"));
@@ -172,7 +178,7 @@ useEffect(() => {
           cursors.length === 0 ? null : cursors[cursors.length - 1];
         const constraints = buildConstraints();
         const q = query(
-          collection(db, "form_responses"),
+          collection(db, "manuscripts"),
           ...constraints,
           orderBy("submittedAt", "desc"),
           limit(pageSize),
@@ -191,23 +197,147 @@ useEffect(() => {
   };
 
   // main page loader
+  const loadPage = async (page = 1) => {
+    if (!currentUser) return;
 
-    const loadPage = async (page = 1) => {
-  if (!currentUser) return;
+    const isSearching = searchTerm.trim() !== "";
+    setLoading(true);
 
-  const isSearching = searchTerm.trim() !== "";
-  setLoading(true);
+    try {
+      const constraints = buildConstraints();
 
-  try {
-    const constraints = buildConstraints();
+      // 🔹 SEARCH MODE with client-side pagination
+      if (isSearching) {
+        const q = query(
+          collection(db, "manuscripts"),
+          ...constraints,
+          orderBy("submittedAt", "desc"),
+          limit(1000) // cap search results
+        );
+        const snap = await getDocs(q);
 
-    // 🔹 SEARCH MODE with client-side pagination
-    if (isSearching) {
+        const data = await Promise.all(
+          snap.docs.map(async (d) => {
+            const docData = { id: d.id, ...d.data() };
+
+            // resolve file answers
+            if (docData.answeredQuestions) {
+              docData.answeredQuestions = await Promise.all(
+                docData.answeredQuestions.map(async (q) => {
+                  if (q.type === "file" && q.answer) {
+                    const answersArray = Array.isArray(q.answer)
+                      ? q.answer
+                      : [q.answer];
+                    const filesWithUrls = await Promise.all(
+                      answersArray.map(async (f) => {
+                        try {
+                          const filePath =
+                            f?.storagePath ||
+                            f?.path ||
+                            (typeof f === "string" ? f : null);
+
+                          if (!filePath) return f;
+
+                          const url = await getDownloadURL(
+                            ref(storage, filePath)
+                          );
+
+                          if (typeof f === "string") {
+                            return {
+                              name: filePath.split("/").pop(),
+                              url,
+                              path: filePath,
+                            };
+                          }
+                          return { ...f, url };
+                        } catch (err) {
+                          console.warn("⚠️ File missing in storage:", f);
+                          // fallback so UI doesn't break
+                          return {
+                            name:
+                              (typeof f === "string" ? f : f?.name) ||
+                              "Unavailable file",
+                            url: null,
+                            path: f?.path || f?.storagePath || null,
+                            missing: true,
+                          };
+                        }
+                      })
+                    );
+
+                    return {
+                      ...q,
+                      answer:
+                        filesWithUrls.length === 1 && !Array.isArray(q.answer)
+                          ? filesWithUrls[0]
+                          : filesWithUrls,
+                    };
+                  }
+
+                  return q;
+                })
+              );
+            }
+
+            return docData;
+          })
+        );
+
+        // filter search results
+        const term = searchTerm.toLowerCase();
+        const filtered = data.filter((res) => {
+          const fullName = `${res.firstName || ""} ${
+            res.lastName || ""
+          }`.trim();
+          const manuscriptTitle =
+            res.manuscriptTitle ||
+            res.answeredQuestions?.find((q) =>
+              q.question?.toLowerCase().trim().startsWith("manuscript title")
+            )?.answer ||
+            res.formTitle ||
+            "Untitled";
+
+          const fieldsToSearch = [
+            res.email,
+            fullName,
+            manuscriptTitle,
+            res.formTitle,
+            ...(res.searchIndex || []),
+          ];
+
+          return fieldsToSearch.some((f) => f?.toLowerCase().includes(term));
+        });
+
+        // 🔹 client-side pagination
+        const total = filtered.length;
+        const totalPages = Math.max(1, Math.ceil(total / pageSize));
+        const targetPage = Math.min(Math.max(1, page), totalPages);
+
+        const startIndex = (targetPage - 1) * pageSize;
+        const paginated = filtered.slice(startIndex, startIndex + pageSize);
+
+        setResponses(paginated);
+        setTotalResponses(total);
+        setCurrentPage(targetPage);
+        setPageCursors([]); // no cursors needed for search
+        return;
+      }
+
+      // NORMAL MODE with Firestore cursor-based pagination
+      const totalPages = Math.max(1, Math.ceil(totalResponses / pageSize));
+      const targetPage = Math.min(Math.max(1, page), totalPages);
+
+      await ensureCursorsUpTo(targetPage);
+
+      const startAfterDoc =
+        targetPage > 1 ? pageCursors[targetPage - 2] || null : null;
+
       const q = query(
-        collection(db, "form_responses"),
+        collection(db, "manuscripts"),
         ...constraints,
         orderBy("submittedAt", "desc"),
-        limit(1000) // cap search results
+        limit(pageSize),
+        ...(startAfterDoc ? [startAfter(startAfterDoc)] : [])
       );
       const snap = await getDocs(q);
 
@@ -215,54 +345,47 @@ useEffect(() => {
         snap.docs.map(async (d) => {
           const docData = { id: d.id, ...d.data() };
 
-          // resolve file answers
           if (docData.answeredQuestions) {
             docData.answeredQuestions = await Promise.all(
               docData.answeredQuestions.map(async (q) => {
-               if (q.type === "file" && q.answer) {
-  const answersArray = Array.isArray(q.answer) ? q.answer : [q.answer];
-  const filesWithUrls = await Promise.all(
-    answersArray.map(async (f) => {
-      try {
-        const filePath =
-          f?.storagePath ||
-          f?.path ||
-          (typeof f === "string" ? f : null);
+                if (q.type === "file" && q.answer) {
+                  const answersArray = Array.isArray(q.answer)
+                    ? q.answer
+                    : [q.answer];
+                  const filesWithUrls = await Promise.all(
+                    answersArray.map(async (f) => {
+                      try {
+                        const filePath =
+                          f?.storagePath ||
+                          f?.path ||
+                          (typeof f === "string" ? f : null);
 
-        if (!filePath) return f;
-
-        const url = await getDownloadURL(ref(storage, filePath));
-
-        if (typeof f === "string") {
-          return {
-            name: filePath.split("/").pop(),
-            url,
-            path: filePath,
-          };
-        }
-        return { ...f, url };
-      } catch (err) {
-        console.warn("⚠️ File missing in storage:", f);
-        // fallback so UI doesn't break
-        return {
-          name: (typeof f === "string" ? f : f?.name) || "Unavailable file",
-          url: null,
-          path: f?.path || f?.storagePath || null,
-          missing: true,
-        };
-      }
-    })
-  );
-
-  return {
-    ...q,
-    answer:
-      filesWithUrls.length === 1 && !Array.isArray(q.answer)
-        ? filesWithUrls[0]
-        : filesWithUrls,
-  };
-}
-
+                        if (!filePath) return f;
+                        const url = await getDownloadURL(
+                          ref(storage, filePath)
+                        );
+                        if (typeof f === "string") {
+                          return {
+                            name: filePath.split("/").pop(),
+                            url,
+                            path: filePath,
+                          };
+                        }
+                        return { ...f, url };
+                      } catch (err) {
+                        console.error("Error fetching file URL:", err, f);
+                        return f;
+                      }
+                    })
+                  );
+                  return {
+                    ...q,
+                    answer:
+                      filesWithUrls.length === 1 && !Array.isArray(q.answer)
+                        ? filesWithUrls[0]
+                        : filesWithUrls,
+                  };
+                }
                 return q;
               })
             );
@@ -272,131 +395,24 @@ useEffect(() => {
         })
       );
 
-      // filter search results
-      const term = searchTerm.toLowerCase();
-      const filtered = data.filter((res) => {
-        const fullName = `${res.firstName || ""} ${res.lastName || ""}`.trim();
-        const manuscriptTitle =
-          res.manuscriptTitle ||
-          res.answeredQuestions?.find((q) =>
-            q.question?.toLowerCase().trim().startsWith("manuscript title")
-          )?.answer ||
-          res.formTitle ||
-          "Untitled";
+      setResponses(data);
 
-        const fieldsToSearch = [
-          res.email,
-          fullName,
-          manuscriptTitle,
-          res.formTitle,
-          ...(res.searchIndex || []),
-        ];
+      if (snap.docs.length > 0) {
+        const lastDoc = snap.docs[snap.docs.length - 1];
+        setPageCursors((prev) => {
+          const copy = [...prev];
+          copy[targetPage - 1] = lastDoc;
+          return copy;
+        });
+      }
 
-        return fieldsToSearch.some((f) => f?.toLowerCase().includes(term));
-      });
-
-      // 🔹 client-side pagination
-      const total = filtered.length;
-      const totalPages = Math.max(1, Math.ceil(total / pageSize));
-      const targetPage = Math.min(Math.max(1, page), totalPages);
-
-      const startIndex = (targetPage - 1) * pageSize;
-      const paginated = filtered.slice(startIndex, startIndex + pageSize);
-
-      setResponses(paginated);
-      setTotalResponses(total);
       setCurrentPage(targetPage);
-      setPageCursors([]); // no cursors needed for search
-      return;
+    } catch (err) {
+      console.error("Error loading page:", err);
+    } finally {
+      setLoading(false);
     }
-
-    // 🔹 NORMAL MODE with Firestore cursor-based pagination
-    const totalPages = Math.max(1, Math.ceil(totalResponses / pageSize));
-    const targetPage = Math.min(Math.max(1, page), totalPages);
-
-    await ensureCursorsUpTo(targetPage);
-
-    const startAfterDoc =
-      targetPage > 1 ? pageCursors[targetPage - 2] || null : null;
-
-    const q = query(
-      collection(db, "form_responses"),
-      ...constraints,
-      orderBy("submittedAt", "desc"),
-      limit(pageSize),
-      ...(startAfterDoc ? [startAfter(startAfterDoc)] : [])
-    );
-    const snap = await getDocs(q);
-
-    const data = await Promise.all(
-      snap.docs.map(async (d) => {
-        const docData = { id: d.id, ...d.data() };
-
-        if (docData.answeredQuestions) {
-          docData.answeredQuestions = await Promise.all(
-            docData.answeredQuestions.map(async (q) => {
-              if (q.type === "file" && q.answer) {
-                const answersArray = Array.isArray(q.answer)
-                  ? q.answer
-                  : [q.answer];
-                const filesWithUrls = await Promise.all(
-                  answersArray.map(async (f) => {
-                    try {
-                      const filePath =
-                        f?.storagePath ||
-                        f?.path ||
-                        (typeof f === "string" ? f : null);
-                      if (!filePath) return f;
-                      const url = await getDownloadURL(ref(storage, filePath));
-                      if (typeof f === "string") {
-                        return {
-                          name: filePath.split("/").pop(),
-                          url,
-                          path: filePath,
-                        };
-                      }
-                      return { ...f, url };
-                    } catch (err) {
-                      console.error("Error fetching file URL:", err, f);
-                      return f;
-                    }
-                  })
-                );
-                return {
-                  ...q,
-                  answer:
-                    filesWithUrls.length === 1 && !Array.isArray(q.answer)
-                      ? filesWithUrls[0]
-                      : filesWithUrls,
-                };
-              }
-              return q;
-            })
-          );
-        }
-
-        return docData;
-      })
-    );
-
-    setResponses(data);
-
-    if (snap.docs.length > 0) {
-      const lastDoc = snap.docs[snap.docs.length - 1];
-      setPageCursors((prev) => {
-        const copy = [...prev];
-        copy[targetPage - 1] = lastDoc;
-        return copy;
-      });
-    }
-
-    setCurrentPage(targetPage);
-  } catch (err) {
-    console.error("Error loading page:", err);
-  } finally {
-    setLoading(false);
-  }
-};
+  };
 
   // reset and fetch when filters or selection change
   useEffect(() => {
@@ -434,171 +450,149 @@ useEffect(() => {
   };
 
   // Admin actions (updated to include Accepted status)
-  const handleAccept = async (res) => {
+  const handleAccept = async (manuscript) => {
     try {
-      const resRef = doc(db, "form_responses", res.id);
-      
-      // First set status to 'Accepted'
-      await updateDoc(resRef, { 
-        status: "Accepted",
-        acceptedAt: serverTimestamp()
+      const manuscriptRef = doc(db, "manuscripts", manuscript.id);
+      const manuscriptTitle = manuscript.manuscriptTitle || manuscript.title || "Untitled";
+
+      // Update manuscript status to 'Assigning Peer Reviewer'
+      await updateDoc(manuscriptRef, {
+        status: "Assigning Peer Reviewer",
+        acceptedAt: serverTimestamp(),
+        title: manuscriptTitle,
+        email: manuscript.email || "",
       });
 
       // Add to history
-      await addDoc(collection(db, "form_responses", res.id, "history"), {
+      await addDoc(collection(db, "manuscripts", manuscript.id, "history"), {
         timestamp: serverTimestamp(),
         updatedBy: currentUser.uid,
-        status: "Accepted",
+        status: "Assigning Peer Reviewer",
       });
 
-      // Then after a short delay, update to 'Assigning Peer Reviewer'
-      setTimeout(async () => {
-        await updateDoc(resRef, { status: "Assigning Peer Reviewer" });
-        await addDoc(collection(db, "form_responses", res.id, "history"), {
-          timestamp: serverTimestamp(),
-          updatedBy: currentUser.uid,
-          status: "Assigning Peer Reviewer",
-        });
-      }, 1000); // 1 second delay
-
-      const manuscriptsRef = collection(db, "manuscripts");
-      const mQ = query(manuscriptsRef, where("responseId", "==", res.id));
-      const mSnap = await getDocs(mQ);
-
-      // preserve original submission time if available
-      const responseSubmittedAt = res.submittedAt
-        ? res.submittedAt
-        : serverTimestamp();
-
-      // 🔹 derive manuscript title robustly
-      const manuscriptTitle =
-        res.manuscriptTitle ||
-        res.answeredQuestions?.find(
-          (q) =>
-            q?.isManuscriptTitle ||
-            q?.question?.toLowerCase?.().trim?.().startsWith("manuscript title")
-        )?.answer ||
-        res.formTitle ||
-        "Untitled";
-
-      if (!mSnap.empty) {
-        mSnap.forEach(async (ms) => {
-          // set status, title, and record acceptedAt timestamp
-          await updateDoc(doc(db, "manuscripts", ms.id), {
-            title: manuscriptTitle,
-            status: "Assigning Peer Reviewer",
-            acceptedAt: serverTimestamp(),
-            email: res.email || "", // 🔹 save email
-          });
-        });
-      } else {
-        await addDoc(manuscriptsRef, {
-          responseId: res.id,
-          formId: res.formId,
-          formTitle: res.formTitle,
-          title: manuscriptTitle, // 🔹 save it on the manuscript
-          answeredQuestions: res.answeredQuestions || [],
-          userId: res.userId,
-          coAuthors: res.coAuthors || [],
-          submittedAt: responseSubmittedAt, // preserve original submission time when possible
-          acceptedAt: serverTimestamp(), // mark acceptance timestamp
-          status: "Assigning Peer Reviewer",
-          email: res.email || "", // 🔹 save email
+      // Get all user IDs to notify (submitter + co-authors if any)
+      const notifyUsers = [manuscript.userId || manuscript.submitterId];
+      
+      // Safely add co-author IDs if they exist
+      if (manuscript.coAuthors && Array.isArray(manuscript.coAuthors)) {
+        manuscript.coAuthors.forEach(coAuthor => {
+          if (coAuthor.id) {
+            notifyUsers.push(coAuthor.id);
+          } else if (typeof coAuthor === 'string') {
+            // Handle case where coAuthors is an array of IDs
+            notifyUsers.push(coAuthor);
+          }
         });
       }
-
-      const notifyUsers = [
-        res.userId,
-        ...(res.coAuthors?.map((c) => c.id) || []),
-      ];
+      
+      // Remove any duplicate user IDs
+      const uniqueUserIds = [...new Set(notifyUsers.filter(Boolean))];
+      
+      // Send notifications to all involved users
       await Promise.all(
-        notifyUsers.map((uid) =>
+        uniqueUserIds.map((uid) =>
           addDoc(collection(db, "Users", uid, "Notifications"), {
+            title: "Manuscript Accepted",
             message: `Your manuscript "${manuscriptTitle}" has been accepted by the admin.`,
             seen: false,
             timestamp: serverTimestamp(),
+            type: 'manuscript_accepted',
+            manuscriptId: manuscript.id,
+            manuscriptTitle: manuscriptTitle,
+            actionUrl: `/manuscripts?manuscriptId=${manuscript.id}`
           })
         )
       );
 
-   setResponses((prev) => prev.filter((r) => r.id !== res.id));
-setSelectedResponse(null);
-setTotalResponses((prev) => Math.max(0, prev - 1));
-
+      setResponses((prev) => prev.filter((r) => r.id !== manuscript.id));
+      setSelectedResponse(null);
+      setTotalResponses((prev) => Math.max(0, prev - 1));
     } catch (err) {
-      console.error("Error accepting response:", err);
+      console.error("Error accepting manuscript:", err);
     }
   };
 
-  const handleNonAcceptance = async (res) => {
-    try {
-      const resRef = doc(db, "form_responses", res.id);
-      await updateDoc(resRef, { status: "non-Acceptance" });
+  const handleNonAcceptance = async (manuscript) => {
+    if (!manuscript?.id) {
+      console.error("Invalid manuscript data:", manuscript);
+      return;
+    }
 
-      await addDoc(collection(db, "form_responses", res.id, "history"), {
-        timestamp: serverTimestamp(),
-        updatedBy: currentUser.uid,
-        status: "non-Acceptance",
+    try {
+      const manuscriptRef = doc(db, "manuscripts", manuscript.id);
+      
+      // Get the manuscript title from the correct field
+      const manuscriptTitle = manuscript.manuscriptTitle || manuscript.title || "Untitled";
+      
+      // Update manuscript status to 'Non-Acceptance'
+      await updateDoc(manuscriptRef, {
+        status: "Non-Acceptance",
+        manuscriptTitle: manuscriptTitle,
+        email: manuscript.email || "",
+        updatedAt: serverTimestamp()
       });
 
-      const manuscriptsRef = collection(db, "manuscripts");
-      const mQ = query(manuscriptsRef, where("responseId", "==", res.id));
-      const mSnap = await getDocs(mQ);
+      // Add to history
+      await addDoc(collection(db, "manuscripts", manuscript.id, "history"), {
+        timestamp: serverTimestamp(),
+        updatedBy: currentUser.uid,
+        status: "Non-Acceptance",
+        action: "status_update",
+        updatedFields: {
+          status: "Non-Acceptance"
+        }
+      });
 
-      // 🔹 derive manuscript title robustly
-      const manuscriptTitle =
-        res.manuscriptTitle ||
-        res.answeredQuestions?.find(
-          (q) =>
-            q?.isManuscriptTitle ||
-            q?.question?.toLowerCase?.().trim?.().startsWith("manuscript title")
-        )?.answer ||
-        res.formTitle ||
-        "Untitled";
-
-      if (!mSnap.empty) {
-        mSnap.forEach(async (ms) => {
-          await updateDoc(doc(db, "manuscripts", ms.id), {
-            title: manuscriptTitle,
-            status: "non-Acceptance",
-            email: res.email || "", // 🔹 save email
-          });
-        });
-      } else {
-        await addDoc(manuscriptsRef, {
-          responseId: res.id,
-          formId: res.formId,
-          formTitle: res.formTitle,
-          title: manuscriptTitle, // 🔹 save it on the manuscript
-          answeredQuestions: res.answeredQuestions || [],
-          userId: res.userId,
-          coAuthors: res.coAuthors || [],
-          submittedAt: serverTimestamp(),
-          status: "non-Acceptance",
-          email: res.email || "", // 🔹 save email
+      // Safely get user IDs to notify
+      const notifyUsers = [];
+      
+      // Add main author if exists
+      if (manuscript.userId) {
+        notifyUsers.push(manuscript.userId);
+      }
+      
+      // Add co-authors if they exist
+      if (Array.isArray(manuscript.coAuthors)) {
+        manuscript.coAuthors.forEach(coAuthor => {
+          if (coAuthor?.id) {
+            notifyUsers.push(coAuthor.id);
+          }
         });
       }
-
-      const notifyUsers = [
-        res.userId,
-        ...(res.coAuthors?.map((c) => c.id) || []),
-      ];
-      await Promise.all(
-        notifyUsers.map((uid) =>
-          addDoc(collection(db, "Users", uid, "Notifications"), {
-            message: `Your manuscript "${manuscriptTitle}" has been marked as non-Acceptance.`,
-            seen: false,
-            timestamp: serverTimestamp(),
-          })
-        )
-      );
-setResponses((prev) => prev.filter((r) => r.id !== res.id));
-setSelectedResponse(null);
-setTotalResponses((prev) => Math.max(0, prev - 1));
-
-
+      
+      // Remove duplicates
+      const uniqueUserIds = [...new Set(notifyUsers)];
+      
+      // Only proceed if there are users to notify
+      if (uniqueUserIds.length > 0) {
+        await Promise.all(
+          uniqueUserIds.map((uid) =>
+            addDoc(collection(db, "Users", uid, "Notifications"), {
+              title: "Manuscript Status Update",
+              message: `Your manuscript "${manuscriptTitle}" has been marked as Non-Acceptance.`,
+              seen: false,
+              timestamp: serverTimestamp(),
+              type: "manuscript_status_update",
+              manuscriptId: manuscript.id,
+              manuscriptTitle: manuscriptTitle,
+              status: "Non-Acceptance",
+              actionUrl: `/manuscripts?manuscriptId=${manuscript.id}`
+            })
+          )
+        );
+      }
+      
+      // Update local state
+      setResponses((prev) => prev.filter((r) => r.id !== manuscript.id));
+      setSelectedResponse(null);
+      setTotalResponses((prev) => Math.max(0, prev - 1));
+      
+      // Show success message
+      alert(`Manuscript "${manuscriptTitle}" has been marked as Non-Acceptance.`);
+      
     } catch (err) {
-      console.error("Error marking manuscript as non-Acceptance:", err);
+      console.error("Error marking manuscript as Non-Acceptance:", err);
+      alert(`Failed to update manuscript status. ${err.message}`);
     }
   };
 
@@ -734,32 +728,33 @@ setTotalResponses((prev) => Math.max(0, prev - 1));
                       : "");
 
                   return (
-                   <tr key={res.id} className="border-b border-[#7B2E19]/30">
- <td className="px-4 py-2">
-  {res.userId ? (
-    <button
-      onClick={() => navigate(`/profile/${res.userId}`)}
-      className="text-red-800 cursor-pointer hover:text-red-900 hover:underline active:text-red-950 transition-colors"
-    >
-      {highlightText(res.email || "")}
-    </button>
-  ) : (
-    highlightText(res.email || "")
-  )}
-</td>
+                    <tr key={res.id} className="border-b border-[#7B2E19]/30">
+                      <td className="px-4 py-2">
+                        {res.userId ? (
+                          <button
+                            onClick={() => navigate(`/profile/${res.userId}`)}
+                            className="text-red-800 cursor-pointer hover:text-red-900 hover:underline active:text-red-950 transition-colors"
+                          >
+                            {highlightText(res.email || "")}
+                          </button>
+                        ) : (
+                          highlightText(res.email || "")
+                        )}
+                      </td>
 
-  <td className="px-4 py-2">{highlightText(fullName)}</td>
-  <td className="px-4 py-2 text-gray-600 text-sm">{submittedAtText}</td>
-  <td className="px-4 py-2">
-    <button
-      onClick={() => setSelectedResponse(res)}
-      className="text-red-800 font-medium hover:text-red-900 hover:underline active:text-red-950 transition-colors text-sm"
-    >
-      View Response
-    </button>
-  </td>
-</tr>
-
+                      <td className="px-4 py-2">{highlightText(fullName)}</td>
+                      <td className="px-4 py-2 text-gray-600 text-sm">
+                        {submittedAtText}
+                      </td>
+                      <td className="px-4 py-2">
+                        <button
+                          onClick={() => setSelectedResponse(res)}
+                          className="text-red-800 font-medium hover:text-red-900 hover:underline active:text-red-950 transition-colors text-sm"
+                        >
+                          View Response
+                        </button>
+                      </td>
+                    </tr>
                   );
                 })
               )}
@@ -905,39 +900,49 @@ setTotalResponses((prev) => Math.max(0, prev - 1));
                           return Array.isArray(q.answer)
                             ? q.answer.join(", ")
                             : q.answer;
-                       case "file":
-  return Array.isArray(q.answer) ? (
-    q.answer.map((f, i) => (
-      <button
-        key={i}
-        onClick={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          if (f.url) {
-            window.open(f.url, '_blank', 'noopener,noreferrer');
-          }
-        }}
-        className="text-blue-600 hover:text-blue-800 underline mr-2 cursor-pointer"
-        title={`Open ${f.name || 'file'} in new tab`}
-      >
-        {f.name || `File ${i + 1}`}
-      </button>
-    ))
-  ) : (
-    <button
-      onClick={(e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        if (q.answer?.url) {
-          window.open(q.answer.url, '_blank', 'noopener,noreferrer');
-        }
-      }}
-      className="text-blue-600 hover:text-blue-800 underline cursor-pointer"
-      title={`Open ${q.answer?.name || 'file'} in new tab`}
-    >
-      {q.answer?.name || "File"}
-    </button>
-  );
+                        case "file":
+                          return Array.isArray(q.answer) ? (
+                            q.answer.map((f, i) => (
+                              <button
+                                key={i}
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  if (f.url) {
+                                    window.open(
+                                      f.url,
+                                      "_blank",
+                                      "noopener,noreferrer"
+                                    );
+                                  }
+                                }}
+                                className="text-blue-600 hover:text-blue-800 underline mr-2 cursor-pointer"
+                                title={`Open ${f.name || "file"} in new tab`}
+                              >
+                                {f.name || `File ${i + 1}`}
+                              </button>
+                            ))
+                          ) : (
+                            <button
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                if (q.answer?.url) {
+                                  window.open(
+                                    q.answer.url,
+                                    "_blank",
+                                    "noopener,noreferrer"
+                                  );
+                                }
+                              }}
+                              className="text-blue-600 hover:text-blue-800 underline cursor-pointer"
+                              title={`Open ${
+                                q.answer?.name || "file"
+                              } in new tab`}
+                            >
+                              {q.answer?.name || "File"}
+                            </button>
+                          );
 
                         default:
                           return JSON.stringify(q.answer);
@@ -956,7 +961,6 @@ setTotalResponses((prev) => Math.max(0, prev - 1));
               </span>
             </div>
 
-
             {/* Admin actions */}
             {isAdmin && selectedResponse.status === "Pending" && (
               <div className="flex gap-3">
@@ -970,7 +974,7 @@ setTotalResponses((prev) => Math.max(0, prev - 1));
                   onClick={() => handleNonAcceptance(selectedResponse)}
                   className="px-4 py-2 bg-gray-500 text-white rounded-md font-semibold"
                 >
-                  Mark as non-Acceptance
+                  Mark as Non-Acceptance
                 </button>
               </div>
             )}
