@@ -34,47 +34,54 @@ export class NotificationService {
    * @param {Object} [metadata={}] - Additional metadata
    * @returns {Promise<Array>} Array of notification references
    */
-  async createBulkNotifications(userIds, type, title, message, metadata = {}) {
-    if (!Array.isArray(userIds) || userIds.length === 0) {
-      console.error("Cannot create notifications: userIds must be a non-empty array");
-      return [];
-    }
-
-    try {
-      const batch = [];
-      const notificationsRef = collection(db, 'Notifications');
-      const { actionUrl, ...restMetadata } = metadata;
-      const timestamp = serverTimestamp();
-      const createdAt = new Date().toISOString();
-
-      // Prepare all notifications in a batch
-      const notifications = userIds.map(userId => ({
-        userId,
-        type,
-        title,
-        message,
-        seen: false,
-        timestamp,
-        ...(actionUrl && { actionUrl }),
-        metadata: {
-          ...restMetadata,
-          createdAt,
-        },
-      }));
-
-      // Add all notifications to the batch
-      const results = [];
-      for (const notification of notifications) {
-        const docRef = await addDoc(notificationsRef, notification);
-        results.push({ id: docRef.id, ...notification });
-      }
-
-      return results;
-    } catch (error) {
-      console.error("Error creating bulk notifications:", error);
-      throw error;
-    }
+ async createBulkNotifications(userIds, type, title, message, metadata = {}) {
+  if (!Array.isArray(userIds) || userIds.length === 0) {
+    console.error("Cannot create notifications: userIds must be a non-empty array");
+    return [];
   }
+
+  try {
+    const { actionUrl, ...restMetadata } = metadata;
+    const timestamp = serverTimestamp();
+    const createdAt = new Date().toISOString();
+    const results = [];
+
+    // Process notifications in parallel for better performance
+    const notificationPromises = userIds.map(async (userId) => {
+      try {
+        const notificationData = {
+          type,
+          title,
+          message,
+          seen: false,
+          timestamp,
+          ...(actionUrl && { actionUrl }),
+          metadata: {
+            ...restMetadata,
+            createdAt,
+          },
+        };
+
+        // Store in user's notification subcollection
+        const userNotificationsRef = collection(db, "Users", userId, "Notifications");
+        const docRef = await addDoc(userNotificationsRef, notificationData);
+        
+        return { id: docRef.id, userId, ...notificationData };
+      } catch (error) {
+        console.error(`Error creating notification for user ${userId}:`, error);
+        return null;
+      }
+    });
+
+    // Wait for all notifications to be processed
+    const notifications = await Promise.all(notificationPromises);
+    return notifications.filter(Boolean); // Remove any null results from failed notifications
+
+  } catch (error) {
+    console.error("Error in createBulkNotifications:", error);
+    throw error;
+  }
+}
 
   async createNotification(userId, type, title, message, metadata = {}) {
     try {

@@ -296,35 +296,20 @@ export default function PeerReviewerList() {
           console.log("Settings loaded:", settings);
           console.log("Manuscript status:", msData.status);
           
-          // For reviewer invitations, always use invitationDeadline
+          // Always use invitationDeadline for reviewer assignments, regardless of manuscript status
           daysForDeadline = settings.invitationDeadline || 7;
-          console.log(`Using invitation deadline of ${daysForDeadline} days`);
+          console.log(`Using invitation deadline of ${daysForDeadline} days for manuscript ${manuscriptId}`);
         }
 
-        // Calculate the deadline
-        let deadlineDate;
-        
-        // If this is a reinvitation (reviewer was previously assigned)
-        const isReinvitation = assigned.includes(reviewerId) && assignedMeta[reviewerId]?.invitedAt;
-        
-        if (isReinvitation) {
-          console.log('Reinviting reviewer, using invitation deadline from settings');
-          // For reinvitations, always use the invitationDeadline from settings
-          deadlineDate = new Date();
-          deadlineDate.setDate(deadlineDate.getDate() + daysForDeadline);
-        } else if (deadlineParam) {
-          // If a specific deadline was provided in the URL
-          deadlineDate = new Date(deadlineParam);
-        } else {
-          // Default case: current time + days from settings
-          deadlineDate = new Date();
-          deadlineDate.setDate(deadlineDate.getDate() + daysForDeadline);
-        }
+        // Calculate the deadline - always use current date + invitation deadline days
+        const deadlineDate = new Date();
+        deadlineDate.setDate(deadlineDate.getDate() + daysForDeadline);
+        console.log('Setting deadline to:', deadlineDate);
         
         console.log('Setting deadline to:', deadlineDate);
         
         // Create a Firestore Timestamp for the deadline
-        const deadlineForFirestore = Timestamp.fromDate(deadlineDate);
+        let deadlineForFirestore = Timestamp.fromDate(deadlineDate);
 
 
         // Get current version
@@ -332,6 +317,25 @@ export default function PeerReviewerList() {
         
         // Get existing versions or initialize if doesn't exist
         const existingVersions = assignedMeta[reviewerId]?.assignedVersions || [];
+        
+        // If this is a new version, ensure we're using the correct deadline from settings
+        if (!existingVersions.includes(currentVersion)) {
+          // Recalculate the deadline using the same logic as initial invite
+          const settingsRef = doc(db, "deadlineSettings", "deadlines");
+          const settingsSnap = await getDoc(settingsRef);
+          let daysForDeadline = 7; // Default to 7 days if no settings found
+          
+          if (settingsSnap.exists()) {
+            const settings = settingsSnap.data();
+            // Always use invitationDeadline for reviewer assignments, regardless of manuscript status
+            daysForDeadline = settings.invitationDeadline || 7;
+          }
+          
+          // Recalculate the deadline
+          const newDeadlineDate = new Date();
+          newDeadlineDate.setDate(newDeadlineDate.getDate() + daysForDeadline);
+          deadlineForFirestore = Timestamp.fromDate(newDeadlineDate);
+        }
         
         // ✅ Build reviewer metadata (admin-side)
         const newMeta = {
@@ -345,7 +349,7 @@ export default function PeerReviewerList() {
           acceptedAt: null, // ✅ will be filled when reviewer accepts
           declinedAt: null, // ✅ will be filled when reviewer declines
           decision: null,
-          deadline: deadlineForFirestore || serverTimestamp(), // Fallback to serverTimestamp if no deadline set
+          deadline: deadlineForFirestore,
           // Track which versions this reviewer is assigned to
           assignedVersions: [...new Set([...existingVersions, currentVersion])],
           // Track individual version data
@@ -353,7 +357,7 @@ export default function PeerReviewerList() {
             ...(assignedMeta[reviewerId]?.versionData || {}),
             [currentVersion]: {
               invitedAt: serverTimestamp(),
-              deadline: deadlineForFirestore || serverTimestamp(),
+              deadline: deadlineForFirestore,
               status: "pending"
             }
           }

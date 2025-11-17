@@ -7,7 +7,7 @@ const journals = [
     publisher: "Misamis University",
     publisherLink: "https://mu.edu.ph",
     image: "journals/homepageImage_en_US.jpg",
-    link: "https://asianscientificjournals.com/new/publication/index_php/jmds/",
+    link: "https://asianscientificjournal.com",
   },
   {
     title: "LICEO JOURNAL OF HIGHER EDUCATION RESEARCH",
@@ -15,7 +15,7 @@ const journals = [
     publisher: "Liceo de Cagayan University",
     publisherLink: "https://liceo.edu.ph",
     image: "journals/ldcuj1.jpg",
-    link: "https://asianscientificjournals.com/new/publication/",
+    link: "https://asianscientificjournal.com",
   },
   {
     title: "ASIAN JOURNAL OF BIODIVERSITY",
@@ -23,7 +23,7 @@ const journals = [
     publisher: "Liceo de Cagayan University",
     publisherLink: "https://liceo.edu.ph",
     image: "journals/ldcuj2.jpg",
-    link: "https://asianscientificjournals.com/new/publication/",
+    link: "https://asianscientificjournal.com",
   },
   {
     title: "ASIAN JOURNAL OF HEALTH",
@@ -31,7 +31,7 @@ const journals = [
     publisher: "Liceo de Cagayan University",
     publisherLink: "https://liceo.edu.ph",
     image: "journals/ldcuj3.jpg",
-    link: "https://asianscientificjournals.com/new/publication/",
+    link: "https://asianscientificjournal.com",
   },
   {
     title: "ASIAN JOURNAL OF BUSINESS AND GOVERNANCE",
@@ -39,7 +39,7 @@ const journals = [
     publisher: "Liceo de Cagayan University",
     publisherLink: "https://liceo.edu.ph",
     image: "journals/ldcuj4.jpg",
-    link: "https://asianscientificjournals.com/new/publication/",
+    link: "https://asianscientificjournal.com",
   },
   {
     title:
@@ -48,7 +48,7 @@ const journals = [
     publisher: "Liceo de Cagayan University",
     publisherLink: "https://liceo.edu.ph",
     image: "journals/ldcuj5.jpg",
-    link: "https://asianscientificjournals.com/new/publication/",
+    link: "https://asianscientificjournal.com",
   },
   {
     title: "ADVANCING BUSINESS AND ACCOUNTANCY RESEARCH",
@@ -56,7 +56,7 @@ const journals = [
     publisher: "Liceo de Cagayan University",
     publisherLink: "https://liceo.edu.ph",
     image: "journals/ldcuj6.jpg",
-    link: "https://asianscientificjournals.com/new/publication/",
+    link: "https://asianscientificjournal.com",
   },
   {
     title: "ADVANCING MANAGEMENT RESEARCH",
@@ -64,7 +64,7 @@ const journals = [
     publisher: "Liceo de Cagayan University",
     publisherLink: "https://liceo.edu.ph",
     image: "journals/ldcuj7.jpg",
-    link: "https://asianscientificjournals.com/new/publication/",
+    link: "https://asianscientificjournal.com",
   },
   {
     title: "ADVANCING BIOLOGY RESEARCH",
@@ -72,7 +72,7 @@ const journals = [
     publisher: "Liceo de Cagayan University",
     publisherLink: "https://liceo.edu.ph",
     image: "journals/ldcuj8.jpg",
-    link: "https://asianscientificjournals.com/new/publication/",
+    link: "https://asianscientificjournal.com",
   },
   {
     title: "ADVANCING EDUCATION RESEARCH",
@@ -80,7 +80,7 @@ const journals = [
     publisher: "Liceo de Cagayan University",
     publisherLink: "https://liceo.edu.ph",
     image: "journals/ldcuj9.jpg",
-    link: "https://asianscientificjournals.com/new/publication/",
+    link: "https://asianscientificjournal.com",
   },
   {
     title: "ADVANCING PSYCHOLOGY RESEARCH",
@@ -88,7 +88,7 @@ const journals = [
     publisher: "Liceo de Cagayan University",
     publisherLink: "https://liceo.edu.ph",
     image: "journals/ldcuj11.jpg",
-    link: "https://asianscientificjournals.com/new/publication/index_php/apsyr/",
+    link: "https://asianscientificjournal.com",
   },
   {
     title: "ADVANCING PHYSICAL THERAPY RESEARCH",
@@ -96,7 +96,7 @@ const journals = [
     publisher: "Liceo de Cagayan University",
     publisherLink: "https://liceo.edu.ph",
     image: "journals/ldcuj10.jpg",
-    link: "https://asianscientificjournals.com/new/publication/index_php/aptr/",
+    link: "https://asianscientificjournal.com",
   },
 ];
 
@@ -139,7 +139,7 @@ const Journals = () => {
 
       <div className="mt-6 sm:mt-10 flex justify-center">
         <a
-          href="https://asianscientificjournals.com/new/publication/"
+          href="https://asianscientificjournal.com"
           target="_blank"
           rel="noopener noreferrer"
           className="bg-black text-white px-6 sm:px-8 py-2 sm:py-2.5 text-xs sm:text-sm font-semibold rounded-full hover:bg-gray-800 transition"

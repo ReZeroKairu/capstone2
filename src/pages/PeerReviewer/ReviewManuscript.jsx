@@ -516,7 +516,7 @@ export default function ReviewManuscript() {
                     "Completed",
                   ].includes(m.status) && (
                     <DeadlineBadge
-                      startDate={(() => {
+                      start={(() => {
                         // Try to get the respondedAt date first
                         const respondedAt =
                           m.assignedReviewersMeta?.[reviewerId]?.respondedAt;
@@ -536,7 +536,7 @@ export default function ReviewManuscript() {
                         // Default to current date if no valid dates found
                         return new Date();
                       })()}
-                      endDate={(() => {
+                      end={(() => {
                         const deadline =
                           m.assignedReviewersMeta?.[reviewerId]?.deadline;
                         if (deadline) {

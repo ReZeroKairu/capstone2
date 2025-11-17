@@ -72,6 +72,19 @@ export const useManuscriptStatus = () => {
       const manuscript = { id: manuscriptDoc.id, ...manuscriptDoc.data() };
       const currentTime = new Date();
 
+      // Check if there are any accepted reviewers when trying to set to Peer Reviewer Reviewing
+      if (newStatus === "Peer Reviewer Reviewing") {
+        const hasAcceptedReviewers = manuscript.assignedReviewers?.some(reviewerId => {
+          const meta = manuscript.assignedReviewersMeta?.[reviewerId];
+          return meta?.invitationStatus === 'accepted';
+        });
+
+        if (!hasAcceptedReviewers) {
+          console.log('No accepted reviewers found, keeping status as Assigning Peer Reviewer');
+          return; // Don't update the status
+        }
+      }
+
       const updateData = {
         status: newStatus,
         lastUpdated: currentTime,

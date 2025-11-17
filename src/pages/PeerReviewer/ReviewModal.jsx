@@ -5,7 +5,7 @@ import {
   resolveStoragePathToUrl,
 } from "./helpers/fileHelpers";
 import DeadlineBadge from "./DeadlineBadge";
-import { parseDateSafe } from "../../utils/dateUtils";
+import { formatFirestoreDate } from "../../utils/dateUtils";
 
 /**
  * Props expected (mirror your original usage):
@@ -223,14 +223,7 @@ export default function ReviewModal({
                                 {submission.fileName || "Manuscript file"}
                               </p>
                               <p className="text-xs text-gray-500 mt-1">
-                                Submitted:{" "}
-                                {submission.submittedAt?.toDate
-                                  ? submission.submittedAt
-                                      .toDate()
-                                      .toLocaleString()
-                                  : new Date(
-                                      submission.submittedAt
-                                    ).toLocaleString()}
+                                Submitted: {parseFirestoreDate(submission.submittedAt).toLocaleString()}
                               </p>
                               {submission.revisionNotes &&
                                 submission.revisionNotes !==

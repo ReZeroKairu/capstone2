@@ -455,114 +455,155 @@ const Dashboard = ({ sidebarOpen }) => {
 };
 
   // Get the appropriate deadline based on user role and manuscript status
-  const getActiveDeadlineForManuscript = async (manuscript, role) => {
-    try {
-      // For Back to Admin status, always use the finalization deadline
-      if (manuscript.status === "Back to Admin") {
-        if (manuscript.finalizationDeadline) {
-          return manuscript.finalizationDeadline.toDate
-            ? manuscript.finalizationDeadline.toDate()
-            : new Date(manuscript.finalizationDeadline);
-        }
-        return null;
+ // In Dashboard.jsx, update the getActiveDeadline function
+// In Dashboard.jsx, update the getActiveDeadline function
+const getActiveDeadline = (manuscript, role, currentUserId) => {
+  try {
+    // For Back to Admin status, always use the finalization deadline for all roles
+    if (manuscript.status === 'Back to Admin') {
+      if (manuscript.finalizationDeadline) {
+        return manuscript.finalizationDeadline.toDate 
+          ? manuscript.finalizationDeadline.toDate() 
+          : new Date(manuscript.finalizationDeadline);
       }
+      return null;
+    }
 
-      // For revision statuses, use the manuscript's revisionDeadline
-      if (
-        manuscript.status === "For Revision (Minor)" ||
-        manuscript.status === "For Revision (Major)"
-      ) {
-        if (manuscript.revisionDeadline) {
-          return manuscript.revisionDeadline.toDate
-            ? manuscript.revisionDeadline.toDate()
-            : new Date(manuscript.revisionDeadline);
-        }
-        return null;
+    // For revision statuses, use the manuscript's revisionDeadline for all roles
+    if (
+      manuscript.status === 'For Revision (Minor)' || 
+      manuscript.status === 'For Revision (Major)'
+    ) {
+      if (manuscript.revisionDeadline) {
+        return manuscript.revisionDeadline.toDate 
+          ? manuscript.revisionDeadline.toDate() 
+          : new Date(manuscript.revisionDeadline);
       }
-
-      // For Admins and Researchers, show the latest reviewer invitation deadline
-      if (role === "Admin" || role === "Researcher") {
-        const latestDeadline = getLatestReviewerDeadline(manuscript);
-        if (latestDeadline) return latestDeadline;
-
-        // Fallback to manuscript-level deadline if no reviewer deadline found
-        if (manuscript.invitationDeadline) {
-          return manuscript.invitationDeadline.toDate
-            ? manuscript.invitationDeadline.toDate()
-            : new Date(manuscript.invitationDeadline);
-        }
-      }
-
-      // For peer reviewers, show their individual deadline
-      if (role === "Peer Reviewer" && user?.uid) {
-        const reviewerMeta = manuscript.assignedReviewersMeta?.[user.uid];
-        if (reviewerMeta?.deadline) {
-          return reviewerMeta.deadline.toDate
-            ? reviewerMeta.deadline.toDate()
+      return null;
+    }
+    
+    // For Peer Reviewers, show their individual deadline only if they haven't submitted
+    if (role === 'Peer Reviewer' && currentUserId) {
+      const reviewerMeta = manuscript.assignedReviewersMeta?.[currentUserId];
+      if (reviewerMeta?.deadline) {
+        // Check if reviewer has already submitted for current version
+        const currentVersion = manuscript.versionNumber || 1;
+        const hasSubmitted = manuscript.reviewerSubmissions?.some(
+          sub => sub.reviewerId === currentUserId && 
+                (sub.manuscriptVersionNumber || 1) === currentVersion
+        );
+        
+        // Only return the deadline if the reviewer hasn't submitted for the current version
+        if (!hasSubmitted) {
+          return reviewerMeta.deadline.toDate 
+            ? reviewerMeta.deadline.toDate() 
             : new Date(reviewerMeta.deadline);
         }
       }
-
-      return null;
-    } catch (error) {
-      console.error("Error getting active deadline:", error);
       return null;
     }
-  };
 
+    // For Admins, Researchers, and Authors - find the appropriate deadline
+    if (['Admin', 'Researcher', 'Author'].includes(role) && manuscript.assignedReviewersMeta) {
+      const currentVersion = manuscript.versionNumber || 1;
+      let latestDeadline = null;
+      let latestDeadlineTime = 0;
+
+      Object.entries(manuscript.assignedReviewersMeta).forEach(([reviewerId, meta]) => {
+        // Skip declined reviewers or those without a deadline
+        if (meta.invitationStatus === 'declined' || !meta.deadline) {
+          return;
+        }
+
+        // Ensure reviewer is assigned to the current version
+        const assignedVersions = meta.assignedVersions || [];
+        const versionData = meta.versionData || {};
+        const isAssignedToCurrentVersion =
+          assignedVersions.includes(currentVersion) || versionData[currentVersion];
+
+        if (!isAssignedToCurrentVersion) {
+          return;
+        }
+
+        // Check if reviewer has already submitted for current version
+        const hasSubmitted = manuscript.reviewerSubmissions?.some(
+          sub => sub.reviewerId === reviewerId && 
+                (sub.manuscriptVersionNumber || 1) === currentVersion
+        );
+
+        if (hasSubmitted) {
+          return;
+        }
+
+        const reviewerDeadline = meta.deadline.toDate 
+          ? meta.deadline.toDate() 
+          : new Date(meta.deadline);
+
+        if (!latestDeadline || reviewerDeadline.getTime() > latestDeadlineTime) {
+          latestDeadline = reviewerDeadline;
+          latestDeadlineTime = reviewerDeadline.getTime();
+        }
+      });
+
+      if (latestDeadline) {
+        return latestDeadline;
+      }
+    }
+
+    // Fallback to manuscript-level deadlines
+    if (manuscript.invitationDeadline) {
+      return manuscript.invitationDeadline.toDate 
+        ? manuscript.invitationDeadline.toDate() 
+        : new Date(manuscript.invitationDeadline);
+    }
+
+    if (manuscript.reviewDeadline) {
+      return manuscript.reviewDeadline.toDate 
+        ? manuscript.reviewDeadline.toDate() 
+        : new Date(manuscript.reviewDeadline);
+    }
+
+    return null;
+  } catch (error) {
+    console.error('Error getting active deadline:', error);
+    return null;
+  }
+};
   // Load active deadlines for all manuscripts
   useEffect(() => {
     const loadDeadlines = async () => {
       const deadlines = {};
+      const currentUserId = user?.uid;
 
       for (const manuscript of manuscripts) {
         try {
           // Skip loading deadlines for completed or rejected manuscripts
-          if (
-            ["For Publication", "Rejected", "Peer Reviewer Rejected"].includes(
-              manuscript.status
-            )
-          ) {
+          if (["For Publication", "Rejected", "Peer Reviewer Rejected"].includes(manuscript.status)) {
             continue;
           }
 
           // For Peer Reviewers, only show their own assigned manuscripts
           if (role === "Peer Reviewer") {
-            const isAssigned =
-              manuscript.assignedReviewers?.includes(user?.uid) ||
-              manuscript.assignedReviewersMeta?.[user?.uid]
-                ?.invitationStatus === "accepted";
-
-            if (!isAssigned) {
-              continue; // Skip manuscripts not assigned to this reviewer
-            }
+            const isAssigned = manuscript.assignedReviewers?.includes(currentUserId) ||
+                             manuscript.assignedReviewersMeta?.[currentUserId]?.invitationStatus === "accepted";
+            if (!isAssigned) continue;
           }
 
-          // Get the appropriate deadline based on role and status
-          const deadline = await getActiveDeadlineForManuscript(
-            manuscript,
-            role
-          );
+          const deadline = getActiveDeadline(manuscript, role, currentUserId);
 
-          // Only set the deadline if it exists and is in the future
+          // Process the deadline if found
           if (deadline) {
-            const deadlineDate =
-              deadline instanceof Date
-                ? deadline
-                : deadline.toDate
-                ? deadline.toDate()
-                : new Date(deadline);
-
-            if (deadlineDate > new Date()) {
+            const deadlineDate = deadline.toDate ? deadline.toDate() : new Date(deadline);
+            // Only show future deadlines or those within the last 7 days
+            const oneWeekAgo = new Date();
+            oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+            
+            if (deadlineDate > oneWeekAgo) {
               deadlines[manuscript.id] = deadlineDate;
             }
           }
         } catch (error) {
-          console.error(
-            "Error loading deadline for manuscript:",
-            manuscript.id,
-            error
-          );
+          console.error("Error loading deadline for manuscript:", manuscript.id, error);
         }
       }
 
@@ -969,6 +1010,8 @@ const Dashboard = ({ sidebarOpen }) => {
                         "For Revision",
                         "For Revision (Minor)",
                         "For Revision (Major)",
+                        "Peer Reviewer Assigned",
+                        "Peer Reviewer Reviewing"
                       ].includes(m.status) ||
                         !m.reviewerSubmissions?.some(
                           (s) => s.reviewerId === user?.uid
