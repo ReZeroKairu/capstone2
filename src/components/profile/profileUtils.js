@@ -6,35 +6,34 @@
 export const validateProfile = (profile) => {
   // Basic required fields for all users
   const requiredFields = [
-    'firstName',
-    'lastName',
-    'email',
-    'phone',
-    'department'
+    "firstName",
+    "lastName",
+    "email",
+    "phone",
+    "department",
   ];
 
   // Role-specific required fields
-  if (profile.role === 'Researcher') {
-    requiredFields.push('institution', 'fieldOfStudy', 'researchInterests');
-  } else if (profile.role === 'Peer Reviewer') {
+  if (profile.role === "Researcher") {
+    requiredFields.push("institution", "fieldOfStudy", "researchInterests");
+  } else if (profile.role === "Peer Reviewer") {
     requiredFields.push(
-      'affiliation', 
-      'specialty', 
-      'expertise',
-      'education',
-      'cvUrl'  // CV is required for peer reviewers
+      "affiliation",
+      "expertise",
+      "education",
+      "cvUrl" // CV is required for peer reviewers
     );
   }
 
-  const missingFields = requiredFields.filter(field => {
+  const missingFields = requiredFields.filter((field) => {
     const value = profile[field];
     // Check if the value is empty or contains only whitespace
-    return !value || (typeof value === 'string' && value.trim() === '');
+    return !value || (typeof value === "string" && value.trim() === "");
   });
 
   return {
     valid: missingFields.length === 0,
-    missingFields
+    missingFields,
   };
 };
 
@@ -47,49 +46,47 @@ export const getProfileCompletionStatus = (profile) => {
   if (!profile) {
     return {
       complete: false,
-      message: 'No profile data available',
-      missingFields: []
+      message: "No profile data available",
+      missingFields: [],
     };
   }
 
   const missingFields = [];
-  
+
   // Basic info
   if (!profile.firstName?.trim() || !profile.lastName?.trim()) {
-    missingFields.push('Full name');
+    missingFields.push("Full name");
   }
   if (!profile.email?.trim()) {
-    missingFields.push('Email address');
+    missingFields.push("Email address");
   }
   if (!profile.phone?.trim()) {
-    missingFields.push('Phone number');
+    missingFields.push("Phone number");
   }
 
   // Peer reviewer specific
-  if (profile.role === 'Peer Reviewer') {
+  if (profile.role === "Peer Reviewer") {
     if (!profile.affiliation?.trim()) {
-      missingFields.push('Institutional affiliation');
-    }
-    if (!profile.specialty?.trim()) {
-      missingFields.push('Specialty');
+      missingFields.push("Institutional affiliation");
     }
     if (!profile.expertise?.trim()) {
-      missingFields.push('At least one area of expertise');
+      missingFields.push("At least one area of expertise");
     }
     if (!profile.education?.trim()) {
-      missingFields.push('Education details');
+      missingFields.push("Education details");
     }
     if (!profile.cvUrl) {
-      missingFields.push('CV upload');
+      missingFields.push("CV upload");
     }
   }
 
   return {
     complete: missingFields.length === 0,
-    message: missingFields.length > 0 
-      ? `Please complete the following: ${missingFields.join(', ')}`
-      : 'Your profile is complete!',
-    missingFields
+    message:
+      missingFields.length > 0
+        ? `Please complete the following: ${missingFields.join(", ")}`
+        : "Your profile is complete!",
+    missingFields,
   };
 };
 
@@ -100,26 +97,27 @@ export const getProfileCompletionStatus = (profile) => {
  */
 export const checkProfileComplete = (profile) => {
   if (!profile) return false;
-  
+
   const validation = validateProfile(profile);
-  
+
   // Additional checks beyond basic validation
-  if (profile.role === 'Researcher') {
-    return validation.valid && 
-           profile.researchInterests && 
-           profile.researchInterests.trim() !== '';
-  } else if (profile.role === 'Peer Reviewer') {
+  if (profile.role === "Researcher") {
+    return (
+      validation.valid &&
+      profile.researchInterests &&
+      profile.researchInterests.trim() !== ""
+    );
+  } else if (profile.role === "Peer Reviewer") {
     // Define all required fields and their human-readable names
     const requiredFields = {
-      firstName: 'First Name',
-      lastName: 'Last Name',
-      email: 'Email',
-      phone: 'Phone Number',
-      affiliation: 'Institutional Affiliation',
-      specialty: 'Specialty',
-      education: 'Education Details',
-      expertise: 'Areas of Expertise',
-      cvUrl: 'CV Upload'
+      firstName: "First Name",
+      lastName: "Last Name",
+      email: "Email",
+      phone: "Phone Number",
+      affiliation: "Institutional Affiliation",
+      education: "Education Details",
+      expertise: "Areas of Expertise",
+      cvUrl: "CV Upload",
     };
 
     // Check each required field
@@ -128,39 +126,40 @@ export const checkProfileComplete = (profile) => {
 
     for (const [field, label] of Object.entries(requiredFields)) {
       let isValid = false;
-      
-      if (field === 'expertise') {
+
+      if (field === "expertise") {
         // Handle cases where expertise might be a string, array, or undefined
         if (Array.isArray(profile[field])) {
           isValid = profile[field].length > 0;
-        } else if (typeof profile[field] === 'string') {
+        } else if (typeof profile[field] === "string") {
           // If it's a string, check if it's not empty
-          isValid = profile[field].trim() !== '';
+          isValid = profile[field].trim() !== "";
         } else {
           isValid = false;
         }
-      } else if (field === 'cvUrl') {
+      } else if (field === "cvUrl") {
         isValid = !!profile[field];
       } else {
         isValid = !!profile[field]?.toString()?.trim();
       }
-      
-      fieldStatus[`has${field.charAt(0).toUpperCase() + field.slice(1)}`] = isValid;
+
+      fieldStatus[`has${field.charAt(0).toUpperCase() + field.slice(1)}`] =
+        isValid;
       if (!isValid) {
         missingFields.push(label);
       }
     }
-    
+
     const isComplete = missingFields.length === 0;
-    
+
     if (!isComplete) {
-      console.log('Profile incomplete. Missing fields:', fieldStatus);
-      console.log('Missing required fields:', missingFields);
+      console.log("Profile incomplete. Missing fields:", fieldStatus);
+      console.log("Missing required fields:", missingFields);
     }
-    
+
     return isComplete;
   }
-  
+
   return validation.valid;
 };
 
@@ -172,29 +171,29 @@ export const checkProfileComplete = (profile) => {
  */
 export const smoothScrollTo = (element, offset = 0, duration = 300) => {
   if (!element) return;
-  
+
   const start = window.scrollY;
-  const target = element.getBoundingClientRect().top + window.pageYOffset - offset;
+  const target =
+    element.getBoundingClientRect().top + window.pageYOffset - offset;
   const change = target - start;
   const startTime = performance.now();
-  
-  const easeInOut = t => t < 0.5 
-    ? 4 * t * t * t 
-    : 1 - Math.pow(-2 * t + 2, 3) / 2;
-  
+
+  const easeInOut = (t) =>
+    t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+
   const scroll = (currentTime) => {
     const elapsedTime = currentTime - startTime;
     const progress = Math.min(elapsedTime / duration, 1);
     const easedProgress = easeInOut(progress);
     const scrollAmount = start + change * easedProgress;
-    
+
     window.scrollTo(0, scrollAmount);
-    
+
     if (elapsedTime < duration) {
       requestAnimationFrame(scroll);
     }
   };
-  
+
   requestAnimationFrame(scroll);
 };
 

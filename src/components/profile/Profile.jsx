@@ -10,12 +10,12 @@ import ResearcherForm from "./ResearcherForm";
 import PeerReviewerForm from "./PeerReviewerForm";
 import ProfilePhoto from "./ProfilePhoto";
 import { UserLogService } from "../../utils/userLogService";
-import { 
-  validateProfile, 
-  checkProfileComplete, 
-  fileToBase64, 
+import {
+  validateProfile,
+  checkProfileComplete,
+  fileToBase64,
   capitalizeWords,
-  getProfileCompletionStatus 
+  getProfileCompletionStatus,
 } from "./profileUtils";
 
 function Profile() {
@@ -38,7 +38,6 @@ function Profile() {
     expertise: "",
     interests: "",
     education: "",
-    specialty: "",
   });
   const [researcherInfo, setResearcherInfo] = useState({
     institution: "",
@@ -50,100 +49,109 @@ function Profile() {
   const originalPhotoRef = useRef(null);
 
   // Show message helper
-  const showMessage = useCallback((text, type) => {
-    setMessage(text);
-    setMessageType(type);
-    if (messageTimeout) clearTimeout(messageTimeout);
-    const timeout = setTimeout(() => {
-      setMessage("");
-      setMessageType("");
-    }, 5000);
-    setMessageTimeout(timeout);
+  const showMessage = useCallback(
+    (text, type) => {
+      setMessage(text);
+      setMessageType(type);
+      if (messageTimeout) clearTimeout(messageTimeout);
+      const timeout = setTimeout(() => {
+        setMessage("");
+        setMessageType("");
+      }, 5000);
+      setMessageTimeout(timeout);
 
-    if (messageRef.current) {
-      messageRef.current.scrollIntoView({ behavior: "smooth" });
-    } else {
-      window.scrollTo({ top: 100, behavior: "smooth" });
-    }
-  }, [messageTimeout]);
+      if (messageRef.current) {
+        messageRef.current.scrollIntoView({ behavior: "smooth" });
+      } else {
+        window.scrollTo({ top: 100, behavior: "smooth" });
+      }
+    },
+    [messageTimeout]
+  );
 
   // Fetch profile data
-  const fetchProfile = useCallback(async (userId) => {
-    try {
-      const userDoc = await getDoc(doc(db, "Users", userId));
-      if (userDoc.exists()) {
-        const userData = userDoc.data();
-        const profilePhoto = userData.photoURL || userData.externalPhotoURL || userData.photo || null;
-        
-        // Initialize weekly updates if not exists
-        if (userData.weeklyUpdates) {
-          setWeeklyUpdates({
-            count: userData.weeklyUpdates.count || 0,
-            weekStart: userData.weeklyUpdates.weekStart || getStartOfWeek(),
-            lastUpdated: userData.weeklyUpdates.lastUpdated || null
-          });
+  const fetchProfile = useCallback(
+    async (userId) => {
+      try {
+        const userDoc = await getDoc(doc(db, "Users", userId));
+        if (userDoc.exists()) {
+          const userData = userDoc.data();
+          const profilePhoto =
+            userData.photoURL ||
+            userData.externalPhotoURL ||
+            userData.photo ||
+            null;
+
+          // Initialize weekly updates if not exists
+          if (userData.weeklyUpdates) {
+            setWeeklyUpdates({
+              count: userData.weeklyUpdates.count || 0,
+              weekStart: userData.weeklyUpdates.weekStart || getStartOfWeek(),
+              lastUpdated: userData.weeklyUpdates.lastUpdated || null,
+            });
+          } else {
+            // Initialize with default values
+            setWeeklyUpdates({
+              count: 0,
+              weekStart: getStartOfWeek(),
+              lastUpdated: null,
+            });
+          }
+
+          const profileData = {
+            id: userDoc.id,
+            ...userData,
+            photoURL: profilePhoto,
+          };
+
+          setProfile(profileData);
+          originalPhotoRef.current = profilePhoto;
+          setOriginalFirstName(userData.firstName || "");
+          setOriginalMiddleName(userData.middleName || "");
+          setOriginalLastName(userData.lastName || "");
+
+          // Set role-specific info
+          if (userData.role === "Peer Reviewer") {
+            setPeerReviewerInfo({
+              affiliation: userData.affiliation || "",
+              expertise: userData.expertise || "",
+              interests: userData.interests || "",
+              education: userData.education || "",
+            });
+          } else if (userData.role === "Researcher") {
+            setResearcherInfo({
+              institution: userData.institution || "",
+              fieldOfStudy: userData.fieldOfStudy || "",
+              education: userData.education || "",
+              researchInterests: userData.researchInterests || "",
+            });
+          }
+
+          // Check if profile is complete
+          const completionStatus = getProfileCompletionStatus(profileData);
+          setIsProfileComplete(completionStatus.complete);
+
+          // Log the completion status for debugging
+          if (!completionStatus.complete) {
+            console.log("Profile completion status:", {
+              complete: completionStatus.complete,
+              message: completionStatus.message,
+              missingFields: completionStatus.missingFields,
+            });
+          }
         } else {
-          // Initialize with default values
-          setWeeklyUpdates({
-            count: 0,
-            weekStart: getStartOfWeek(),
-            lastUpdated: null
-          });
+          showMessage("Profile not found.", "error");
+          setProfile(null);
         }
-        
-        const profileData = {
-          id: userDoc.id,
-          ...userData,
-          photoURL: profilePhoto,
-        };
-        
-        setProfile(profileData);
-        originalPhotoRef.current = profilePhoto;
-        setOriginalFirstName(userData.firstName || "");
-        setOriginalMiddleName(userData.middleName || "");
-        setOriginalLastName(userData.lastName || "");
-        
-        // Set role-specific info
-        if (userData.role === "Peer Reviewer") {
-          setPeerReviewerInfo({
-            affiliation: userData.affiliation || "",
-            expertise: userData.expertise || "",
-            interests: userData.interests || "",
-            education: userData.education || "",
-            specialty: userData.specialty || "",
-          });
-        } else if (userData.role === "Researcher") {
-          setResearcherInfo({
-            institution: userData.institution || "",
-            fieldOfStudy: userData.fieldOfStudy || "",
-            education: userData.education || "",
-            researchInterests: userData.researchInterests || "",
-          });
-        }
-        
-        // Check if profile is complete
-        const completionStatus = getProfileCompletionStatus(profileData);
-        setIsProfileComplete(completionStatus.complete);
-        
-        // Log the completion status for debugging
-        if (!completionStatus.complete) {
-          console.log('Profile completion status:', {
-            complete: completionStatus.complete,
-            message: completionStatus.message,
-            missingFields: completionStatus.missingFields
-          });
-        }
-      } else {
-        showMessage("Profile not found.", "error");
-        setProfile(null);
+      } catch (error) {
+        console.error("Error fetching profile:", error);
+        showMessage("Failed to fetch profile.", "error");
+      } finally {
+        setLoading(false);
       }
-    } catch (error) {
-      console.error("Error fetching profile:", error);
-      showMessage("Failed to fetch profile.", "error");
-    } finally {
-      setLoading(false);
-    }
-  }, [showMessage]);
+    },
+    [showMessage]
+  );
 
   useEffect(() => {
     if (userId) {
@@ -152,101 +160,113 @@ function Profile() {
       fetchProfile(currentUser.uid);
     } else {
       // No user ID and no current user, redirect to login
-      navigate('/login');
+      navigate("/login");
     }
   }, [userId, currentUser, fetchProfile, navigate]);
 
   const [formData, setFormData] = useState({
     // Basic Info
-    firstName: '',
-    middleName: '',
-    lastName: '',
-    email: '',
-    phone: '',
-    
+    firstName: "",
+    middleName: "",
+    lastName: "",
+    email: "",
+    phone: "",
+
     // Common Fields
-    department: '',
-    
+    department: "",
+
     // Researcher Info
-    institution: '',
-    fieldOfStudy: '',
-    education: '',
-    researchInterests: '',
-    
+    institution: "",
+    fieldOfStudy: "",
+    education: "",
+    researchInterests: "",
+
     // Peer Reviewer Info
-    affiliation: '',
-    expertise: '',
-    interests: '',
-    specialty: ''
+    affiliation: "",
+    expertise: "",
+    interests: "",
   });
-  
+
   // Track weekly updates
   const [weeklyUpdates, setWeeklyUpdates] = useState({
     count: 0,
     weekStart: getStartOfWeek(),
-    lastUpdated: null
+    lastUpdated: null,
   });
-  
+
   // Helper function to get start of current week (Sunday)
   function getStartOfWeek() {
     const now = new Date();
     const day = now.getDay(); // 0 = Sunday, 1 = Monday, etc.
     const diff = now.getDate() - day; // Adjust to Sunday
     const sunday = new Date(now.setDate(diff));
-    return sunday.toISOString().split('T')[0]; // YYYY-MM-DD format
+    return sunday.toISOString().split("T")[0]; // YYYY-MM-DD format
   }
-  
+
   // Check if user can update profile (max 5 times per week, except for admins)
-  const canUpdateProfile = useCallback((userRole) => {
-    // Admins have unlimited updates
-    if (userRole === 'Admin') {
-      return true;
-    }
-    
-    const today = new Date().toISOString().split('T')[0];
-    
-    // If it's a new week, reset the counter
-    if (weeklyUpdates.weekStart !== getStartOfWeek()) {
-      return true; // Allow update and reset counter
-    }
-    
-    // Check if user has updates left this week
-    return weeklyUpdates.count < 5;
-  }, [weeklyUpdates]);
-  
+  const canUpdateProfile = useCallback(
+    (userRole) => {
+      // Admins have unlimited updates
+      if (userRole === "Admin") {
+        return true;
+      }
+
+      const today = new Date().toISOString().split("T")[0];
+
+      // If it's a new week, reset the counter
+      if (weeklyUpdates.weekStart !== getStartOfWeek()) {
+        return true; // Allow update and reset counter
+      }
+
+      // Check if user has updates left this week
+      return weeklyUpdates.count < 5;
+    },
+    [weeklyUpdates]
+  );
+
   // Update weekly update count
-  const updateWeeklyCount = useCallback(async (userId) => {
-    const today = new Date().toISOString().split('T')[0];
-    const weekStart = getStartOfWeek();
-    
-    // If it's a new week, reset the counter
-    if (weeklyUpdates.weekStart !== weekStart) {
-      setWeeklyUpdates({
-        count: 1,
-        weekStart,
-        lastUpdated: today
-      });
-    } else {
-      // Increment the counter
-      setWeeklyUpdates(prev => ({
-        ...prev,
-        count: prev.count + 1,
-        lastUpdated: today
-      }));
-    }
-    
-    // Update in Firestore
-    if (userId) {
-      const userRef = doc(db, "Users", userId);
-      await updateDoc(userRef, {
-        weeklyUpdates: {
-          count: weeklyUpdates.weekStart === weekStart ? weeklyUpdates.count + 1 : 1,
-          weekStart: weekStart,
-          lastUpdated: today
-        }
-      }, { merge: true });
-    }
-  }, [weeklyUpdates]);
+  const updateWeeklyCount = useCallback(
+    async (userId) => {
+      const today = new Date().toISOString().split("T")[0];
+      const weekStart = getStartOfWeek();
+
+      // If it's a new week, reset the counter
+      if (weeklyUpdates.weekStart !== weekStart) {
+        setWeeklyUpdates({
+          count: 1,
+          weekStart,
+          lastUpdated: today,
+        });
+      } else {
+        // Increment the counter
+        setWeeklyUpdates((prev) => ({
+          ...prev,
+          count: prev.count + 1,
+          lastUpdated: today,
+        }));
+      }
+
+      // Update in Firestore
+      if (userId) {
+        const userRef = doc(db, "Users", userId);
+        await updateDoc(
+          userRef,
+          {
+            weeklyUpdates: {
+              count:
+                weeklyUpdates.weekStart === weekStart
+                  ? weeklyUpdates.count + 1
+                  : 1,
+              weekStart: weekStart,
+              lastUpdated: today,
+            },
+          },
+          { merge: true }
+        );
+      }
+    },
+    [weeklyUpdates]
+  );
 
   // Initialize form data when profile is loaded
   useEffect(() => {
@@ -254,45 +274,48 @@ function Profile() {
       // Create base form data with all possible fields
       const baseFormData = {
         // Basic info
-        firstName: profile.firstName || '',
-        middleName: profile.middleName || '',
-        lastName: profile.lastName || '',
-        email: profile.email || '',
-        phone: profile.phone || '',
-        department: profile.department || '',
-        
+        firstName: profile.firstName || "",
+        middleName: profile.middleName || "",
+        lastName: profile.lastName || "",
+        email: profile.email || "",
+        phone: profile.phone || "",
+        department: profile.department || "",
+
         // Common fields
-        institution: profile.institution || '',
-        fieldOfStudy: profile.fieldOfStudy || '',
-        education: profile.education || '',
-        researchInterests: profile.researchInterests || '',
-        
+        institution: profile.institution || "",
+        fieldOfStudy: profile.fieldOfStudy || "",
+        education: profile.education || "",
+        researchInterests: profile.researchInterests || "",
+
         // Peer reviewer fields
-        affiliation: profile.affiliation || '',
-        expertise: profile.expertise || '',
-        interests: profile.interests || '',
-        specialty: profile.specialty || '',
-        
+        affiliation: profile.affiliation || "",
+        expertise: profile.expertise || "",
+        interests: profile.interests || "",
+
         // Researcher specific fields
-        university: profile.university || '',
-        universityAddress: profile.universityAddress || '',
-        country: profile.country || '',
-        continent: profile.continent || '',
-        citizenship: profile.citizenship || '',
-        residentialAddress: profile.residentialAddress || '',
-        zipCode: profile.zipCode || '',
-        currentPosition: profile.currentPosition || '',
-        
+        university: profile.university || "",
+        universityAddress: profile.universityAddress || "",
+        country: profile.country || "",
+        continent: profile.continent || "",
+        citizenship: profile.citizenship || "",
+        residentialAddress: profile.residentialAddress || "",
+        zipCode: profile.zipCode || "",
+        currentPosition: profile.currentPosition || "",
+
         // Array fields (initialize with empty arrays if not present)
-        educations: profile.educations || (profile.education ? [{ school: profile.education, degree: '', year: '' }] : []),
+        educations:
+          profile.educations ||
+          (profile.education
+            ? [{ school: profile.education, degree: "", year: "" }]
+            : []),
         publications: profile.publications || [],
         presentations: profile.presentations || [],
-        awards: profile.awards || []
+        awards: profile.awards || [],
       };
-      
+
       // Set the form data
       setFormData(baseFormData);
-      
+
       // Set role-specific info for local state
       if (profile.role === "Peer Reviewer") {
         setPeerReviewerInfo({
@@ -300,7 +323,6 @@ function Profile() {
           expertise: profile.expertise || "",
           interests: profile.interests || "",
           education: profile.education || "",
-          specialty: profile.specialty || "",
         });
       } else if (profile.role === "Researcher") {
         setResearcherInfo({
@@ -315,7 +337,7 @@ function Profile() {
           citizenship: profile.citizenship || "",
           residentialAddress: profile.residentialAddress || "",
           zipCode: profile.zipCode || "",
-          currentPosition: profile.currentPosition || ""
+          currentPosition: profile.currentPosition || "",
         });
       }
     }
@@ -323,32 +345,35 @@ function Profile() {
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
-      [name]: value
+      [name]: value,
     }));
   };
 
   const handleSave = async (e) => {
     e?.preventDefault(); // Make it work with both form submit and programmatic calls
-    
+
     try {
       const userIdToUpdate = userId || currentUser?.uid;
       if (!userIdToUpdate) {
         showMessage("User not authenticated.", "error");
         return;
       }
-      
+
       // Get user role to check if they're an admin
       const userDoc = await getDoc(doc(db, "Users", userIdToUpdate));
       const userRole = userDoc.data()?.role;
-      
+
       // Check if user can update profile (admins bypass the limit)
       if (!canUpdateProfile(userRole)) {
-        showMessage("You've reached the weekly limit of 5 profile updates. Please try again next week.", "error");
+        showMessage(
+          "You've reached the weekly limit of 5 profile updates. Please try again next week.",
+          "error"
+        );
         return;
       }
-      
+
       // Create the updated fields object
       const fieldsToUpdate = {
         ...formData,
@@ -356,32 +381,37 @@ function Profile() {
         photoURL: profile.photoURL,
         updatedAt: new Date().toISOString(),
       };
-      
+
       // Handle file upload if a new photo was selected
       if (selectedFile) {
         fieldsToUpdate.photoURL = await fileToBase64(selectedFile);
       }
-      
+
       // Validate the updated profile
       const validation = validateProfile(fieldsToUpdate);
-      console.log('Validation result:', validation);
-      console.log('Form data being validated:', fieldsToUpdate);
-      
+      console.log("Validation result:", validation);
+      console.log("Form data being validated:", fieldsToUpdate);
+
       if (!validation.valid) {
-        const errorMessage = `Please fill in all required fields: ${validation.missingFields.join(', ')}`;
-        console.log('Validation failed. Missing fields:', validation.missingFields);
-        showMessage(errorMessage, 'error');
-        
+        const errorMessage = `Please fill in all required fields: ${validation.missingFields.join(
+          ", "
+        )}`;
+        console.log(
+          "Validation failed. Missing fields:",
+          validation.missingFields
+        );
+        showMessage(errorMessage, "error");
+
         if (validation.missingFields.length > 0) {
           const firstMissingField = validation.missingFields[0].toLowerCase();
           const fieldVariations = [
             firstMissingField,
-            firstMissingField + 'Input',
-            firstMissingField + '-input',
-            'input-' + firstMissingField,
-            firstMissingField.replace(/[A-Z]/g, m => '-' + m.toLowerCase())
+            firstMissingField + "Input",
+            firstMissingField + "-input",
+            "input-" + firstMissingField,
+            firstMissingField.replace(/[A-Z]/g, (m) => "-" + m.toLowerCase()),
           ];
-          
+
           let fieldElement = null;
           for (const fieldName of fieldVariations) {
             fieldElement = document.getElementById(fieldName);
@@ -389,16 +419,16 @@ function Profile() {
             fieldElement = document.querySelector(`[name="${fieldName}"]`);
             if (fieldElement) break;
           }
-          
+
           if (fieldElement) {
-            fieldElement.scrollIntoView({ 
-              behavior: 'smooth',
-              block: 'center'
+            fieldElement.scrollIntoView({
+              behavior: "smooth",
+              block: "center",
             });
             fieldElement.focus();
-            fieldElement.classList.add('ring-2', 'ring-red-500');
+            fieldElement.classList.add("ring-2", "ring-red-500");
             setTimeout(() => {
-              fieldElement.classList.remove('ring-2', 'ring-red-500');
+              fieldElement.classList.remove("ring-2", "ring-red-500");
             }, 3000);
           }
         }
@@ -408,15 +438,22 @@ function Profile() {
       // Update Firestore
       const userRef = doc(db, "Users", userIdToUpdate);
       await updateDoc(userRef, fieldsToUpdate);
-      
+
       // Update weekly update count
       await updateWeeklyCount(userIdToUpdate);
-      
+
       // Log the profile update - only basic information
       try {
         // Define which fields we want to log
-        const loggableFields = ['firstName', 'middleName', 'lastName', 'email', 'phone', 'department'];
-        
+        const loggableFields = [
+          "firstName",
+          "middleName",
+          "lastName",
+          "email",
+          "phone",
+          "department",
+        ];
+
         // Get changed fields (only loggable ones)
         const changedFields = [];
         for (const key of loggableFields) {
@@ -424,45 +461,47 @@ function Profile() {
             changedFields.push(key);
           }
         }
-        
+
         // Only log if there are relevant changes
         if (changedFields.length > 0) {
           await UserLogService.logUserActivity(
             userIdToUpdate,
-            'Updated Profile',
-            `Updated basic profile information: ${changedFields.join(', ')}`,
+            "Updated Profile",
+            `Updated basic profile information: ${changedFields.join(", ")}`,
             {
               changedFields,
-              actionType: 'profile_update',
+              actionType: "profile_update",
               previousValues: Object.fromEntries(
-                changedFields.map(field => [field, profile[field] || ''])
+                changedFields.map((field) => [field, profile[field] || ""])
               ),
               newValues: Object.fromEntries(
-                changedFields.map(field => [field, formData[field] || ''])
-              )
+                changedFields.map((field) => [field, formData[field] || ""])
+              ),
             },
             profile.email
           );
         }
       } catch (logError) {
-        console.error('Error logging profile update:', logError);
+        console.error("Error logging profile update:", logError);
         // Continue with the profile update even if logging fails
       }
 
       // Update local state
-      setProfile(prev => ({
+      setProfile((prev) => ({
         ...prev,
-        ...fieldsToUpdate
+        ...fieldsToUpdate,
       }));
-      
+
       if (selectedFile) {
         originalPhotoRef.current = fieldsToUpdate.photoURL;
         setSelectedFile(null);
       }
-      
+
       // Update original name references
-      if (fieldsToUpdate.firstName) setOriginalFirstName(fieldsToUpdate.firstName);
-      if (fieldsToUpdate.middleName !== undefined) setOriginalMiddleName(fieldsToUpdate.middleName);
+      if (fieldsToUpdate.firstName)
+        setOriginalFirstName(fieldsToUpdate.firstName);
+      if (fieldsToUpdate.middleName !== undefined)
+        setOriginalMiddleName(fieldsToUpdate.middleName);
       if (fieldsToUpdate.lastName) setOriginalLastName(fieldsToUpdate.lastName);
 
       // Create the complete profile object with all fields
@@ -470,34 +509,39 @@ function Profile() {
         ...profile,
         ...fieldsToUpdate,
         // Include role-specific fields
-        ...(profile.role === 'Peer Reviewer' ? peerReviewerInfo : {}),
-        ...(profile.role === 'Researcher' ? researcherInfo : {})
+        ...(profile.role === "Peer Reviewer" ? peerReviewerInfo : {}),
+        ...(profile.role === "Researcher" ? researcherInfo : {}),
       };
 
       // Update profile completion status using getProfileCompletionStatus
       const completionStatus = getProfileCompletionStatus(completeProfile);
-      console.log('Profile completion status:', completionStatus);
-      
+      console.log("Profile completion status:", completionStatus);
+
       // Update the profile state
       setProfile(completeProfile);
       setIsProfileComplete(completionStatus.complete);
-      
+
       // Log the completion status for debugging
       if (!completionStatus.complete) {
-        console.log('Profile still incomplete. Missing fields:', completionStatus.missingFields);
+        console.log(
+          "Profile still incomplete. Missing fields:",
+          completionStatus.missingFields
+        );
       }
-      
+
       // Show success message
       showMessage("Profile updated successfully!", "success");
-      
+
       // Only exit edit mode if the profile is complete
       if (completionStatus.complete) {
         setIsEditing(false);
       } else {
         // Show a message about what's still needed
-        showMessage(`Please complete: ${completionStatus.missingFields.join(', ')}`, 'info');
+        showMessage(
+          `Please complete: ${completionStatus.missingFields.join(", ")}`,
+          "info"
+        );
       }
-      
     } catch (error) {
       console.error("Error updating profile:", error);
       showMessage("Failed to update profile. Please try again.", "error");
@@ -507,25 +551,24 @@ function Profile() {
   const handleCancel = () => {
     setIsEditing(false);
     setSelectedFile(null);
-    
+
     // Reset form to original values
     if (profile) {
-      setProfile(prev => ({
+      setProfile((prev) => ({
         ...prev,
         firstName: originalFirstName,
         middleName: originalMiddleName,
         lastName: originalLastName,
       }));
-      
-      if (profile.role === 'Peer Reviewer') {
+
+      if (profile.role === "Peer Reviewer") {
         setPeerReviewerInfo({
           affiliation: profile.affiliation || "",
           expertise: profile.expertise || "",
           interests: profile.interests || "",
           education: profile.education || "",
-          specialty: profile.specialty || "",
         });
-      } else if (profile.role === 'Researcher') {
+      } else if (profile.role === "Researcher") {
         setResearcherInfo({
           institution: profile.institution || "",
           fieldOfStudy: profile.fieldOfStudy || "",
@@ -551,10 +594,14 @@ function Profile() {
     return (
       <div className="flex justify-center items-center min-h-screen">
         <div className="text-center p-6 bg-white rounded-lg shadow-md">
-          <h2 className="text-2xl font-bold text-red-600 mb-2">Profile Not Found</h2>
-          <p className="text-gray-600 mb-4">The requested profile could not be found.</p>
-          <button 
-            onClick={() => navigate('/')} 
+          <h2 className="text-2xl font-bold text-red-600 mb-2">
+            Profile Not Found
+          </h2>
+          <p className="text-gray-600 mb-4">
+            The requested profile could not be found.
+          </p>
+          <button
+            onClick={() => navigate("/")}
             className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
           >
             Return Home
@@ -565,45 +612,80 @@ function Profile() {
   }
 
   return (
-    <div className="container mx-auto px-4 pt-24 pb-8 max-w-4xl relative" style={{ zIndex: 1 }}>
-
+    <div
+      className="container mx-auto px-4 pt-24 pb-8 max-w-4xl relative"
+      style={{ zIndex: 1 }}
+    >
       {/* Status Message - Fixed Position */}
       {message && (
-        <div 
+        <div
           ref={messageRef}
           className={`fixed top-24 right-4 z-50 p-4 rounded-lg shadow-lg transform transition-all duration-300 ${
-            messageType === 'success' 
-              ? 'bg-green-500 text-white' 
-              : 'bg-red-500 text-white'
+            messageType === "success"
+              ? "bg-green-500 text-white"
+              : "bg-red-500 text-white"
           }`}
           style={{
-            maxWidth: '400px',
-            animation: 'slideIn 0.3s ease-out',
+            maxWidth: "400px",
+            animation: "slideIn 0.3s ease-out",
           }}
         >
           <div className="flex items-start">
-            {messageType === 'success' ? (
-              <svg className="w-6 h-6 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            {messageType === "success" ? (
+              <svg
+                className="w-6 h-6 mr-2 flex-shrink-0"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M5 13l4 4L19 7"
+                />
               </svg>
             ) : (
-              <svg className="w-6 h-6 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              <svg
+                className="w-6 h-6 mr-2 flex-shrink-0"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                />
               </svg>
             )}
             <div>
               <p className="font-semibold">
-                {messageType === 'success' ? 'Success!' : 'Attention Needed'}
+                {messageType === "success" ? "Success!" : "Attention Needed"}
               </p>
               <p className="text-sm opacity-90">{message}</p>
             </div>
-            <button 
-              onClick={() => setMessage('')}
+            <button
+              onClick={() => setMessage("")}
               className="ml-4 text-white opacity-70 hover:opacity-100 focus:outline-none"
               aria-label="Close message"
             >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              <svg
+                className="w-5 h-5"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M6 18L18 6M6 6l12 12"
+                />
               </svg>
             </button>
           </div>
@@ -635,13 +717,15 @@ function Profile() {
                 navigate(`/dashboard/${userId}`);
               } else {
                 // Otherwise, go to the current user's dashboard
-                navigate('/dashboard');
+                navigate("/dashboard");
               }
             }}
             className="flex items-center px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-colors"
           >
             <FontAwesomeIcon icon={faArrowLeft} className="mr-2" />
-            {userId && userId !== currentUser?.uid ? 'View User Dashboard' : 'Go to Dashboard'}
+            {userId && userId !== currentUser?.uid
+              ? "View User Dashboard"
+              : "Go to Dashboard"}
           </button>
           {!isEditing && (
             <button
@@ -656,54 +740,91 @@ function Profile() {
       </div>
 
       {/* Profile Completion Status */}
-      {!isProfileComplete && profile && profile.role !== 'Admin' && (
+      {!isProfileComplete && profile && profile.role !== "Admin" && (
         <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-6">
           <div className="flex">
             <div className="flex-shrink-0">
-              <svg className="h-5 w-5 text-yellow-500" viewBox="0 0 20 20" fill="currentColor">
-                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h2a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+              <svg
+                className="h-5 w-5 text-yellow-500"
+                viewBox="0 0 20 20"
+                fill="currentColor"
+              >
+                <path
+                  fillRule="evenodd"
+                  d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h2a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
+                  clipRule="evenodd"
+                />
               </svg>
             </div>
             <div className="ml-3">
               <h3 className="text-sm font-medium text-yellow-800">
-                {profile.role === 'Peer Reviewer' 
-                  ? 'Complete Your Peer Reviewer Profile'
-                  : 'Profile Incomplete'}
+                {profile.role === "Peer Reviewer"
+                  ? "Complete Your Peer Reviewer Profile"
+                  : "Profile Incomplete"}
               </h3>
               <div className="mt-1 text-sm text-yellow-700">
-                {profile.role === 'Peer Reviewer' ? (
+                {profile.role === "Peer Reviewer" ? (
                   <>
-                    <p className="font-medium">To be eligible for manuscript reviews, please ensure you have completed:</p>
+                    <p className="font-medium">
+                      To be eligible for manuscript reviews, please ensure you
+                      have completed:
+                    </p>
                     <ul className="list-disc pl-5 mt-2 space-y-1">
-                      {(!profile.firstName?.trim() || !profile.lastName?.trim() || !profile.phone?.trim()) ? (
-                        <li className="font-semibold">Your full name and contact information (Required)</li>
+                      {!profile.firstName?.trim() ||
+                      !profile.lastName?.trim() ||
+                      !profile.phone?.trim() ? (
+                        <li className="font-semibold">
+                          Your full name and contact information (Required)
+                        </li>
                       ) : (
-                        <li className="line-through text-gray-500">Your full name and contact information</li>
+                        <li className="line-through text-gray-500">
+                          Your full name and contact information
+                        </li>
                       )}
                       {!profile.affiliation?.trim() ? (
-                        <li className="font-semibold">Institutional affiliation (Required)</li>
+                        <li className="font-semibold">
+                          Institutional affiliation (Required)
+                        </li>
                       ) : (
-                        <li className="line-through text-gray-500">Institutional affiliation</li>
+                        <li className="line-through text-gray-500">
+                          Institutional affiliation
+                        </li>
                       )}
                       {!profile.expertise?.length ? (
-                        <li className="font-semibold">At least one area of expertise (Required)</li>
+                        <li className="font-semibold">
+                          At least one area of expertise (Required)
+                        </li>
                       ) : (
-                        <li className="line-through text-gray-500">At least one area of expertise</li>
+                        <li className="line-through text-gray-500">
+                          At least one area of expertise
+                        </li>
                       )}
-                      {(!profile.education?.trim() || !profile.specialty?.trim()) ? (
-                        <li className="font-semibold">Education and specialty details (Required)</li>
+
+                      {!profile.education?.trim() ? (
+                        <li className="font-semibold">
+                          Education details (Required)
+                        </li>
                       ) : (
-                        <li className="line-through text-gray-500">Education and specialty details</li>
+                        <li className="line-through text-gray-500">
+                          Education details
+                        </li>
                       )}
                       {!profile.cvUrl ? (
-                        <li className="font-semibold">CV/Resume upload (Required)</li>
+                        <li className="font-semibold">
+                          CV/Resume upload (Required)
+                        </li>
                       ) : (
-                        <li className="line-through text-gray-500">CV/Resume uploaded</li>
+                        <li className="line-through text-gray-500">
+                          CV/Resume uploaded
+                        </li>
                       )}
                     </ul>
                   </>
                 ) : (
-                  <p>Please complete all required fields to finish setting up your profile.</p>
+                  <p>
+                    Please complete all required fields to finish setting up
+                    your profile.
+                  </p>
                 )}
               </div>
             </div>
@@ -716,8 +837,12 @@ function Profile() {
         <div className="p-6">
           {/* Profile Photo */}
           <div className="flex justify-center mb-8">
-            <ProfilePhoto 
-              photoUrl={selectedFile ? URL.createObjectURL(selectedFile) : (profile.photoURL || '')}
+            <ProfilePhoto
+              photoUrl={
+                selectedFile
+                  ? URL.createObjectURL(selectedFile)
+                  : profile.photoURL || ""
+              }
               isEditing={isEditing}
               onPhotoChange={(file) => setSelectedFile(file)}
             />
@@ -729,8 +854,8 @@ function Profile() {
               <h2 className="text-xl font-semibold text-gray-800 mb-4 pb-2 border-b border-gray-200">
                 Basic Information
               </h2>
-              <BasicInfoForm 
-                profile={profile} 
+              <BasicInfoForm
+                profile={profile}
                 isEditing={isEditing}
                 formData={formData}
                 onChange={handleChange}
@@ -738,12 +863,12 @@ function Profile() {
             </div>
 
             {/* Role-Specific Information */}
-            {profile.role === 'Researcher' && (
+            {profile.role === "Researcher" && (
               <div className="mb-8">
                 <h2 className="text-xl font-semibold text-gray-800 mb-4 pb-2 border-b border-gray-200">
                   Researcher Information
                 </h2>
-                <ResearcherForm 
+                <ResearcherForm
                   profile={profile}
                   isEditing={isEditing}
                   formData={formData}
@@ -751,13 +876,13 @@ function Profile() {
                 />
               </div>
             )}
-            
-            {profile.role === 'Peer Reviewer' && (
+
+            {profile.role === "Peer Reviewer" && (
               <div className="mb-8">
                 <h2 className="text-xl font-semibold text-gray-800 mb-4 pb-2 border-b border-gray-200">
                   Peer Reviewer Information
                 </h2>
-                <PeerReviewerForm 
+                <PeerReviewerForm
                   profile={profile}
                   isEditing={isEditing}
                   formData={formData}
@@ -765,7 +890,7 @@ function Profile() {
                 />
               </div>
             )}
-            
+
             {/* Single Save Button */}
             {isEditing && (
               <div className="flex justify-end space-x-4 pt-6 border-t border-gray-200">
@@ -785,7 +910,6 @@ function Profile() {
               </div>
             )}
           </form>
-
         </div>
       </div>
     </div>
