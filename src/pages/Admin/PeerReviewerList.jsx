@@ -2,18 +2,23 @@ import React, { useState, useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { getAuth } from "firebase/auth";
 import { db } from "../../firebase/firebase";
-import { checkProfileComplete, getProfileCompletionStatus } from "../../components/profile/profileUtils";
+
+import {
+  checkProfileComplete,
+  getProfileCompletionStatus,
+} from "../../components/profile/profileUtils";
+import EmailService from "../../utils/emailService";
 import {
   collection,
   getDocs,
   doc,
   updateDoc,
-  query,  
+  query,
   where,
   getDoc,
   addDoc,
   serverTimestamp,
-  Timestamp
+  Timestamp,
 } from "firebase/firestore";
 import { FaSearch } from "react-icons/fa";
 
@@ -34,7 +39,7 @@ export default function PeerReviewerList() {
   const params = new URLSearchParams(location.search);
   const manuscriptId = params.get("manuscriptId");
   const deadlineParam = params.get("deadline"); // from URL if provided
-  
+
   // List of expertise options
   const expertiseOptions = [
     "", // Empty for 'All Expertises'
@@ -43,7 +48,7 @@ export default function PeerReviewerList() {
     "Biodiversity",
     "Health",
     "IT",
-    "Advancing Pharmacy"
+    "Advancing Pharmacy",
   ];
 
   const getPageNumbers = (current, total) => {
@@ -51,7 +56,11 @@ export default function PeerReviewerList() {
     const range = [];
     const rangeWithDots = [];
     for (let i = 1; i <= total; i++) {
-      if (i === 1 || i === total || (i >= current - delta && i <= current + delta))
+      if (
+        i === 1 ||
+        i === total ||
+        (i >= current - delta && i <= current + delta)
+      )
         range.push(i);
     }
     let prev = null;
@@ -68,76 +77,44 @@ export default function PeerReviewerList() {
 
   // These statuses will be counted towards the reviewer's active workload
   const ACTIVE_STATUSES = [
-    'Assigning Peer Reviewer',
-    'Peer Reviewer Assigned',
-    'Peer Reviewer Reviewing',
-    'For Revision (Minor)',
-    'For Revision (Major)',
-    'Back to Admin'
+    "Assigning Peer Reviewer",
+    "Peer Reviewer Assigned",
+    "Peer Reviewer Reviewing",
+    "For Revision (Minor)",
+    "For Revision (Major)",
+    "Back to Admin",
   ];
-  
+
   // These statuses indicate a revision is in progress
-  const REVISION_STATUSES = [
-    'For Revision (Minor)',
-    'For Revision (Major)'
-  ];
+  const REVISION_STATUSES = ["For Revision (Minor)", "For Revision (Major)"];
 
   const fetchReviewers = async () => {
     setLoading(true);
-    console.log('Fetching reviewers...');
+
     try {
       // Get all peer reviewers
       const usersSnap = await getDocs(collection(db, "Users"));
       const allUsers = usersSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
-      
+
       // Filter for peer reviewers with complete profiles
       const reviewersOnly = allUsers.filter((user) => {
         // Must be a peer reviewer
         if (user.role !== "Peer Reviewer") {
           if (user.role) {
-            console.log(`Skipping user ${user.email} - Not a peer reviewer (role: ${user.role})`);
           } else {
-            console.log(`Skipping user ${user.email} - No role specified`);
           }
           return false;
         }
-        
+
         // Get detailed completion status
         const completionStatus = getProfileCompletionStatus(user);
-        
-        // Log detailed profile information for debugging
-        console.log('Reviewer profile check:', {
-          email: user.email,
-          role: user.role,
-          isComplete: completionStatus.complete,
-          missingFields: completionStatus.missingFields,
-          profileData: {
-            firstName: user.firstName || 'Missing',
-            lastName: user.lastName || 'Missing',
-            email: user.email || 'Missing',
-            phone: user.phone ? 'Provided' : 'Missing',
-            expertise: Array.isArray(user.expertise) 
-              ? (user.expertise.length ? `[${user.expertise.join(', ')}]` : 'Empty Array') 
-              : `Not an array (${typeof user.expertise})`,
-            institution: user.institution || 'None',
-            affiliation: user.affiliation || 'Missing',
-            specialty: user.specialty || 'Missing',
-            education: user.education ? 'Provided' : 'Missing',
-            cvUrl: user.cvUrl ? 'Uploaded' : 'Missing',
-            updatedAt: user.updatedAt || 'Never'
-          }
-        });
-        
+
         if (!completionStatus.complete) {
-          console.log(`Reviewer ${user.email} is incomplete. Missing fields:`, completionStatus.missingFields);
         } else {
-          console.log(`Reviewer ${user.email} has a complete profile`);
         }
-        
+
         return completionStatus.complete;
       });
-      
-      console.log(`Found ${reviewersOnly.length} peer reviewers with complete profiles`);
 
       const reviewersWithCount = await Promise.all(
         reviewersOnly.map(async (r) => {
@@ -149,40 +126,28 @@ export default function PeerReviewerList() {
                 where("assignedReviewers", "array-contains", r.id)
               )
             );
-            
+
             // Log all manuscripts and their statuses for this reviewer with more details
-            console.log(`\n📋 Reviewer ${r.id} - All assigned manuscripts (${manuscriptsSnap.docs.length} total):`);
-            
+
             const statusCounts = {};
-            manuscriptsSnap.docs.forEach(doc => {
+            manuscriptsSnap.docs.forEach((doc) => {
               const data = doc.data();
-              const status = data.status || 'No Status';
+              const status = data.status || "No Status";
               statusCounts[status] = (statusCounts[status] || 0) + 1;
-              
-              console.log(`- ${doc.id}: "${status}"`);
-              console.log(`  Assigned: ${data.assignedAt ? new Date(data.assignedAt.seconds * 1000).toLocaleString() : 'N/A'}`);
-              console.log(`  Active: ${ACTIVE_STATUSES.includes(status) ? '✅' : '❌'}`);
-              console.log(`  Revision: ${REVISION_STATUSES.includes(status) ? '🔄' : '➖'}`);
             });
-            
+
             // Count only manuscripts with the exact statuses we care about
-            const activeManuscripts = manuscriptsSnap.docs.filter(doc => {
-              const status = doc.data().status || '';
+            const activeManuscripts = manuscriptsSnap.docs.filter((doc) => {
+              const status = doc.data().status || "";
               return ACTIVE_STATUSES.includes(status);
             });
-            
+
             // Count only manuscripts that are in revision status
-            const revisionManuscripts = manuscriptsSnap.docs.filter(doc => {
-              const status = doc.data().status || '';
+            const revisionManuscripts = manuscriptsSnap.docs.filter((doc) => {
+              const status = doc.data().status || "";
               return REVISION_STATUSES.includes(status);
             });
-            
-            console.log(`\n📊 Reviewer ${r.id} Summary:`);
-            console.log('Status Counts:', statusCounts);
-            console.log(`- Total assigned: ${manuscriptsSnap.docs.length}`);
-            console.log(`- Active manuscripts: ${activeManuscripts.length} (${ACTIVE_STATUSES.join(', ')})`);
-            console.log(`- In revision: ${revisionManuscripts.length} (${REVISION_STATUSES.join(', ')})`);
-            console.log(`- Other statuses: ${manuscriptsSnap.docs.length - activeManuscripts.length}`);
+
             return { ...r, assignedCount: activeManuscripts.length };
           } catch (error) {
             console.error(`Error processing reviewer ${r.id}:`, error);
@@ -206,7 +171,6 @@ export default function PeerReviewerList() {
         const settingsSnap = await getDoc(settingsRef);
         if (settingsSnap.exists() && settingsSnap.data().invitationDeadline) {
           setInvitationDeadline(settingsSnap.data().invitationDeadline);
-          console.log('Using invitation deadline from settings:', settingsSnap.data().invitationDeadline);
         }
       } catch (error) {
         console.error("Error fetching invitation deadline:", error);
@@ -216,7 +180,6 @@ export default function PeerReviewerList() {
   }, []);
 
   useEffect(() => {
-    console.log('useEffect triggered', { manuscriptId, refreshTrigger });
     if (manuscriptId) {
       fetchManuscriptData();
     }
@@ -230,26 +193,34 @@ export default function PeerReviewerList() {
       if (msSnap.exists()) {
         const data = msSnap.data();
         setManuscriptData(data);
-        
+
         // Get previous reviewers from submission history
         if (data.submissionHistory && data.submissionHistory.length > 1) {
           // Get reviewers from the most recent previous version
-          const previousVersion = data.submissionHistory[data.submissionHistory.length - 2];
+          const previousVersion =
+            data.submissionHistory[data.submissionHistory.length - 2];
           const prevReviewerIds = previousVersion.reviewers || [];
-          
+
           // Fetch reviewer details
           if (prevReviewerIds.length > 0) {
             const usersSnap = await getDocs(collection(db, "Users"));
-            const allUsers = usersSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
-            const prevReviewerData = allUsers.filter(u => prevReviewerIds.includes(u.id));
-            
-            // Add their previous decisions
-            const reviewersWithDecisions = prevReviewerData.map(reviewer => ({
-              ...reviewer,
-              previousDecision: previousVersion.reviewerDecisionMeta?.[reviewer.id]?.decision,
-              previousComment: previousVersion.reviewerDecisionMeta?.[reviewer.id]?.comment,
+            const allUsers = usersSnap.docs.map((d) => ({
+              id: d.id,
+              ...d.data(),
             }));
-            
+            const prevReviewerData = allUsers.filter((u) =>
+              prevReviewerIds.includes(u.id)
+            );
+
+            // Add their previous decisions
+            const reviewersWithDecisions = prevReviewerData.map((reviewer) => ({
+              ...reviewer,
+              previousDecision:
+                previousVersion.reviewerDecisionMeta?.[reviewer.id]?.decision,
+              previousComment:
+                previousVersion.reviewerDecisionMeta?.[reviewer.id]?.comment,
+            }));
+
             setPreviousReviewers(reviewersWithDecisions);
           }
         }
@@ -283,60 +254,54 @@ export default function PeerReviewerList() {
 
       if (!assigned.includes(reviewerId)) {
         const invitedAt = serverTimestamp();
-        
+
         // Get the deadline settings
         const settingsRef = doc(db, "deadlineSettings", "deadlines");
         const settingsSnap = await getDoc(settingsRef);
-        
+
         // Default to 7 days if no settings found
         let daysForDeadline = 7;
-        
+
         if (settingsSnap.exists()) {
           const settings = settingsSnap.data();
-          console.log("Settings loaded:", settings);
-          console.log("Manuscript status:", msData.status);
-          
+
           // Always use invitationDeadline for reviewer assignments, regardless of manuscript status
           daysForDeadline = settings.invitationDeadline || 7;
-          console.log(`Using invitation deadline of ${daysForDeadline} days for manuscript ${manuscriptId}`);
         }
 
         // Calculate the deadline - always use current date + invitation deadline days
         const deadlineDate = new Date();
         deadlineDate.setDate(deadlineDate.getDate() + daysForDeadline);
-        console.log('Setting deadline to:', deadlineDate);
-        
-        console.log('Setting deadline to:', deadlineDate);
-        
+
         // Create a Firestore Timestamp for the deadline
         let deadlineForFirestore = Timestamp.fromDate(deadlineDate);
 
-
         // Get current version
         const currentVersion = msData.versionNumber || 1;
-        
+
         // Get existing versions or initialize if doesn't exist
-        const existingVersions = assignedMeta[reviewerId]?.assignedVersions || [];
-        
+        const existingVersions =
+          assignedMeta[reviewerId]?.assignedVersions || [];
+
         // If this is a new version, ensure we're using the correct deadline from settings
         if (!existingVersions.includes(currentVersion)) {
           // Recalculate the deadline using the same logic as initial invite
           const settingsRef = doc(db, "deadlineSettings", "deadlines");
           const settingsSnap = await getDoc(settingsRef);
           let daysForDeadline = 7; // Default to 7 days if no settings found
-          
+
           if (settingsSnap.exists()) {
             const settings = settingsSnap.data();
             // Always use invitationDeadline for reviewer assignments, regardless of manuscript status
             daysForDeadline = settings.invitationDeadline || 7;
           }
-          
+
           // Recalculate the deadline
           const newDeadlineDate = new Date();
           newDeadlineDate.setDate(newDeadlineDate.getDate() + daysForDeadline);
           deadlineForFirestore = Timestamp.fromDate(newDeadlineDate);
         }
-        
+
         // ✅ Build reviewer metadata (admin-side)
         const newMeta = {
           ...(assignedMeta[reviewerId] || {}),
@@ -358,11 +323,10 @@ export default function PeerReviewerList() {
             [currentVersion]: {
               invitedAt: serverTimestamp(),
               deadline: deadlineForFirestore,
-              status: "pending"
-            }
-          }
+              status: "pending",
+            },
+          },
         };
-
 
         // Update Firestore
         const updatedAssigned = [...assigned, reviewerId];
@@ -371,10 +335,12 @@ export default function PeerReviewerList() {
         // Determine status: should remain "Assigning Peer Reviewer" until reviewers accept
         // Only change to "Peer Reviewer Assigned" if at least one reviewer has accepted
         const hasAcceptedReviewer = Object.values(updatedMeta).some(
-          meta => meta.invitationStatus === "accepted"
+          (meta) => meta.invitationStatus === "accepted"
         );
-        
-        const newStatus = hasAcceptedReviewer ? "Peer Reviewer Assigned" : "Assigning Peer Reviewer";
+
+        const newStatus = hasAcceptedReviewer
+          ? "Peer Reviewer Assigned"
+          : "Assigning Peer Reviewer";
 
         // Update Firestore
         const updateData = {
@@ -382,29 +348,66 @@ export default function PeerReviewerList() {
           assignedReviewersMeta: updatedMeta,
           status: newStatus,
         };
-        
-        console.log('Updating Firestore with:', updateData);
+
         await updateDoc(msRef, updateData);
-        console.log('Firestore update complete');
+
+        // Get reviewer details for email
+        const reviewerDoc = await getDoc(doc(db, "Users", reviewerId));
+        const reviewerData = reviewerDoc.data();
+
+        // Send invitation email
+        try {
+          const emailService = new EmailService();
+
+          const emailData = EmailService.createInvitationData(
+            reviewerData,
+            { id: manuscriptId, title: msData.title },
+            deadlineDate,
+            { displayName: currentUser.displayName, email: currentUser.email }
+          );
+
+          if (EmailService.validateEmailData(emailData)) {
+            const emailResult = await emailService.sendReviewerInvitation(
+              emailData
+            );
+          } else {
+            console.warn("Email data validation failed, skipping email send");
+          }
+        } catch (emailError) {
+          console.error("Failed to send invitation email:", emailError);
+          // Don't fail the entire process if email fails, but log it
+          // The reviewer is still assigned in Firestore
+        }
 
         // Update the local state immediately for better UX
-        setReviewers(prevReviewers => 
-          prevReviewers.map(reviewer => 
-            reviewer.id === reviewerId 
-              ? { ...reviewer, assignedCount: (reviewer.assignedCount || 0) + 1 }
+        setReviewers((prevReviewers) =>
+          prevReviewers.map((reviewer) =>
+            reviewer.id === reviewerId
+              ? {
+                  ...reviewer,
+                  assignedCount: (reviewer.assignedCount || 0) + 1,
+                }
               : reviewer
           )
         );
 
         // Send notification with deadline information
-        const notificationRef = collection(db, "Users", reviewerId, "Notifications");
+        const notificationRef = collection(
+          db,
+          "Users",
+          reviewerId,
+          "Notifications"
+        );
         const notificationDeadline = deadlineForFirestore.toDate();
-        const formattedDeadline = notificationDeadline.toLocaleDateString('en-US', { 
-          year: 'numeric', 
-          month: 'long', 
-          day: 'numeric' 
-        });
-        
+        const formattedDeadline = notificationDeadline.toLocaleDateString(
+          "en-US",
+          {
+            year: "numeric",
+            month: "long",
+            day: "numeric",
+          }
+        );
+
         await addDoc(notificationRef, {
           type: "reviewer_invitation",
           manuscriptId: manuscriptId,
@@ -413,15 +416,17 @@ export default function PeerReviewerList() {
           timestamp: serverTimestamp(),
           seen: false,
           title: "Invitation to Review Manuscript",
-          message: `You have been invited to review "${msData.title || "Untitled Manuscript"}" (Deadline: ${formattedDeadline})`,
+          message: `You have been invited to review "${
+            msData.title || "Untitled Manuscript"
+          }" (Deadline: ${formattedDeadline})`,
           actionUrl: `/reviewer-invitations`,
           invitedAt,
           deadline: deadlineForFirestore,
-          deadlineFormatted: formattedDeadline
+          deadlineFormatted: formattedDeadline,
         });
 
         // Trigger a complete refresh to ensure data consistency
-        setRefreshTrigger(prev => prev + 1);
+        setRefreshTrigger((prev) => prev + 1);
         alert("Reviewer successfully invited!");
       }
     } catch (err) {
@@ -432,41 +437,32 @@ export default function PeerReviewerList() {
 
   // Memoize the filtered reviewers to prevent unnecessary recalculations
   const filteredReviewers = React.useMemo(() => {
-    console.log('Filtering reviewers...', { 
-      reviewerCount: reviewers.length, 
-      searchQuery,
-      showAvailableOnly,
-      expertiseFilter
-    });
-    
     return reviewers.filter((reviewer) => {
       // Filter by availability if showAvailableOnly is true
       if (showAvailableOnly && reviewer.isAvailableForReview === false) {
-        console.log(`Filtering out reviewer ${reviewer.email} - not available for review`);
         return false;
       }
-      
+
       // Filter by expertise if selected
       if (expertiseFilter && reviewer.expertise !== expertiseFilter) {
-        console.log(`Filtering out reviewer ${reviewer.email} - expertise doesn't match`);
         return false;
       }
-      
+
       // Filter by search query if provided
       if (searchQuery) {
         const q = searchQuery.toLowerCase();
-        const matches = (
+        const matches =
           (reviewer.name && reviewer.name.toLowerCase().includes(q)) ||
           (reviewer.email && reviewer.email.toLowerCase().includes(q)) ||
-          (reviewer.firstName && reviewer.firstName.toLowerCase().includes(q)) ||
+          (reviewer.firstName &&
+            reviewer.firstName.toLowerCase().includes(q)) ||
           (reviewer.lastName && reviewer.lastName.toLowerCase().includes(q)) ||
-          (reviewer.expertise && reviewer.expertise.toLowerCase().includes(q))
-        );
+          (reviewer.expertise && reviewer.expertise.toLowerCase().includes(q));
         if (!matches) {
           return false;
         }
       }
-      
+
       return true;
     });
   }, [reviewers, searchQuery, showAvailableOnly, expertiseFilter]);
@@ -480,15 +476,18 @@ export default function PeerReviewerList() {
   };
 
   return (
-    <div className="p-4 pb-28 sm:p-8 bg-gray-50 min-h-screen pt-28 md:pt-24 relative mb-11">
+    <div className="p-4 pb-28 sm:p-8 bg-gray-50 min-h-screen pt-28 md:pt-24 relative my-4 mx-11">
       <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-6 sm:mb-10">
         <h2 className="text-2xl sm:text-3xl font-bold text-center md:text-left mb-4 md:mb-0 text-gray-800">
           Select Peer Reviewer
         </h2>
-        
+
         <div className="flex flex-col sm:flex-row items-center gap-4">
           <div className="w-full sm:w-auto">
-            <label htmlFor="expertise-filter" className="block text-sm font-medium text-gray-700 mb-1">
+            <label
+              htmlFor="expertise-filter"
+              className="block text-sm font-medium text-gray-700 mb-1"
+            >
               Filter by Expertise
             </label>
             <select
@@ -498,26 +497,30 @@ export default function PeerReviewerList() {
               className="block w-full sm:w-48 px-3 py-2 border border-gray-300 bg-white shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-sm"
             >
               <option value="">All Expertises</option>
-              {expertiseOptions.filter(opt => opt !== "").map((expertise) => (
-                <option key={expertise} value={expertise}>
-                  {expertise}
-                </option>
-              ))}
+              {expertiseOptions
+                .filter((opt) => opt !== "")
+                .map((expertise) => (
+                  <option key={expertise} value={expertise}>
+                    {expertise}
+                  </option>
+                ))}
             </select>
           </div>
-          
+
           <div className="flex items-center mt-2 sm:mt-0">
-            <span className="text-sm font-medium text-gray-700 mr-2">Available Only</span>
+            <span className="text-sm font-medium text-gray-700 mr-2">
+              Available Only
+            </span>
             <button
               onClick={() => setShowAvailableOnly(!showAvailableOnly)}
               className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 ${
-                showAvailableOnly ? 'bg-green-500' : 'bg-gray-200'
+                showAvailableOnly ? "bg-green-500" : "bg-gray-200"
               }`}
               aria-pressed={showAvailableOnly}
             >
               <span
                 className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                  showAvailableOnly ? 'translate-x-6' : 'translate-x-1'
+                  showAvailableOnly ? "translate-x-6" : "translate-x-1"
                 }`}
               />
             </button>
@@ -529,10 +532,12 @@ export default function PeerReviewerList() {
       {previousReviewers.length > 0 && (
         <div className="mb-6 p-4 bg-blue-50 border-2 border-blue-300 rounded-lg">
           <h3 className="text-lg font-semibold text-blue-900 mb-3">
-            📋 Previous Reviewers (Version {manuscriptData?.versionNumber - 1 || 1})
+            📋 Previous Reviewers (Version{" "}
+            {manuscriptData?.versionNumber - 1 || 1})
           </h3>
           <p className="text-sm text-blue-800 mb-3">
-            These reviewers reviewed the previous version of this manuscript. Consider re-inviting them for consistency.
+            These reviewers reviewed the previous version of this manuscript.
+            Consider re-inviting them for consistency.
           </p>
           <div className="space-y-2">
             {previousReviewers.map((reviewer) => {
@@ -548,17 +553,27 @@ export default function PeerReviewerList() {
                 publication: "bg-green-100 text-green-800 border-green-300",
                 reject: "bg-red-100 text-red-800 border-red-300",
               };
-              
+
               return (
-                <div key={reviewer.id} className="bg-white p-3 rounded border border-blue-200 flex justify-between items-center">
+                <div
+                  key={reviewer.id}
+                  className="bg-white p-3 rounded border border-blue-200 flex justify-between items-center"
+                >
                   <div className="flex-1">
                     <p className="font-medium text-gray-900">
                       {reviewer.firstName} {reviewer.lastName}
                     </p>
                     <p className="text-sm text-gray-600">{reviewer.email}</p>
                     {reviewer.previousDecision && (
-                      <span className={`inline-block mt-1 px-2 py-0.5 text-xs font-medium rounded border ${decisionColors[reviewer.previousDecision] || "bg-gray-100 text-gray-800"}`}>
-                        Previous: {decisionLabels[reviewer.previousDecision] || reviewer.previousDecision}
+                      <span
+                        className={`inline-block mt-1 px-2 py-0.5 text-xs font-medium rounded border ${
+                          decisionColors[reviewer.previousDecision] ||
+                          "bg-gray-100 text-gray-800"
+                        }`}
+                      >
+                        Previous:{" "}
+                        {decisionLabels[reviewer.previousDecision] ||
+                          reviewer.previousDecision}
                       </span>
                     )}
                   </div>
@@ -579,7 +594,7 @@ export default function PeerReviewerList() {
       {manuscriptData && (
         <div className="mb-4 p-3 bg-gray-100 border border-gray-300 rounded">
           <p className="text-sm text-gray-700">
-            <strong>Manuscript:</strong> {manuscriptData.title || "Untitled"} 
+            <strong>Manuscript:</strong> {manuscriptData.title || "Untitled"}
             {manuscriptData.versionNumber > 1 && (
               <span className="ml-2 px-2 py-0.5 bg-blue-100 text-blue-800 text-xs rounded">
                 Version {manuscriptData.versionNumber}
@@ -617,7 +632,9 @@ export default function PeerReviewerList() {
               <span className="px-2 text-left col-span-2">Expertise</span>
               <span className="px-2 text-center col-span-1">Assigned</span>
               <span className="px-2 text-center col-span-2">Status</span>
-              <span className="px-2 text-center col-span-2">Action</span>
+              {manuscriptId && (
+                <span className="px-2 text-center col-span-2">Action</span>
+              )}
             </div>
 
             <div className="border-2 border-red-800 rounded-b-md overflow-hidden">
@@ -653,7 +670,7 @@ export default function PeerReviewerList() {
                       </div>
                       <div className="flex justify-between">
                         <span className="font-medium">Expertise:</span>
-                        <span className="text-right">{r.expertise || '—'}</span>
+                        <span className="text-right">{r.expertise || "—"}</span>
                       </div>
                       <div className="flex justify-between">
                         <span className="font-medium">Assigned:</span>
@@ -665,14 +682,16 @@ export default function PeerReviewerList() {
                           {r.assignedCount > 0 ? "Busy" : "Available"}
                         </span>
                       </div>
-                      <div className="pt-2">
-                        <button
-                          className="w-full bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 text-sm"
-                          onClick={() => handleAssign(r.id)}
-                        >
-                          Invite
-                        </button>
-                      </div>
+                      {manuscriptId && (
+                        <div className="pt-2">
+                          <button
+                            className="w-full bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 text-sm"
+                            onClick={() => handleAssign(r.id)}
+                          >
+                            Invite
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -697,32 +716,43 @@ export default function PeerReviewerList() {
                       </button>
                     </div>
                     <div className="px-2 text-left col-span-2 truncate">
-                      <span className="text-gray-800 truncate inline-block max-w-full" title={r.expertise || ''}>
-                        {r.expertise || '—'}
+                      <span
+                        className="text-gray-800 truncate inline-block max-w-full"
+                        title={r.expertise || ""}
+                      >
+                        {r.expertise || "—"}
                       </span>
                     </div>
                     <div className="px-2 text-center col-span-1">
                       <span className="text-gray-800">{r.assignedCount}</span>
                     </div>
                     <div className="px-2 text-center col-span-2">
-                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                        r.isAvailableForReview === false
-                          ? 'bg-gray-100 text-gray-800' 
-                          : r.assignedCount > 0 
-                            ? 'bg-yellow-100 text-yellow-800' 
-                            : 'bg-green-100 text-green-800'
-                      }`}>
-                        {r.isAvailableForReview === false ? "Unavailable" : r.assignedCount > 0 ? "Busy" : "Available"}
+                      <span
+                        className={`px-2 py-1 rounded-full text-xs font-medium ${
+                          r.isAvailableForReview === false
+                            ? "bg-gray-100 text-gray-800"
+                            : r.assignedCount > 0
+                            ? "bg-yellow-100 text-yellow-800"
+                            : "bg-green-100 text-green-800"
+                        }`}
+                      >
+                        {r.isAvailableForReview === false
+                          ? "Unavailable"
+                          : r.assignedCount > 0
+                          ? "Busy"
+                          : "Available"}
                       </span>
                     </div>
-                    <div className="px-2 text-center col-span-2">
-                      <button
-                        className="w-full bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 text-sm whitespace-nowrap"
-                        onClick={() => handleAssign(r.id)}
-                      >
-                        Invite
-                      </button>
-                    </div>
+                    {manuscriptId && (
+                      <div className="px-2 text-center col-span-2">
+                        <button
+                          className="w-full bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 text-sm whitespace-nowrap"
+                          onClick={() => handleAssign(r.id)}
+                        >
+                          Invite
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}

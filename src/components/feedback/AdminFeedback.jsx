@@ -33,9 +33,14 @@ import {
 } from "firebase/storage";
 import { FeedbackForm } from "./FeedbackForm";
 import { FeedbackVersion } from "./FeedbackVersion";
-import PropTypes from 'prop-types';
+import PropTypes from "prop-types";
 
-const AdminFeedback = ({ manuscriptId, userRole, status: propStatus, currentVersion = '1' }) => {
+const AdminFeedback = ({
+  manuscriptId,
+  userRole,
+  status: propStatus,
+  currentVersion = "1",
+}) => {
   const [feedback, setFeedback] = useState("");
   const [file, setFile] = useState(null);
   const [filePreview, setFilePreview] = useState(null);
@@ -68,17 +73,17 @@ const AdminFeedback = ({ manuscriptId, userRole, status: propStatus, currentVers
     const groupFeedbacksByVersion = (feedbacks) => {
       return feedbacks.reduce((groups, item) => {
         // Convert version to string and handle decimal versions (e.g., 1.0.0 -> 1)
-        let version = '1';
+        let version = "1";
         if (item.version) {
           // If version is a string with dots, take the first part
-          if (typeof item.version === 'string' && item.version.includes('.')) {
-            version = item.version.split('.')[0];
+          if (typeof item.version === "string" && item.version.includes(".")) {
+            version = item.version.split(".")[0];
           } else {
             // Otherwise, convert to string and remove any decimal part
-            version = String(item.version).split('.')[0];
+            version = String(item.version).split(".")[0];
           }
         }
-        
+
         if (!groups[version]) {
           groups[version] = [];
         }
@@ -86,7 +91,7 @@ const AdminFeedback = ({ manuscriptId, userRole, status: propStatus, currentVers
         return groups;
       }, {});
     };
-    
+
     return groupFeedbacksByVersion(feedbacks);
   }, [feedbacks]);
 
@@ -104,11 +109,11 @@ const AdminFeedback = ({ manuscriptId, userRole, status: propStatus, currentVers
   const latestVersion = useMemo(() => {
     // If currentVersion is provided, use it as the latest version
     if (currentVersion) {
-      return String(currentVersion).split('.')[0]; // Use only the major version
+      return String(currentVersion).split(".")[0]; // Use only the major version
     }
-    
+
     // Fall back to the first version in the sorted list if available
-    return sortedVersions[0] || '1';
+    return sortedVersions[0] || "1";
   }, [sortedVersions, currentVersion]);
 
   // Track expanded state for each version
@@ -242,6 +247,7 @@ const AdminFeedback = ({ manuscriptId, userRole, status: propStatus, currentVers
     () => [
       "For Revision (Minor)",
       "For Revision (Major)",
+      "Non-Acceptance",
       "For Publication",
       "Rejected",
     ],
@@ -328,18 +334,18 @@ const AdminFeedback = ({ manuscriptId, userRole, status: propStatus, currentVers
     setFile(null);
     setFilePreview(null);
     setEditingFeedback(null);
-    
+
     // Clear the file input
     const fileInput = document.getElementById("file-upload");
     if (fileInput) {
       fileInput.value = "";
       // Trigger change event to ensure React state updates
-      const event = new Event('change', { bubbles: true });
+      const event = new Event("change", { bubbles: true });
       fileInput.dispatchEvent(event);
     }
-    
+
     // Force re-render of the file input by toggling the key
-    setFileInputKey(prev => prev + 1);
+    setFileInputKey((prev) => prev + 1);
   };
 
   // Handle form submission
@@ -372,7 +378,9 @@ const AdminFeedback = ({ manuscriptId, userRole, status: propStatus, currentVers
       // 3. Prepare feedback data
       const feedbackData = {
         message: feedback.trim(),
-        createdAt: editingFeedback ? editingFeedback.createdAt : serverTimestamp(),
+        createdAt: editingFeedback
+          ? editingFeedback.createdAt
+          : serverTimestamp(),
         createdBy: currentUser.uid,
         createdByName: currentUser.displayName || "Admin",
         // Use the existing version when editing, otherwise use currentVersion
@@ -382,7 +390,9 @@ const AdminFeedback = ({ manuscriptId, userRole, status: propStatus, currentVers
         fileType: fileData?.type || null,
         fileSize: fileData?.size || 0,
         storagePath: fileData?.path || null,
-        manuscriptStatus: manuscriptDoc.exists() ? manuscriptDoc.data().status : "Unknown",
+        manuscriptStatus: manuscriptDoc.exists()
+          ? manuscriptDoc.data().status
+          : "Unknown",
         ...(editingFeedback && { updatedAt: serverTimestamp() }), // Only set updatedAt when editing
       };
 
@@ -651,11 +661,11 @@ const AdminFeedback = ({ manuscriptId, userRole, status: propStatus, currentVers
             aria-expanded={isFormExpanded}
           >
             <h3 className="text-base font-medium text-gray-900">
-              {editingFeedback ? 'Edit Feedback' : 'Add New Feedback'}
+              {editingFeedback ? "Edit Feedback" : "Add New Feedback"}
             </h3>
             <svg
               className={`w-5 h-5 text-gray-500 transform transition-transform duration-200 ${
-                isFormExpanded ? 'rotate-180' : ''
+                isFormExpanded ? "rotate-180" : ""
               }`}
               fill="none"
               viewBox="0 0 24 24"
@@ -669,11 +679,13 @@ const AdminFeedback = ({ manuscriptId, userRole, status: propStatus, currentVers
               />
             </svg>
           </button>
-          
+
           {/* Collapsible Form Content */}
           <div
             className={`transition-all duration-200 overflow-hidden ${
-              isFormExpanded ? 'max-h-[1000px] opacity-100' : 'max-h-0 opacity-0'
+              isFormExpanded
+                ? "max-h-[1000px] opacity-100"
+                : "max-h-0 opacity-0"
             }`}
           >
             <div className="p-6 pt-0" id="feedback-form">
@@ -792,10 +804,7 @@ AdminFeedback.propTypes = {
   manuscriptId: PropTypes.string.isRequired,
   userRole: PropTypes.string,
   status: PropTypes.string,
-  currentVersion: PropTypes.oneOfType([
-    PropTypes.string,
-    PropTypes.number
-  ]),
+  currentVersion: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
 };
 
 export default AdminFeedback;

@@ -108,9 +108,7 @@ export default function FormResponses() {
         constraints.push(where("formId", "==", selectedFormId));
       if (!isAdmin && currentUser) {
         // For non-admin users, only show their own manuscripts
-        constraints.push(
-          where("userId", "==", currentUser.uid)
-        );
+        constraints.push(where("userId", "==", currentUser.uid));
       }
       if (startDate && endDate) {
         const start = Timestamp.fromDate(new Date(startDate + "T00:00:00"));
@@ -118,7 +116,7 @@ export default function FormResponses() {
         constraints.push(where("submittedAt", ">=", start));
         constraints.push(where("submittedAt", "<=", end));
       }
-      
+
       const snapshot = await getDocs(
         query(collection(db, "manuscripts"), ...constraints)
       );
@@ -453,7 +451,8 @@ export default function FormResponses() {
   const handleAccept = async (manuscript) => {
     try {
       const manuscriptRef = doc(db, "manuscripts", manuscript.id);
-      const manuscriptTitle = manuscript.manuscriptTitle || manuscript.title || "Untitled";
+      const manuscriptTitle =
+        manuscript.manuscriptTitle || manuscript.title || "Untitled";
 
       // Update manuscript status to 'Assigning Peer Reviewer'
       await updateDoc(manuscriptRef, {
@@ -463,31 +462,24 @@ export default function FormResponses() {
         email: manuscript.email || "",
       });
 
-      // Add to history
-      await addDoc(collection(db, "manuscripts", manuscript.id, "history"), {
-        timestamp: serverTimestamp(),
-        updatedBy: currentUser.uid,
-        status: "Assigning Peer Reviewer",
-      });
-
       // Get all user IDs to notify (submitter + co-authors if any)
       const notifyUsers = [manuscript.userId || manuscript.submitterId];
-      
+
       // Safely add co-author IDs if they exist
       if (manuscript.coAuthors && Array.isArray(manuscript.coAuthors)) {
-        manuscript.coAuthors.forEach(coAuthor => {
+        manuscript.coAuthors.forEach((coAuthor) => {
           if (coAuthor.id) {
             notifyUsers.push(coAuthor.id);
-          } else if (typeof coAuthor === 'string') {
+          } else if (typeof coAuthor === "string") {
             // Handle case where coAuthors is an array of IDs
             notifyUsers.push(coAuthor);
           }
         });
       }
-      
+
       // Remove any duplicate user IDs
       const uniqueUserIds = [...new Set(notifyUsers.filter(Boolean))];
-      
+
       // Send notifications to all involved users
       await Promise.all(
         uniqueUserIds.map((uid) =>
@@ -496,10 +488,10 @@ export default function FormResponses() {
             message: `Your manuscript "${manuscriptTitle}" has been accepted by the admin.`,
             seen: false,
             timestamp: serverTimestamp(),
-            type: 'manuscript_accepted',
+            type: "manuscript_accepted",
             manuscriptId: manuscript.id,
             manuscriptTitle: manuscriptTitle,
-            actionUrl: `/manuscripts?manuscriptId=${manuscript.id}`
+            actionUrl: `/manuscripts?manuscriptId=${manuscript.id}`,
           })
         )
       );
@@ -520,49 +512,39 @@ export default function FormResponses() {
 
     try {
       const manuscriptRef = doc(db, "manuscripts", manuscript.id);
-      
+
       // Get the manuscript title from the correct field
-      const manuscriptTitle = manuscript.manuscriptTitle || manuscript.title || "Untitled";
-      
+      const manuscriptTitle =
+        manuscript.manuscriptTitle || manuscript.title || "Untitled";
+
       // Update manuscript status to 'Non-Acceptance'
       await updateDoc(manuscriptRef, {
         status: "Non-Acceptance",
         manuscriptTitle: manuscriptTitle,
         email: manuscript.email || "",
-        updatedAt: serverTimestamp()
-      });
-
-      // Add to history
-      await addDoc(collection(db, "manuscripts", manuscript.id, "history"), {
-        timestamp: serverTimestamp(),
-        updatedBy: currentUser.uid,
-        status: "Non-Acceptance",
-        action: "status_update",
-        updatedFields: {
-          status: "Non-Acceptance"
-        }
+        updatedAt: serverTimestamp(),
       });
 
       // Safely get user IDs to notify
       const notifyUsers = [];
-      
+
       // Add main author if exists
       if (manuscript.userId) {
         notifyUsers.push(manuscript.userId);
       }
-      
+
       // Add co-authors if they exist
       if (Array.isArray(manuscript.coAuthors)) {
-        manuscript.coAuthors.forEach(coAuthor => {
+        manuscript.coAuthors.forEach((coAuthor) => {
           if (coAuthor?.id) {
             notifyUsers.push(coAuthor.id);
           }
         });
       }
-      
+
       // Remove duplicates
       const uniqueUserIds = [...new Set(notifyUsers)];
-      
+
       // Only proceed if there are users to notify
       if (uniqueUserIds.length > 0) {
         await Promise.all(
@@ -576,20 +558,21 @@ export default function FormResponses() {
               manuscriptId: manuscript.id,
               manuscriptTitle: manuscriptTitle,
               status: "Non-Acceptance",
-              actionUrl: `/manuscripts?manuscriptId=${manuscript.id}`
+              actionUrl: `/manuscripts?manuscriptId=${manuscript.id}`,
             })
           )
         );
       }
-      
+
       // Update local state
       setResponses((prev) => prev.filter((r) => r.id !== manuscript.id));
       setSelectedResponse(null);
       setTotalResponses((prev) => Math.max(0, prev - 1));
-      
+
       // Show success message
-      alert(`Manuscript "${manuscriptTitle}" has been marked as Non-Acceptance.`);
-      
+      alert(
+        `Manuscript "${manuscriptTitle}" has been marked as Non-Acceptance.`
+      );
     } catch (err) {
       console.error("Error marking manuscript as Non-Acceptance:", err);
       alert(`Failed to update manuscript status. ${err.message}`);
@@ -623,7 +606,7 @@ export default function FormResponses() {
   return (
     <div className="min-h-screen bg-white font-sans">
       <div className="h-24" />
-      <div className="max-w-4xl mx-auto px-4 pb-8">
+      <div className="max-w-4xl mx-auto px-4 pb-8 mt-10">
         <h1 className="text-2xl font-semibold mb-1 text-[#211B17]">
           Form Responses
         </h1>

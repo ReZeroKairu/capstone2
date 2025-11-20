@@ -52,6 +52,7 @@ const Sidebar = ({ role, isOpen, toggleSidebar }) => {
       path: "/user-management",
       icon: <FaUsers className="text-xl" />,
     },
+
     {
       name: "Manuscripts",
       path: "/manuscripts",
@@ -71,6 +72,11 @@ const Sidebar = ({ role, isOpen, toggleSidebar }) => {
       name: "Deadline Settings",
       path: "/admin/deadline-settings",
       icon: <FaClock className="text-xl" />,
+    },
+    {
+      name: "Peer Reviewers",
+      path: "/admin/reviewer-list",
+      icon: <FaUsers className="text-xl" />,
     },
   ];
 
@@ -102,7 +108,7 @@ const Sidebar = ({ role, isOpen, toggleSidebar }) => {
       name: "Review Invitations",
       path: "/reviewer-invitations",
       icon: <FaEnvelope className="text-xl" />,
-    }
+    },
   ];
 
   const renderLinks = (linkArray, mobile = false) =>

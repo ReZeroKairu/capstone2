@@ -417,13 +417,8 @@ const Dashboard = ({ sidebarOpen }) => {
   let latestDeadlineTime = 0;
 
   Object.entries(manuscript.assignedReviewersMeta).forEach(([reviewerId, meta]) => {
-    // Skip declined or inactive reviewers
+    // Skip declined reviewers or entries without deadlines
     if (meta.invitationStatus === 'declined' || !meta.deadline) {
-      return;
-    }
-
-    // Only consider reviewers who have accepted the invitation
-    if (meta.invitationStatus !== 'accepted') {
       return;
     }
 

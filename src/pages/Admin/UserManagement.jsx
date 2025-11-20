@@ -225,7 +225,7 @@ function UserManagement() {
   const totalPages = Math.ceil(filteredUsers.length / usersPerPage);
 
   return (
-    <div className="p-4 pb-28 sm:p-8 bg-gray-50 min-h-screen pt-28 md:pt-24 relative mb-11">
+    <div className="p-4 pb-28 sm:p-8 bg-gray-50 mt-10 min-h-screen pt-28 md:pt-24 relative mb-11">
       <h2 className="text-2xl sm:text-3xl font-bold text-center mb-6 sm:mb-10 text-gray-800">
         Manage Users
       </h2>

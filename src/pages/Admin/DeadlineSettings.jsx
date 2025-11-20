@@ -1,4 +1,4 @@
-    import React, { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import { db } from "../../firebase/firebase";
 
@@ -65,14 +65,15 @@ const DeadlineSettings = () => {
   if (loading) return <div className="p-6">Loading deadline settings...</div>;
 
   return (
-    <div className="max-w-3xl pt-28 mx-auto bg-white rounded-xl shadow-md p-8 mt-10">
+    <div className="max-w-3xl pt-28 mx-auto bg-white rounded-xl shadow-md p-8 my-28">
       <h1 className="text-2xl font-bold text-gray-800 mb-6">
         🕒 Default Deadline Settings
       </h1>
 
       <p className="text-gray-600 mb-6">
-        Set default number of days for each manuscript review stage.  
-        These defaults will automatically apply when assigning new reviewers or creating new manuscripts.
+        Set default number of days for each manuscript review stage. These
+        defaults will automatically apply when assigning new reviewers or
+        creating new manuscripts.
       </p>
 
       <div className="space-y-5">
@@ -81,9 +82,7 @@ const DeadlineSettings = () => {
             key={type.key}
             className="flex justify-between items-center border-b pb-3"
           >
-            <label className="font-medium text-gray-700">
-              {type.label}
-            </label>
+            <label className="font-medium text-gray-700">{type.label}</label>
             <div className="flex items-center gap-2">
               <input
                 type="number"
