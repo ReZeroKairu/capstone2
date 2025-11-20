@@ -154,6 +154,7 @@ const Manuscripts = () => {
     { id: "sogs", value: "School of Graduate Studies Research Journal" },
     { id: "ajb", value: "Asian Journal of Biodiversity" },
     { id: "ajh", value: "Asian Journal of Health" },
+    { id: "ajbg", value: "Asian Journal of Business and Governance" },
     { id: "aitr", value: "Advancing Information Technology Research" },
     { id: "apr", value: "Advancing Pharmacy Research" },
   ];

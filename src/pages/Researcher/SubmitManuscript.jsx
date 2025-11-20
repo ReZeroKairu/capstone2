@@ -458,8 +458,6 @@ export default function SubmitManuscript() {
         hasFile: true,
         fileUploadedAt: serverTimestamp(),
         submissionHistory: [initialSubmission],
-        // Additional fields that were in form_responses
-        userId: currentUser.uid,
       });
 
       await updateDoc(doc(db, "Users", currentUser.uid), {

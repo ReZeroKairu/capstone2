@@ -49,6 +49,7 @@ export default function PeerReviewerList() {
     "Health",
     "IT",
     "Advancing Pharmacy",
+    "Business and Governance",
   ];
 
   const getPageNumbers = (current, total) => {

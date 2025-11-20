@@ -48,8 +48,9 @@ export default function CreateForm() {
           { id: '2', value: 'School of Graduate Studies Research Journal' },
           { id: '3', value: 'Asian Journal of Biodiversity' },
           { id: '4', value: 'Asian Journal of Health' },
-          { id: '5', value: 'Advancing Information Technology Research' },
-          { id: '6', value: 'Advancing Pharmacy Research' }
+          { id: '5', value: 'Asian Journal of Business and Governance' },
+          { id: '6', value: 'Advancing Information Technology Research' },
+          { id: '7', value: 'Advancing Pharmacy Research' }
         ],
       },
       {
@@ -153,8 +154,9 @@ export default function CreateForm() {
           { id: '2', value: 'School of Graduate Studies Research Journal' },
           { id: '3', value: 'Asian Journal of Biodiversity' },
           { id: '4', value: 'Asian Journal of Health' },
-          { id: '5', value: 'Advancing Information Technology Research' },
-          { id: '6', value: 'Advancing Pharmacy Research' }
+          { id: '5', value: 'Asian Journal of Business and Governance' },
+          { id: '6', value: 'Advancing Information Technology Research' },
+          { id: '7', value: 'Advancing Pharmacy Research' }
         ],
       };
       
@@ -246,8 +248,9 @@ export default function CreateForm() {
             { id: '2', value: 'School of Graduate Studies Research Journal' },
             { id: '3', value: 'Asian Journal of Biodiversity' },
             { id: '4', value: 'Asian Journal of Health' },
-            { id: '5', value: 'Advancing Information Technology Research' },
-            { id: '6', value: 'Advancing Pharmacy Research' }
+            { id: '5', value: 'Asian Journal of Business and Governance' },
+            { id: '6', value: 'Advancing Information Technology Research' },
+            { id: '7', value: 'Advancing Pharmacy Research' }
           ],
         },
         {

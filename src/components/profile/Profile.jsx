@@ -251,22 +251,47 @@ function Profile() {
   // Initialize form data when profile is loaded
   useEffect(() => {
     if (profile) {
-      setFormData({
+      // Create base form data with all possible fields
+      const baseFormData = {
+        // Basic info
         firstName: profile.firstName || '',
         middleName: profile.middleName || '',
         lastName: profile.lastName || '',
         email: profile.email || '',
         phone: profile.phone || '',
         department: profile.department || '',
+        
+        // Common fields
         institution: profile.institution || '',
         fieldOfStudy: profile.fieldOfStudy || '',
         education: profile.education || '',
         researchInterests: profile.researchInterests || '',
+        
+        // Peer reviewer fields
         affiliation: profile.affiliation || '',
         expertise: profile.expertise || '',
         interests: profile.interests || '',
-        specialty: profile.specialty || ''
-      });
+        specialty: profile.specialty || '',
+        
+        // Researcher specific fields
+        university: profile.university || '',
+        universityAddress: profile.universityAddress || '',
+        country: profile.country || '',
+        continent: profile.continent || '',
+        citizenship: profile.citizenship || '',
+        residentialAddress: profile.residentialAddress || '',
+        zipCode: profile.zipCode || '',
+        currentPosition: profile.currentPosition || '',
+        
+        // Array fields (initialize with empty arrays if not present)
+        educations: profile.educations || (profile.education ? [{ school: profile.education, degree: '', year: '' }] : []),
+        publications: profile.publications || [],
+        presentations: profile.presentations || [],
+        awards: profile.awards || []
+      };
+      
+      // Set the form data
+      setFormData(baseFormData);
       
       // Set role-specific info for local state
       if (profile.role === "Peer Reviewer") {
@@ -283,6 +308,14 @@ function Profile() {
           fieldOfStudy: profile.fieldOfStudy || "",
           education: profile.education || "",
           researchInterests: profile.researchInterests || "",
+          university: profile.university || "",
+          universityAddress: profile.universityAddress || "",
+          country: profile.country || "",
+          continent: profile.continent || "",
+          citizenship: profile.citizenship || "",
+          residentialAddress: profile.residentialAddress || "",
+          zipCode: profile.zipCode || "",
+          currentPosition: profile.currentPosition || ""
         });
       }
     }
