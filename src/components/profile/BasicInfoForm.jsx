@@ -73,6 +73,28 @@ const BasicInfoForm = ({ profile, isEditing, formData, onChange }) => {
       </div>
       
       <div className="space-y-2">
+        <label htmlFor="birthDate" className="block text-sm font-medium text-gray-700">
+          Birth Date <span className="text-red-500">*</span>
+        </label>
+        {isEditing ? (
+          <input
+            type="date"
+            id="birthDate"
+            name="birthDate"
+            value={formData.birthDate || ''}
+            onChange={onChange}
+            className="block w-full max-w-xs border border-gray-300 p-3 shadow-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 sm:text-base"
+            required
+            max={new Date().toISOString().split('T')[0]} // Prevent future dates
+          />
+        ) : (
+          <div className="mt-1 text-gray-900">
+            {profile.birthDate ? new Date(profile.birthDate).toLocaleDateString() : '—'}
+          </div>
+        )}
+      </div>
+      
+      <div className="space-y-2">
         <label className="block text-sm font-medium text-gray-700">
           Email <span className="text-red-500">*</span>
         </label>

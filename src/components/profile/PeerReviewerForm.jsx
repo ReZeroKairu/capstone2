@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { getAuth } from 'firebase/auth';
 import { doc, updateDoc, getFirestore } from 'firebase/firestore';
@@ -6,9 +6,147 @@ import { doc, updateDoc, getFirestore } from 'firebase/firestore';
 const PeerReviewerForm = ({ profile, isEditing, formData, onChange }) => {
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [educationEntries, setEducationEntries] = useState([{ school: '', degree: '', year: '' }]);
+  const hasChanges = useRef(false);
   const storage = getStorage();
   const auth = getAuth();
   const db = getFirestore();
+
+  // Initialize education entries when profile or formData changes
+  useEffect(() => {
+    if (!profile && !formData) return;
+    
+    const dataSource = formData || profile;
+    
+    if (dataSource.educations?.length > 0) {
+      setEducationEntries(Array.isArray(dataSource.educations) ? 
+        dataSource.educations : 
+        [{ school: dataSource.educations || '', degree: '', year: '' }]);
+    } else if (dataSource.education) {
+      setEducationEntries([{ school: dataSource.education, degree: '', year: '' }]);
+    } else if (isEditing) {
+      setEducationEntries([{ school: '', degree: '', year: '' }]);
+    } else {
+      setEducationEntries([]);
+    }
+  }, [profile, formData, isEditing]);
+
+  const handleEducationChange = (index, field, value) => {
+    hasChanges.current = true;
+    setEducationEntries(prev => {
+      const updatedEntries = [...prev];
+      updatedEntries[index] = { ...updatedEntries[index], [field]: value };
+      
+      // Update the parent form data
+      onChange({
+        target: {
+          name: 'educations',
+          value: updatedEntries
+        }
+      });
+      
+      return updatedEntries;
+    });
+  };
+
+  const renderEducationSection = () => (
+    <div className="mt-6">
+      <h4 className="text-md font-medium text-gray-900 mb-4 border-b pb-2">Education</h4>
+      {isEditing ? (
+        <div className="space-y-4">
+          {educationEntries.map((entry, index) => (
+            <div key={index} className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <input
+                  type="text"
+                  name="school"
+                  value={entry.school || ''}
+                  onChange={(e) => handleEducationChange(index, 'school', e.target.value)}
+                  placeholder="School/University"
+                  className="w-full border border-gray-300 p-2 rounded"
+                />
+              </div>
+              <div>
+                <input
+                  type="text"
+                  name="degree"
+                  value={entry.degree || ''}
+                  onChange={(e) => handleEducationChange(index, 'degree', e.target.value)}
+                  placeholder="Degree/Certificate"
+                  className="w-full border border-gray-300 p-2 rounded"
+                />
+              </div>
+              <div className="flex items-center space-x-2">
+                <input
+                  type="text"
+                  name="year"
+                  value={entry.year || ''}
+                  onChange={(e) => handleEducationChange(index, 'year', e.target.value)}
+                  placeholder="Year Graduated"
+                  className="w-full border border-gray-300 p-2 rounded"
+                />
+                {index === educationEntries.length - 1 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const newEntries = [...educationEntries, { school: '', degree: '', year: '' }];
+                      setEducationEntries(newEntries);
+                      onChange({
+                        target: {
+                          name: 'educations',
+                          value: newEntries
+                        }
+                      });
+                    }}
+                    className="text-green-600 hover:text-green-800 text-xl"
+                  >
+                    +
+                  </button>
+                )}
+                {educationEntries.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const filteredEntries = educationEntries.filter((_, i) => i !== index);
+                      setEducationEntries(filteredEntries);
+                      onChange({
+                        target: {
+                          name: 'educations',
+                          value: filteredEntries
+                        }
+                      });
+                    }}
+                    className="text-red-600 hover:text-red-800 text-xl"
+                  >
+                    −
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {profile.educations?.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 font-medium mb-2">
+              <div>School/University</div>
+              <div>Degree/Certificate</div>
+              <div>Year Graduated</div>
+            </div>
+          ) : (
+            <div className="text-gray-500">No education information available</div>
+          )}
+          {profile.educations?.map((edu, index) => (
+            <div key={index} className="grid grid-cols-1 md:grid-cols-3 gap-4 border-b pb-2">
+              <div>{edu.school || '—'}</div>
+              <div>{edu.degree || '—'}</div>
+              <div>{edu.year || '—'}</div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 
   const handleFileUpload = async (e) => {
     const file = e.target.files[0];
@@ -73,7 +211,7 @@ const PeerReviewerForm = ({ profile, isEditing, formData, onChange }) => {
       window.open(profile.cvUrl, '_blank');
     }
   };
-  if (!isEditing && !profile.affiliation && !profile.expertise && !profile.specialty) {
+  if (!isEditing && !profile.affiliation && !profile.expertise) {
     return null;
   }
   
@@ -81,9 +219,11 @@ const PeerReviewerForm = ({ profile, isEditing, formData, onChange }) => {
     <div className="space-y-6">
       <h3 className="text-lg font-medium text-gray-900 mb-4">Peer Reviewer Information</h3>
       
+      {renderEducationSection()}
+      
       <div className="space-y-2">
         <label htmlFor="affiliation" className="block text-sm font-medium text-gray-700">
-          Affiliation <span className="text-red-500">*</span>
+          Organization Affiliation <span className="text-red-500">*</span>
         </label>
         {isEditing ? (
           <input
@@ -101,62 +241,6 @@ const PeerReviewerForm = ({ profile, isEditing, formData, onChange }) => {
         )}
       </div>
       
-      <div className="space-y-2">
-        <label htmlFor="specialty" className="block text-sm font-medium text-gray-700">
-          Specialty <span className="text-red-500">*</span>
-        </label>
-        {isEditing ? (
-          <input
-            type="text"
-            id="specialty"
-            name="specialty"
-            value={formData.specialty || ''}
-            onChange={onChange}
-            className="mt-1 block w-full border border-gray-300 p-3 shadow-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200 sm:text-base"
-            placeholder="Your area of expertise"
-            required
-          />
-        ) : (
-          <p className="text-gray-900">{profile.specialty || 'Not specified'}</p>
-        )}
-      </div>
-      
-      <div className="mb-5">
-        <label htmlFor="department" className="block text-sm font-medium text-gray-700 mb-1">
-          Department
-        </label>
-        {isEditing ? (
-          <input
-            type="text"
-            id="department"
-            name="department"
-            value={formData.department || ''}
-            onChange={onChange}
-            className="block w-full border border-gray-300 p-3 shadow-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 sm:text-base"
-          />
-        ) : (
-          <p className="text-gray-900">{profile.department || 'Not specified'}</p>
-        )}
-      </div>
-      
-      <div className="mb-5">
-        <label htmlFor="institution" className="block text-sm font-medium text-gray-700 mb-1">
-          Institution/Organization *
-        </label>
-        {isEditing ? (
-          <input
-            type="text"
-            id="institution"
-            name="institution"
-            value={formData.institution || ''}
-            onChange={onChange}
-            className="block w-full border border-gray-300 p-3 shadow-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 sm:text-base"
-            required
-          />
-        ) : (
-          <p className="text-gray-900">{profile.institution || 'Not specified'}</p>
-        )}
-      </div>
       
       <div className="mb-5">
         <label htmlFor="expertise" className="block text-sm font-medium text-gray-700">
@@ -178,6 +262,7 @@ const PeerReviewerForm = ({ profile, isEditing, formData, onChange }) => {
             <option value="Health">Health</option>
             <option value="IT">IT</option>
             <option value="Advancing Pharmacy">Advancing Pharmacy</option>
+            <option value="Business and Governance">Business and Governance</option>
           </select>
         ) : (
           <div className="mt-1 text-gray-900">
@@ -190,49 +275,6 @@ const PeerReviewerForm = ({ profile, isEditing, formData, onChange }) => {
         )}
       </div>
       
-      <div className="mb-5">
-        <label htmlFor="interests" className="block text-sm font-medium text-gray-700">Research Interests</label>
-        {isEditing ? (
-          <textarea
-            id="interests"
-            name="interests"
-            value={formData.interests || ''}
-            onChange={onChange}
-            rows="3"
-            className="block w-full border border-gray-300 p-3 shadow-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 sm:text-base"
-          />
-        ) : (
-          <div className="mt-1 text-gray-900">
-            {profile.interests ? (
-              <div className="whitespace-pre-line">{profile.interests}</div>
-            ) : (
-              '—'
-            )}
-          </div>
-        )}
-      </div>
-      
-      <div className="mb-5">
-        <label htmlFor="education" className="block text-sm font-medium text-gray-700">Education</label>
-        {isEditing ? (
-          <textarea
-            id="education"
-            name="education"
-            value={formData.education || ''}
-            onChange={onChange}
-            rows="3"
-            className="block w-full border border-gray-300 p-3 shadow-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 sm:text-base"
-          />
-        ) : (
-          <div className="mt-1 text-gray-900">
-            {profile.education ? (
-              <div className="whitespace-pre-line">{profile.education}</div>
-            ) : (
-              '—'
-            )}
-          </div>
-        )}
-      </div>
       
       {/* CV Upload/View Section */}
       <div className="space-y-2 pt-4 border-t border-gray-200">

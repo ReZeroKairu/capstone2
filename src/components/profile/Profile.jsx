@@ -36,12 +36,9 @@ function Profile() {
   const [peerReviewerInfo, setPeerReviewerInfo] = useState({
     affiliation: "",
     expertise: "",
-    interests: "",
     education: "",
   });
   const [researcherInfo, setResearcherInfo] = useState({
-    institution: "",
-    fieldOfStudy: "",
     education: "",
     researchInterests: "",
   });
@@ -115,13 +112,10 @@ function Profile() {
             setPeerReviewerInfo({
               affiliation: userData.affiliation || "",
               expertise: userData.expertise || "",
-              interests: userData.interests || "",
               education: userData.education || "",
             });
           } else if (userData.role === "Researcher") {
             setResearcherInfo({
-              institution: userData.institution || "",
-              fieldOfStudy: userData.fieldOfStudy || "",
               education: userData.education || "",
               researchInterests: userData.researchInterests || "",
             });
@@ -169,6 +163,7 @@ function Profile() {
     firstName: "",
     middleName: "",
     lastName: "",
+    birthDate: "",
     email: "",
     phone: "",
 
@@ -176,15 +171,12 @@ function Profile() {
     department: "",
 
     // Researcher Info
-    institution: "",
-    fieldOfStudy: "",
     education: "",
     researchInterests: "",
 
     // Peer Reviewer Info
     affiliation: "",
     expertise: "",
-    interests: "",
   });
 
   // Track weekly updates
@@ -272,25 +264,30 @@ function Profile() {
   useEffect(() => {
     if (profile) {
       // Create base form data with all possible fields
+      // Format birthDate for the date input (YYYY-MM-DD)
+      const formatDateForInput = (dateString) => {
+        if (!dateString) return '';
+        const date = dateString.toDate ? dateString.toDate() : new Date(dateString);
+        return date.toISOString().split('T')[0];
+      };
+
       const baseFormData = {
         // Basic info
         firstName: profile.firstName || "",
         middleName: profile.middleName || "",
         lastName: profile.lastName || "",
+        birthDate: formatDateForInput(profile.birthDate) || "",
         email: profile.email || "",
         phone: profile.phone || "",
         department: profile.department || "",
 
         // Common fields
-        institution: profile.institution || "",
-        fieldOfStudy: profile.fieldOfStudy || "",
         education: profile.education || "",
         researchInterests: profile.researchInterests || "",
 
         // Peer reviewer fields
         affiliation: profile.affiliation || "",
         expertise: profile.expertise || "",
-        interests: profile.interests || "",
 
         // Researcher specific fields
         university: profile.university || "",
@@ -321,13 +318,10 @@ function Profile() {
         setPeerReviewerInfo({
           affiliation: profile.affiliation || "",
           expertise: profile.expertise || "",
-          interests: profile.interests || "",
           education: profile.education || "",
         });
       } else if (profile.role === "Researcher") {
         setResearcherInfo({
-          institution: profile.institution || "",
-          fieldOfStudy: profile.fieldOfStudy || "",
           education: profile.education || "",
           researchInterests: profile.researchInterests || "",
           university: profile.university || "",
@@ -565,13 +559,10 @@ function Profile() {
         setPeerReviewerInfo({
           affiliation: profile.affiliation || "",
           expertise: profile.expertise || "",
-          interests: profile.interests || "",
           education: profile.education || "",
         });
       } else if (profile.role === "Researcher") {
         setResearcherInfo({
-          institution: profile.institution || "",
-          fieldOfStudy: profile.fieldOfStudy || "",
           education: profile.education || "",
           researchInterests: profile.researchInterests || "",
         });
@@ -684,23 +675,22 @@ function Profile() {
                   strokeLinecap="round"
                   strokeLinejoin="round"
                   strokeWidth={2}
-                  d="M6 18L18 6M6 6l12 12"
+                  d="M5 13l4 4L19 7"
                 />
               </svg>
             </button>
           </div>
-          <style jsx global>{`
-            @keyframes slideIn {
-              from {
-                transform: translateX(100%);
-                opacity: 0;
-              }
-              to {
-                transform: translateX(0);
-                opacity: 1;
-              }
+          
+          {/* Add global styles for animations */}
+          <style>{
+            `@keyframes slideIn {
+              from { transform: translateX(100%); }
+              to { transform: translateX(0); }
             }
-          `}</style>
+            .slide-in {
+              animation: slideIn 0.3s ease-out;
+            }`
+          }</style>
         </div>
       )}
 

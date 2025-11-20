@@ -159,8 +159,8 @@ export default function ResubmitManuscript() {
       if (userDoc.exists()) {
         const userData = userDoc.data();
         const requiredFields = {
-          'Researcher': ['institution', 'fieldOfStudy', 'education', 'researchInterests'],
-          'Peer Reviewer': ['affiliation', 'expertise', 'education', 'specialty']
+          'Researcher': [ 'education', 'researchInterests'],
+          'Peer Reviewer': ['affiliation', 'expertise', 'education']
         };
 
         const role = userData.role || 'Researcher';

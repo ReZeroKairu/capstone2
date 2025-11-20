@@ -17,7 +17,6 @@ const ResearcherForm = ({ profile, isEditing, formData, onChange }) => {
   // Memoize the profile data to prevent unnecessary effect triggers
   const profileData = useMemo(() => ({
     // Basic info
-    institution: formData?.institution || profile?.institution || '',
     university: formData?.university || profile?.university || '',
     universityAddress: formData?.universityAddress || profile?.universityAddress || '',
     country: formData?.country || profile?.country || '',
@@ -28,7 +27,6 @@ const ResearcherForm = ({ profile, isEditing, formData, onChange }) => {
     currentPosition: formData?.currentPosition || profile?.currentPosition || '',
     affiliation: formData?.affiliation || profile?.affiliation || '',
     department: formData?.department || profile?.department || '',
-    fieldOfStudy: formData?.fieldOfStudy || profile?.fieldOfStudy || '',
     researchInterests: formData?.researchInterests || profile?.researchInterests || '',
     
     // Array fields
@@ -114,8 +112,7 @@ const ResearcherForm = ({ profile, isEditing, formData, onChange }) => {
     
     // Create updates object with current state
     const updates = {
-      // Basic info fields
-      institution: formData?.institution || '',
+      // Basic info fields  
       university: formData?.university || '',
       universityAddress: formData?.universityAddress || '',
       country: formData?.country || '',
@@ -126,7 +123,6 @@ const ResearcherForm = ({ profile, isEditing, formData, onChange }) => {
       currentPosition: formData?.currentPosition || '',
       affiliation: formData?.affiliation || '',
       department: formData?.department || '',
-      fieldOfStudy: formData?.fieldOfStudy || '',
       researchInterests: formData?.researchInterests || '',
       // Update education field for backward compatibility
       education: educationEntries[0]?.school || '',
@@ -183,7 +179,7 @@ const ResearcherForm = ({ profile, isEditing, formData, onChange }) => {
   // Remove the duplicate useEffect hooks since we're now using updateParentFormData
 
   // Check if there's any data to show in view mode
-  const hasData = profile?.institution || profile?.fieldOfStudy || profile?.researchInterests || 
+  const hasData =  profile?.researchInterests || 
                  profile?.department || profile?.university || profile?.universityAddress || 
                  profile?.country || profile?.continent || profile?.citizenship || 
                  profile?.residentialAddress || profile?.zipCode || profile?.currentPosition || 
@@ -577,7 +573,6 @@ const ResearcherForm = ({ profile, isEditing, formData, onChange }) => {
  
       
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {renderInputField('institution', 'Institution/Organization', true)}
         {renderInputField('university', 'University', true)}
         {renderTextArea('universityAddress', 'University Address', true)}
         {renderInputField('country', 'Country', true)}
@@ -587,8 +582,7 @@ const ResearcherForm = ({ profile, isEditing, formData, onChange }) => {
         {renderInputField('zipCode', 'Zip Code', true)}
         {renderInputField('currentPosition', 'Current Position', true)}
         {renderInputField('affiliation', 'HEI/Organization Affiliation', true)}
-        {renderInputField('department', 'College/Deprtment', true)}
-        {renderInputField('fieldOfStudy', 'Field of Study', true)}
+        {renderInputField('department', 'College/Department', true)}
       </div>
 
       {renderEducationSection()}
@@ -597,7 +591,34 @@ const ResearcherForm = ({ profile, isEditing, formData, onChange }) => {
       {renderAwardsSection()}
 
       <div className="mt-6">
-        {renderTextArea('researchInterests', 'Research Interests/Expertise', true, 4)}
+        <div className="mb-4">
+          <label htmlFor="researchInterests" className="block text-sm font-medium text-gray-700">
+            Research Interests/Expertise <span className="text-red-500">*</span>
+          </label>
+          {isEditing ? (
+            <select
+              id="researchInterests"
+              name="researchInterests"
+              value={formData.researchInterests || ''}
+              onChange={onChange}
+              className="mt-1 block w-full border border-gray-300 p-3 shadow-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 sm:text-base"
+              required
+            >
+              <option value="">Select your area of expertise</option>
+              <option value="Higher Education">Higher Education</option>
+              <option value="Graduate Studies">Graduate Studies</option>
+              <option value="Biodiversity">Biodiversity</option>
+              <option value="Health">Health</option>
+              <option value="IT">IT</option>
+              <option value="Advancing Pharmacy">Advancing Pharmacy</option>
+              <option value="Business and Governance">Business and Governance</option>
+            </select>
+          ) : (
+            <div className="mt-1 text-gray-900">
+              {profile.researchInterests || '—'}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

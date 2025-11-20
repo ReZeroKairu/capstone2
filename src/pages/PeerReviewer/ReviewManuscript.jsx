@@ -214,7 +214,7 @@ export default function ReviewManuscript() {
         const userData = userDoc.data();
         const requiredFields = {
           'Researcher': ['institution', 'fieldOfStudy', 'education', 'researchInterests'],
-          'Peer Reviewer': ['affiliation', 'expertise', 'education', 'specialty']
+          'Peer Reviewer': ['affiliation', 'expertise', 'education']
         };
 
         const role = userData.role;

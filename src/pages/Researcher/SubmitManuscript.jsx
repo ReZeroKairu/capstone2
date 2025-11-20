@@ -230,8 +230,8 @@ export default function SubmitManuscript() {
         
         // Role-specific required fields
         const roleSpecificFields = {
-          'Researcher': ['institution', 'fieldOfStudy', 'researchInterests'],
-          'Peer Reviewer': ['affiliation', 'specialty', 'expertise']
+          'Researcher': ['researchInterests'],
+          'Peer Reviewer': ['affiliation', 'expertise']
         };
 
         const role = userData.role || 'Researcher';
