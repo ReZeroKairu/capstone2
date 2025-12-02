@@ -14,32 +14,36 @@ const PeerReviewerForm = ({ profile, isEditing, formData, onChange }) => {
   const auth = getAuth();
   const db = getFirestore();
 
-  // Initialize education entries when profile or formData changes
+  // Initialize education entries when component mounts or when formData changes
   useEffect(() => {
-    if (!profile && !formData) return;
-
-    const dataSource = formData || profile;
-
-    if (dataSource.educations?.length > 0) {
-      setEducationEntries(
-        Array.isArray(dataSource.educations)
-          ? dataSource.educations
-          : [{ school: dataSource.educations || "", degree: "", year: "" }]
-      );
-    } else if (dataSource.education) {
-      setEducationEntries([
-        { school: dataSource.education, degree: "", year: "" },
-      ]);
+    if (!formData) return;
+    
+    // Only update if there's an actual change to prevent unnecessary re-renders
+    const newEducationEntries = [];
+    
+    if (formData.educations?.length > 0) {
+      if (Array.isArray(formData.educations)) {
+        newEducationEntries.push(...formData.educations);
+      } else {
+        newEducationEntries.push({ school: formData.educations || "", degree: "", year: "" });
+      }
+    } else if (formData.education) {
+      newEducationEntries.push({ school: formData.education, degree: "", year: "" });
     } else if (isEditing) {
-      setEducationEntries([{ school: "", degree: "", year: "" }]);
-    } else {
-      setEducationEntries([]);
+      newEducationEntries.push({ school: "", degree: "", year: "" });
     }
-  }, [profile, formData, isEditing]);
+    
+    // Only update state if there's a change to prevent infinite loops
+    setEducationEntries(prev => {
+      if (JSON.stringify(prev) !== JSON.stringify(newEducationEntries)) {
+        return newEducationEntries;
+      }
+      return prev;
+    });
+  }, [formData?.educations, isEditing]);  // Only depend on formData.educations and isEditing
 const handleEducationChange = useCallback((index, field, value) => {
-  hasChanges.current = true;
-  setEducationEntries((prev) => {
-    // Only update if the value has actually changed
+  // Only update if the value has actually changed
+  setEducationEntries(prev => {
     if (prev[index]?.[field] === value) return prev;
     
     const updatedEntries = [...prev];
@@ -47,18 +51,28 @@ const handleEducationChange = useCallback((index, field, value) => {
       ...updatedEntries[index], 
       [field]: value 
     };
-
-    // Update the parent form data
+    
+    return updatedEntries;
+  });
+  
+  // Update the parent form data in the next tick to avoid setState during render
+  setTimeout(() => {
+    const updatedEntries = [...educationEntries];
+    updatedEntries[index] = { 
+      ...updatedEntries[index],
+      [field]: value
+    };
+    
     onChange({
       target: {
         name: "educations",
         value: updatedEntries,
       },
     });
-
-    return updatedEntries;
-  });
-}, [onChange]);
+  }, 0);
+  
+  hasChanges.current = true;
+}, [onChange, educationEntries]);
 
 const renderEducationSection = () => (
   <div className="mt-6">
@@ -288,8 +302,16 @@ const renderEducationSection = () => (
           <select
             id="expertise"
             name="expertise"
-            value={formData.expertise || ""}
-            onChange={onChange}
+            value={Array.isArray(formData.expertise) ? formData.expertise[0] || "" : formData.expertise || ""}
+            onChange={(e) => {
+              // Convert the selected value to an array with one item
+              onChange({
+                target: {
+                  name: "expertise",
+                  value: e.target.value ? [e.target.value] : []
+                }
+              });
+            }}
             className="mt-1 block w-full border border-gray-300 p-3 shadow-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 sm:text-base"
             required
           >

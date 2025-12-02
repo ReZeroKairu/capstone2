@@ -15,38 +15,94 @@ export const validateProfile = (profile) => {
   // Role-specific required fields
   if (profile.role === "Researcher") {
     requiredFields.push(
-      "institution", 
-      "fieldOfStudy", 
+      "university",
       "researchInterests",
-      "cvUrl"
+      "cvUrl",
+      "educations"
     );
   } else if (profile.role === "Peer Reviewer") {
     requiredFields.push(
       "affiliation",
+      "educations",
       "expertise",
       "cvUrl"
     );
   }
 
-  const missingFields = requiredFields.filter((field) => {
+  const missingFields = [];
+
+  // Check each required field
+  for (const field of requiredFields) {
     const value = profile[field];
-    // Check if the value is empty or contains only whitespace
-    return !value || (typeof value === "string" && value.trim() === "");
-  });
+    let isValid = false;
 
-  // Special handling for educations array for Peer Reviewers
-  if (profile.role === "Peer Reviewer") {
-    const hasValidEducation = profile.educations && 
-      Array.isArray(profile.educations) && 
-      profile.educations.some(edu => 
-        edu.school?.trim() && 
-        edu.degree?.trim() && 
-        edu.year?.trim()
-      );
-
-    if (!hasValidEducation) {
-      missingFields.push("Education details");
+    // Special handling for expertise field which can be array or string
+    if (field === 'expertise') {
+      if (Array.isArray(value)) {
+        // Check if array has at least one non-empty string
+        isValid = value.length > 0 && value.some(item => 
+          item && (typeof item === 'string' || typeof item === 'object' && item !== null) && 
+          String(item).trim() !== ''
+        );
+      } else if (value && typeof value === 'object' && value !== null) {
+        // Handle case where expertise is an object (e.g., from a select component)
+        const values = Object.values(value).filter(v => v && String(v).trim() !== '');
+        isValid = values.length > 0;
+      } else if (typeof value === 'string') {
+        // Convert string to array and validate
+        const expertiseArray = value.split(',')
+          .map(item => typeof item === 'string' ? item.trim() : '')
+          .filter(Boolean);
+        isValid = expertiseArray.length > 0;
+      } else {
+        // Handle case where value is null, undefined, or other types
+        isValid = false;
+      }
+    } 
+    // Special handling for cvUrl - check if it exists and is a non-empty string
+    else if (field === 'cvUrl') {
+      isValid = !!value && typeof value === 'string' && value.trim() !== '';
     }
+    // Standard string field check
+    else {
+      isValid = value && (typeof value === 'string' ? value.trim() !== '' : true);
+    }
+
+    if (!isValid) {
+      // Convert field name to a more readable format
+      const fieldName = field === 'affiliation' ? 'Institutional affiliation' : 
+                       field === 'expertise' ? 'Area of expertise' : 
+                       field === 'cvUrl' ? 'CV upload' : 
+                       field === 'educations' ? 'Education' : field;
+      missingFields.push(fieldName);
+    }
+  }
+
+  // Special handling for educations array for both Researchers and Peer Reviewers
+  let hasValidEducation = false;
+  
+  if (profile.educations) {
+    // Handle case where educations is a string (legacy support)
+    if (typeof profile.educations === 'string' && profile.educations.trim() !== '') {
+      hasValidEducation = true;
+    }
+    // Handle array of strings or objects
+    else if (Array.isArray(profile.educations)) {
+      hasValidEducation = profile.educations.some(edu => {
+        if (!edu) return false;
+        // Handle both object with school property or direct string value
+        return typeof edu === 'string' 
+          ? edu.trim() !== ''
+          : edu.school && edu.school.trim() !== '';
+      });
+    }
+  }
+
+  if (!hasValidEducation) {
+    const educationFieldName = profile.role === "Peer Reviewer" 
+      ? "Education details" 
+      : "Education";
+    missingFields.push(educationFieldName);
   }
 
   return {
@@ -85,11 +141,8 @@ export const validateProfile = (profile) => {
 
   // Role-specific fields
   if (profile.role === "Researcher") {
-    if (!profile.institution?.trim?.()) {
-      missingFields.push("Institution");
-    }
-    if (!profile.fieldOfStudy?.trim?.()) {
-      missingFields.push("Field of study");
+    if (!profile.university?.trim?.()) {
+      missingFields.push("University");
     }
     if (!profile.researchInterests?.trim?.()) {
       missingFields.push("Research interests");
@@ -101,8 +154,10 @@ export const validateProfile = (profile) => {
     if (!profile.affiliation?.trim?.()) {
       missingFields.push("Institutional affiliation");
     }
-    if (!profile.expertise?.trim?.()) {
-      missingFields.push("At least one area of expertise");
+    if (!profile.expertise?.length) {
+      missingFields.push("Area of expertise");
+    } else if (Array.isArray(profile.expertise) && !profile.expertise.some(e => e && e.trim() !== '')) {
+      missingFields.push("Area of expertise");
     }
     if (!profile.cvUrl) {
       missingFields.push("CV upload");
@@ -110,13 +165,34 @@ export const validateProfile = (profile) => {
   }
 
   // Education validation for both roles
-  const hasValidEducation = profile.educations && 
-    Array.isArray(profile.educations) && 
-    profile.educations.some(edu => 
-      edu?.school?.trim() && 
-      edu?.degree?.trim() && 
-      edu?.year
-    );
+  const hasValidEducation = (() => {
+    // Handle case where educations is not defined or null
+    if (!profile.educations) return false;
+    
+    // Handle case where educations is a string (legacy support)
+    if (typeof profile.educations === 'string') {
+      return profile.educations.trim() !== '';
+    }
+    
+    // Handle case where educations is an array
+    if (Array.isArray(profile.educations)) {
+      return profile.educations.length > 0 && 
+        profile.educations.some(edu => {
+          if (!edu) return false;
+          // For string entries
+          if (typeof edu === 'string') return edu.trim() !== '';
+          // For object entries
+          if (typeof edu === 'object') {
+            return edu.school?.trim() && 
+                   edu.degree?.trim() && 
+                   edu.year;
+          }
+          return false;
+        });
+    }
+    
+    return false;
+  })();
 
   if (!hasValidEducation) {
     missingFields.push("Education details");
@@ -134,74 +210,91 @@ export const validateProfile = (profile) => {
 /**
  * Checks if the profile is complete based on required fields
  * @param {Object} profile - The profile data to check
- * @returns {boolean} True if the profile is complete
+ * @returns {{complete: boolean, message: string, missingFields: string[]}} Object with completion status and details
  */
 export const checkProfileComplete = (profile) => {
-  if (!profile) return false;
+  if (!profile) {
+    return {
+      complete: false,
+      message: 'No profile data available',
+      missingFields: []
+    };
+  }
 
   const validation = validateProfile(profile);
-
-  // Additional checks beyond basic validation
+  
+  // For researchers
   if (profile.role === "Researcher") {
-    return (
-      validation.valid &&
-      profile.researchInterests &&
-      profile.researchInterests.trim() !== ""
-    );
-  } else if (profile.role === "Peer Reviewer") {
-    // Define all required fields and their human-readable names
-    const requiredFields = {
-      firstName: "First Name",
-      lastName: "Last Name",
-      email: "Email",
-      phone: "Phone Number",
-      affiliation: "Institutional Affiliation",
-      educations: "Education Details",
-      expertise: "Areas of Expertise",
-      cvUrl: "CV Upload",
-    };
-
-    // Check each required field
     const missingFields = [];
-    const fieldStatus = {};
+    if (!profile.researchInterests?.trim()) {
+      missingFields.push('Research interests');
+    }
+    
+    const isComplete = validation.valid && missingFields.length === 0;
+    return {
+      complete: isComplete,
+      message: isComplete ? 'Profile is complete' : 'Please complete all required fields',
+      missingFields: [...validation.missingFields, ...missingFields]
+    };
+  } 
+  // For peer reviewers
+  else if (profile.role === "Peer Reviewer") {
+    const requiredFields = [
+      { key: 'firstName', label: 'First Name' },
+      { key: 'lastName', label: 'Last Name' },
+      { key: 'email', label: 'Email' },
+      { key: 'phone', label: 'Phone Number' },
+      { key: 'affiliation', label: 'Institutional Affiliation' },
+      { key: 'educations', label: 'Education Details' },
+      { key: 'expertise', label: 'Areas of Expertise' },
+      { key: 'cvUrl', label: 'CV Upload' }
+    ];
 
-    for (const [field, label] of Object.entries(requiredFields)) {
+    const missingFields = [];
+
+    requiredFields.forEach(({ key, label }) => {
       let isValid = false;
 
-      if (field === "expertise") {
-        // Handle cases where expertise might be a string, array, or undefined
-        if (Array.isArray(profile[field])) {
-          isValid = profile[field].length > 0;
-        } else if (typeof profile[field] === "string") {
-          // If it's a string, check if it's not empty
-          isValid = profile[field].trim() !== "";
-        } else {
-          isValid = false;
+      if (key === 'expertise') {
+        // Handle expertise which can be array or string
+        if (Array.isArray(profile[key])) {
+          isValid = profile[key].length > 0;
+        } else if (typeof profile[key] === 'string') {
+          isValid = profile[key].trim() !== '';
         }
-      } else if (field === "cvUrl") {
-        isValid = !!profile[field];
+      } else if (key === 'educations') {
+        // Special handling for educations array
+        isValid = Array.isArray(profile[key]) && 
+                 profile[key].some(edu => edu?.school?.trim());
+      } else if (key === 'cvUrl') {
+        isValid = !!profile[key];
       } else {
-        isValid = !!profile[field]?.toString()?.trim();
+        // Standard string field check
+        isValid = !!profile[key]?.toString()?.trim();
       }
 
-      fieldStatus[`has${field.charAt(0).toUpperCase() + field.slice(1)}`] =
-        isValid;
       if (!isValid) {
         missingFields.push(label);
       }
-    }
+    });
 
     const isComplete = missingFields.length === 0;
-
-    if (!isComplete) {
-      console.log("Profile incomplete. Missing fields:", fieldStatus);
-      console.log("Missing required fields:", missingFields);
-    }
-
-    return isComplete;
+    
+    return {
+      complete: isComplete,
+      message: isComplete 
+        ? 'Profile is complete' 
+        : `Please complete the following: ${missingFields.join(', ')}`,
+      missingFields
+    };
   }
 
-  return validation.valid;
+  // Default case for other roles
+  return {
+    complete: validation.valid,
+    message: validation.valid ? 'Profile is complete' : 'Please complete all required fields',
+    missingFields: validation.missingFields || []
+  };
 };
 
 /**

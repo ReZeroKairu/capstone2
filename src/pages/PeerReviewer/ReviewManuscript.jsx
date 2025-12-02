@@ -2,19 +2,20 @@
 import { useEffect, useState, useMemo } from "react";
 import { getAuth } from "firebase/auth";
 import { db, storage } from "../../firebase/firebase";
-import {
+import { 
   collection,
-  updateDoc,
-  doc,
-  arrayUnion,
-  getDocs,
-  getDoc,
+  doc, 
+  getDoc, 
+  updateDoc, 
+  arrayUnion, 
   arrayRemove,
+  getDocs,
   deleteField,
-  serverTimestamp
+  serverTimestamp 
 } from "firebase/firestore";
 import { ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
 import NotificationService from "../../utils/notificationService";
+import { checkProfileComplete } from "../../components/profile/profileUtils";
 
 // Create an instance of NotificationService
 const notificationService = new NotificationService();
@@ -200,7 +201,7 @@ export default function ReviewManuscript() {
   // State for tracking submission status
   const [submittingManuscripts, setSubmittingManuscripts] = useState({});
 
-  // Check if user's profile is complete
+  // Check if user's profile is complete using the shared validation logic
   const isProfileComplete = async (userId) => {
     try {
       // First check local storage for quick access
@@ -213,22 +214,13 @@ export default function ReviewManuscript() {
       const userDoc = await getDoc(doc(db, "Users", userId));
       if (userDoc.exists()) {
         const userData = userDoc.data();
-        const requiredFields = {
-          'Researcher': [ 'education', 'researchInterests'],
-          'Peer Reviewer': ['affiliation', 'expertise', 'education']
-        };
-
-        const role = userData.role;
-        if (!role || !requiredFields[role]) return true; // If role not set or not in list, consider complete
-
-        const isComplete = requiredFields[role].every(field => {
-          const value = userData[field];
-          return value && value.trim() !== '';
-        });
-
+        
+        // Use the shared validation function
+        const { complete } = checkProfileComplete(userData);
+        
         // Cache the result
-        localStorage.setItem(`profileComplete_${userId}`, isComplete);
-        return isComplete;
+        localStorage.setItem(`profileComplete_${userId}`, complete);
+        return complete;
       }
       return false;
     } catch (error) {
@@ -239,11 +231,29 @@ export default function ReviewManuscript() {
 
   // Submit decision - preserved in component (keeps state updates intact)
   const handleDecisionSubmit = async (manuscriptId, versionNumber) => {
-    // Check if profile is complete
-    const profileComplete = await isProfileComplete(reviewerId);
-    if (!profileComplete) {
-      alert('Please complete your profile before submitting a review. All required fields must be filled out.');
-      navigate('/profile'); // Redirect to profile page
+    try {
+      // Get the latest profile data
+      const userDoc = await getDoc(doc(db, "Users", reviewerId));
+      if (userDoc.exists()) {
+        const userData = userDoc.data();
+        const { complete, missingFields } = checkProfileComplete(userData);
+        
+        if (!complete) {
+          // Update the cache with the latest result
+          localStorage.setItem(`profileComplete_${reviewerId}`, complete);
+          
+          // Show specific missing fields
+          alert(`Please complete the following in your profile before submitting a review:\n\n• ${missingFields.join('\n• ')}\n\nYou will be redirected to your profile.`);
+          navigate('/profile');
+          return;
+        }
+      } else {
+        alert('User profile not found. Please try again.');
+        return;
+      }
+    } catch (error) {
+      console.error('Error checking profile completion:', error);
+      alert('Error checking profile. Please try again.');
       return;
     }
 

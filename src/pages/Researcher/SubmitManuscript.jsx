@@ -21,6 +21,7 @@ import {
 } from "firebase/firestore";
 import { useNotifications } from "../../hooks/useNotifications";
 import { useUserLogs } from "../../hooks/useUserLogs";
+import { checkProfileComplete, getProfileCompletionStatus } from "../../components/profile/profileUtils";
 import FileUpload from "../../components/FileUpload";
 import { debounce } from "lodash";
 import { ToastContainer, toast } from "react-toastify";
@@ -66,11 +67,45 @@ useEffect(() => {
 
   const [message, setMessage] = useState("");
   const [messageVisible, setMessageVisible] = useState(false);
+  const [isProfileComplete, setIsProfileComplete] = useState(true);
+  const [missingProfileFields, setMissingProfileFields] = useState([]);
+  
   const showMessage = (msg) => {
     setMessage(msg);
     setMessageVisible(true);
-    setTimeout(() => setMessageVisible(false), 4000);
+    // Increased timeout from 4000ms (4s) to 10000ms (10s)
+    setTimeout(() => setMessageVisible(false), 10000);
   };
+  
+  // Check if user's profile is complete
+  const checkProfileCompletion = useCallback(async (userId) => {
+    try {
+      const userDoc = await getDoc(doc(db, "Users", userId));
+      if (userDoc.exists()) {
+        const userData = userDoc.data();
+        const isComplete = checkProfileComplete(userData);
+        if (!isComplete) {
+          const { missingFields } = getProfileCompletionStatus(userData);
+          setMissingProfileFields(missingFields);
+        } else {
+          setMissingProfileFields([]);
+        }
+        setIsProfileComplete(isComplete);
+        return isComplete;
+      }
+      return false;
+    } catch (error) {
+      console.error('Error checking profile completion:', error);
+      return true; // Assume profile is complete to avoid blocking submission due to an error
+    }
+  }, []);
+  
+  // Check profile completion when user loads the page
+  useEffect(() => {
+    if (currentUser?.uid) {
+      checkProfileCompletion(currentUser.uid);
+    }
+  }, [currentUser, checkProfileCompletion]);
 
   const { notifyManuscriptSubmission } = useNotifications();
   const { logManuscriptSubmission } = useUserLogs();
@@ -122,41 +157,62 @@ useEffect(() => {
             .filter((u) => u.role === "Researcher")
         );
 
-        auth.onAuthStateChanged(async (user) => {
-          if (!user) {
-            setCurrentUser(null);
-            setLoading(false);
-            return;
-          }
-          setCurrentUser(user);
-
-          if (user) {
-            try {
-              const userSnap = await getDoc(doc(db, "Users", user.uid));
-              if (!userSnap.exists()) {
-                showMessage("User record not found.");
-                return;
-              }
-              const role = userSnap.data().role || "Researcher";
-              setMonthlyLimit(role === "Researcher" ? 3 : Infinity);
-              setCurrentUser({ ...user, role });
-              await fetchMonthlyCount(); // Fetch the current count after user is set
-            } catch (err) {
-              console.error("Error fetching user data:", err);
-              setError("Failed to load user information. Please try again.");
+        const unsubscribe = auth.onAuthStateChanged(async (user) => {
+          try {
+            if (!user) {
+              setCurrentUser(null);
+              setLoading(false);
+              return;
             }
+            
+            // Get user data
+            const userDoc = await getDoc(doc(db, "Users", user.uid));
+            if (!userDoc.exists()) {
+              setLoading(false);
+              return;
+            }
+            
+            const userData = userDoc.data();
+            const role = userData.role || "Researcher";
+            setCurrentUser({ ...user, role });
+            setMonthlyLimit(role === "Researcher" ? 3 : Infinity);
+            
+            // Check if profile is complete
+            const isComplete = await checkProfileCompleteStatus(user.uid);
+            if (!isComplete) {
+              // Show warning message but don't redirect
+              showMessage('Please complete your profile to submit a manuscript.');
+              // Set the profile incomplete flag to show the warning banner
+              setIsProfileComplete(false);
+              setLoading(false);
+            } else {
+              setIsProfileComplete(true);
+              // Only fetch monthly count if profile is complete
+              try {
+                const monthKey = getMonthKey();
+                const counterDoc = await getDoc(
+                  doc(db, `submissionCounters/${user.uid}_${monthKey}`)
+                );
+                setMonthlyCount(
+                  counterDoc.exists() ? counterDoc.data().count || 0 : 0
+                );
+              } catch (countErr) {
+                console.error("Error fetching monthly count:", countErr);
+              }
+            }
+            
+            // Monthly count is now handled in the profile complete check
+            
+          } catch (err) {
+            console.error("Error in auth state change:", err);
+            setError("Failed to load page. Please try again.");
+          } finally {
+            setLoading(false);
           }
-
-          const monthKey = getMonthKey();
-          const counterDoc = await getDoc(
-            doc(db, `submissionCounters/${user.uid}_${monthKey}`)
-          );
-          setMonthlyCount(
-            counterDoc.exists() ? counterDoc.data().count || 0 : 0
-          );
-
-          setLoading(false);
         });
+        
+        // Cleanup subscription on unmount
+        return () => unsubscribe();
       } catch (err) {
         console.error("Error fetching data:", err);
         showMessage("Failed to load forms or users.");
@@ -257,7 +313,7 @@ useEffect(() => {
     }`.trim();
 
   // Check if user's profile is complete
-  const isProfileComplete = async (userId) => {
+  const checkProfileCompleteStatus = async (userId) => {
     try {
       // Always check Firestore for the latest data
       const userDoc = await getDoc(doc(db, "Users", userId));
@@ -301,15 +357,17 @@ useEffect(() => {
     
     if (loading) return; // Prevent multiple submissions
     
+    // Set loading state and scroll to top to show the loading overlay
     setLoading(true);
-    
+    window.scrollTo({ top: 0, behavior: 'smooth' });
     
     try {
       // Check if profile is complete
-      const profileComplete = await isProfileComplete(currentUser.uid);
-      if (!profileComplete) {
-        alert('Please complete your profile before submitting a manuscript. All required fields must be filled out.');
-        navigate('/profile');
+      const isComplete = await checkProfileCompleteStatus(currentUser.uid);
+      if (!isComplete) {
+        showMessage('Please complete your profile to submit a manuscript. You will be redirected to your profile page.');
+        setTimeout(() => navigate('/profile'), 3000); // Redirect after 3 seconds
+        setLoading(false);
         return;
       }
 

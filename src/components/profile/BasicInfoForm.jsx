@@ -101,39 +101,43 @@ const BasicInfoForm = ({ profile, isEditing, formData, onChange }) => {
         <div className="mt-1 text-gray-900">{profile.email}</div>
       </div>
       
-      <div className="space-y-2">
-        <label className="block text-sm font-medium text-gray-700">
-          Phone Number <span className="text-red-500">*</span>
-        </label>
-        {isEditing ? (
-          <div className="relative">
-            <PhoneInput
-              international
-              defaultCountry="PH"
-              placeholder="Enter phone number"
-              value={formData.phone || ''}
-              onChange={(value) => {
-                onChange({
-                  target: {
-                    name: 'phone',
-                    value: value || ''
-                  }
-                });
-              }}
-              className="block w-full border border-gray-300 rounded-md shadow-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 sm:text-base"
-              error={formData.phone ? (parsePhoneNumberFromString(formData.phone)?.isValid() ? undefined : 'Invalid phone number') : 'Phone number is required'}
-            />
-            {formData.phone && !parsePhoneNumberFromString(formData.phone)?.isValid() && (
-              <p className="mt-1 text-sm text-red-600">Please enter a valid phone number</p>
-            )}
-          </div>
-        ) : (
-          <div className="mt-1 text-gray-900">
-            {profile.phone ? (
-              parsePhoneNumberFromString(profile.phone)?.formatInternational() || profile.phone
-            ) : '—'}
-          </div>
-        )}
+    <div className="space-y-2">
+  <label className="block text-sm font-medium text-gray-700">
+    Phone Number <span className="text-red-500">*</span>
+  </label>
+  {isEditing ? (
+    <div className="relative">
+      <PhoneInput
+        international
+        defaultCountry="PH"
+        placeholder="Enter phone number"
+        value={formData.phone || ''}
+        onChange={(value) => {
+          onChange({
+            target: {
+              name: 'phone',
+              value: value || ''
+            }
+          });
+        }}
+        className="[&>div]:flex border-2 [&>div]:items-center [&_select]:w-20 [&_input]:flex-1 [&_input]:w-full"
+        style={{
+          '--PhoneInputInput': 'block w-full border border-gray-300 rounded-r-md shadow-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 sm:text-base',
+          '--PhoneInputCountrySelect': '!w-24 border-r-0 rounded-l-md'
+        }}
+      />
+      {formData.phone && !parsePhoneNumberFromString(formData.phone)?.isValid() && (
+        <p className="mt-1 text-sm text-red-600">Please enter a valid phone number</p>
+      )}
+    </div>
+  ) : (
+    <div className="mt-1 text-gray-900">
+      {profile.phone ? (
+        parsePhoneNumberFromString(profile.phone)?.formatInternational() || profile.phone
+      ) : '—'}
+    </div>
+  )}
+
       </div>
     </div>
   );
