@@ -1,57 +1,52 @@
-import { getFunctions, httpsCallable } from "firebase/functions";
+import { httpsCallable } from "firebase/functions";
 
-/**
- * Email utility functions for the frontend
- */
 class EmailService {
-  constructor() {
-    this.functions = getFunctions();
+  constructor(functions) {
+    this.functions = functions;
   }
 
-  /**
-   * Send reviewer invitation email
-   * @param {Object} emailData - Email data object
-   * @param {string} emailData.reviewerEmail - Reviewer's email address
-   * @param {string} emailData.reviewerName - Reviewer's full name
-   * @param {string} emailData.manuscriptTitle - Manuscript title
-   * @param {string} emailData.deadlineDate - Formatted deadline date
-   * @param {string} emailData.manuscriptId - Manuscript ID
-   * @param {string} emailData.adminName - Admin's name
-   * @returns {Promise<Object>} - Result of email send operation
-   */
   async sendReviewerInvitation(emailData) {
     try {
-      const sendReviewerInvitationEmail = httpsCallable(
-        this.functions,
-        "sendReviewerInvitationEmail"
-      );
-      const result = await sendReviewerInvitationEmail(emailData);
+      // Create a reference to the callable function
+      const sendEmail = httpsCallable(this.functions, 'sendReviewerInvitationEmail');
+      
+      // Call the function with the email data
+      const result = await sendEmail({
+        reviewerEmail: emailData.reviewerEmail,
+        reviewerName: emailData.reviewerName,
+        manuscriptTitle: emailData.manuscriptTitle,
+        deadlineDate: emailData.deadlineDate,
+        manuscriptId: emailData.manuscriptId,
+        adminName: emailData.adminName
+      });
+      
       return result.data;
     } catch (error) {
-      console.error("Error sending reviewer invitation email:", error);
+      console.error("Error in sendReviewerInvitation:", {
+        error,
+        message: error.message,
+        stack: error.stack
+      });
       throw error;
     }
   }
 
-  /**
-   * Send general notification email
-   * @param {Object} emailData - Email data object
-   * @param {string} emailData.to - Recipient email
-   * @param {string} emailData.subject - Email subject
-   * @param {string} emailData.htmlBody - HTML email body
-   * @param {string} emailData.textBody - Plain text email body (optional)
-   * @returns {Promise<Object>} - Result of email send operation
-   */
   async sendNotification(emailData) {
     try {
-      const sendNotificationEmail = httpsCallable(
-        this.functions,
-        "sendNotificationEmail"
-      );
-      const result = await sendNotificationEmail(emailData);
+      const sendEmail = httpsCallable(this.functions, 'sendNotificationEmail');
+      const result = await sendEmail({
+        to: emailData.to,
+        subject: emailData.subject,
+        htmlBody: emailData.htmlBody,
+        textBody: emailData.textBody
+      });
       return result.data;
     } catch (error) {
-      console.error("Error sending notification email:", error);
+      console.error("Error in sendNotification:", {
+        error,
+        message: error.message,
+        stack: error.stack
+      });
       throw error;
     }
   }

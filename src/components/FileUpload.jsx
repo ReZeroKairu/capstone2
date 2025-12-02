@@ -1,7 +1,7 @@
 // src/components/FileUpload.jsx
 import React, { useState, useEffect } from 'react';
 import { ref, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage';
-import { storage } from '../firebase/firebase';
+import { storage, auth } from '../firebase/firebase';
 import { getFileTypeIcon, formatFileSize, isImage } from '../utils/fileUtils';
 
 const FileUpload = ({
@@ -57,7 +57,16 @@ const FileUpload = ({
       const safeFileName = file.name.replace(/[^\w\d.-]/g, "_");
       const storagePath = `manuscripts/${timestamp}_${safeFileName}`;
       const storageRef = ref(storage, storagePath);
-      const uploadTask = uploadBytesResumable(storageRef, file);
+      
+      // Include user metadata for access control
+      const metadata = {
+        customMetadata: {
+          uid: auth?.currentUser?.uid || 'unknown',
+          uploadedAt: new Date().toISOString()
+        }
+      };
+      
+      const uploadTask = uploadBytesResumable(storageRef, file, metadata);
 
       uploadTask.on(
         "state_changed",

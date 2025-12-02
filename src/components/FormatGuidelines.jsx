@@ -179,25 +179,42 @@ const FormatGuidelines = () => {
       const batch = writeBatch(db);
       const filesToSave = reorderedFiles.length > 0 ? reorderedFiles : files;
       
+      // First, fetch the current documents to get their actual IDs
+      const q = query(collection(db, 'formatGuidelines'));
+      const querySnapshot = await getDocs(q);
+      const docsMap = new Map();
+      querySnapshot.forEach(doc => {
+        docsMap.set(doc.data().name, { id: doc.id, ...doc.data() });
+      });
+
       // Update order in Firestore
+      const updates = [];
       filesToSave.forEach((file, index) => {
-        const fileRef = doc(db, 'formatGuidelines', file.id);
-        batch.update(fileRef, {
-          order: index,
-          updatedAt: serverTimestamp()
-        });
+        const docData = docsMap.get(file.name);
+        if (docData) {
+          const fileRef = doc(db, 'formatGuidelines', docData.id);
+          batch.update(fileRef, {
+            order: index,
+            updatedAt: serverTimestamp()
+          });
+          updates.push({ ...file, id: docData.id, order: index });
+        }
       });
       
-      await batch.commit();
-      setFiles(filesToSave); // Update the main files state with the new order
-      setReorderedFiles([]); // Clear the reordered files
-      setIsEditMode(false);
-      setUploading(false); // Make sure to set uploading to false when done
-      toast.success('Changes saved successfully');
+      if (updates.length > 0) {
+        await batch.commit();
+        setFiles(updates);
+        setReorderedFiles([]);
+        setIsEditMode(false);
+        toast.success('Changes saved successfully');
+      } else {
+        toast.warning('No changes to save');
+      }
     } catch (error) {
       console.error('Error saving changes:', error);
       toast.error('Failed to save changes');
-      setUploading(false); // Make sure to set uploading to false on error
+    } finally {
+      setUploading(false);
     }
   }, [files, reorderedFiles]);
 
@@ -370,8 +387,8 @@ const FormatGuidelines = () => {
     await uploadTask;
     const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
 
-    // Save file info to Firestore
-    await addDoc(collection(db, 'formatGuidelines'), {
+    // Save file info to Firestore and get the document reference
+    const docRef = await addDoc(collection(db, 'formatGuidelines'), {
       name: file.name,
       url: downloadURL,
       storagePath: storageFileName,
@@ -381,6 +398,27 @@ const FormatGuidelines = () => {
       uploadedAt: serverTimestamp(),
       uploadedBy: auth.currentUser?.uid || 'system',
     });
+
+    // Create the new file object with the Firestore-generated ID
+    const newFile = {
+      id: docRef.id,
+      name: file.name,
+      url: downloadURL,
+      storagePath: storageFileName,
+      size: file.size,
+      type: file.type,
+      order: files.length,
+      uploadedAt: new Date(),
+      uploadedBy: auth.currentUser?.uid || 'system',
+    };
+
+    // Update the local state with the new file including the Firestore-generated ID
+    setFiles(prevFiles => [...prevFiles, newFile]);
+    
+    // If in edit mode, also update the reorderedFiles
+    if (isEditMode) {
+      setReorderedFiles(prev => [...prev, newFile]);
+    }
 
     updateUploadStatus(fileId, 'completed');
   };

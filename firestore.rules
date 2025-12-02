@@ -1,56 +1,203 @@
+
+rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-
-    // Users collection rules
+    // Users collection
     match /Users/{userId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
-
-      // Admins can read and write any document
-      allow read, write: if request.auth != null &&
-                         get(/databases/$(database)/documents/Users/$(request.auth.uid)).data.role == "Admin";
-
-      allow update: if request.auth != null &&
-                    request.auth.uid == userId &&
-                    request.resource.data.keys().hasAny(['firstName', 'lastName', 'photo']) &&
-                    (request.resource.data.photo == null || request.resource.data.photo is string);
-
-      allow update: if request.auth != null &&
-                    get(/databases/$(database)/documents/Users/$(request.auth.uid)).data.role == "Admin" &&
-                    request.resource.data.keys().hasOnly(['role']) &&
-                    request.resource.data.role != resource.data.role;
-
-      allow create: if request.auth != null &&
-                    request.resource.data.uid == request.auth.uid &&
-                    request.resource.data.keys().hasAll(['uid', 'email', 'firstName', 'photo']) &&
-                    request.resource.data.email is string &&
-                    request.resource.data.firstName is string &&
-                    request.resource.data.photo is string;
+      // Allow any authenticated user to read basic user profiles
+      allow read: if request.auth != null;
+      
+      // Users can create/update their own profile
+      allow create: if request.auth != null && 
+                    request.auth.uid == userId && 
+                    request.resource.data.uid == userId;
+      allow update: if request.auth != null && 
+                    request.auth.uid == userId;
+      
+      // Admins can write any user document
+      allow write: if request.auth != null && 
+                   get(/databases/$(database)/documents/Users/$(request.auth.uid)).data.role == "Admin";
     }
-
-    // UserLog collection rules
-    match /UserLog/{logId} {
-      // Allow admins to perform all operations on UserLog
-      allow read, write, update, delete: if request.auth != null &&
-                                         get(/databases/$(database)/documents/Users/$(request.auth.uid)).data.role == "Admin";
-
-  // Allow authenticated users to write logs
-        allow write: if request.auth != null;
-
-
-    }
-
-    // Content collection rules (e.g., CallForPapers)
-    match /Content/CallForPapers {
-      allow read: if true;
-      allow write: if request.auth != null &&
+// If Notifications is a subcollection under Users
+match /Users/{userId}/Notifications/{notificationId} {
+  // Same rules as above
+  allow read: if request.auth != null && 
+              (request.auth.uid == userId || 
+               get(/databases/$(database)/documents/Users/$(request.auth.uid)).data.role == "Admin");
+  
+  allow create: if request.auth != null && 
+                (request.auth.uid == userId || 
+                 get(/databases/$(database)/documents/Users/$(request.auth.uid)).data.role == "Admin");
+  
+  allow update, delete: if request.auth != null && 
+                       (request.auth.uid == userId || 
+                        get(/databases/$(database)/documents/Users/$(request.auth.uid)).data.role == "Admin");
+}
+    // LoginAttempts collection
+    match /LoginAttempts/{document=**} {
+      // Allow anyone to create login attempts (even unauthenticated users)
+      allow create: if true;
+      
+      // Only allow admins to read login attempts
+      allow read: if request.auth != null && 
+                  get(/databases/$(database)/documents/Users/$(request.auth.uid)).data.role == "Admin";
+      
+      // Only allow admins to write (update/delete) login attempts
+      allow write: if request.auth != null && 
                    get(/databases/$(database)/documents/Users/$(request.auth.uid)).data.role == "Admin";
     }
 
-    // Notifications subcollection rules within Users
-    match /Users/{userId}/Notifications/{notificationId} {
-      allow read, update, delete: if request.auth != null && request.auth.uid == userId;
-      allow read, create, update, delete: if request.auth != null &&
-                                           get(/databases/$(database)/documents/Users/$(request.auth.uid)).data.role == "Admin";
+    match /UserLog/{logId} {
+      // Allow users to create their own log entries
+      allow create: if request.auth != null && 
+                   request.resource.data.userId == request.auth.uid;
+      
+      // Keep admin-only access for reading and other operations
+      allow read, write: if request.auth != null && 
+                         get(/databases/$(database)/documents/Users/$(request.auth.uid)).data.role == "Admin";
+    }
+
+ match /manuscripts/{manuscriptId} {
+  // Allow any authenticated user to read manuscripts
+  allow read: if request.auth != null;
+  
+  // Simplified create rule - allow any authenticated user to create
+  allow create: if request.auth != null;
+  
+  // Keep the existing update rules
+  allow update: if request.auth != null && (
+    // Allow submitter to update during resubmission
+    (resource.data.submitterId == request.auth.uid && 
+     request.resource.data.status == "Back to Admin" &&
+     (resource.data.status == "For Revision (Minor)" || 
+      resource.data.status == "For Revision (Major)")) ||
+    // Existing conditions
+    resource.data.submitterId == request.auth.uid ||
+    // Admin can update
+    get(/databases/$(database)/documents/Users/$(request.auth.uid)).data.role == "Admin" ||
+    // Assigned reviewer can update their own review status
+    (resource.data.assignedReviewers != null && 
+     resource.data.assignedReviewers.hasAny([request.auth.uid]) &&
+     // Allow updating assignedReviewersMeta and status in the same operation
+     (request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+       'assignedReviewersMeta.' + request.auth.uid,
+       'status'
+     ]) || 
+     // Also allow the initial acceptance that might include adding to assignedReviewers
+     (request.resource.data.assignedReviewers != null && 
+      request.resource.data.assignedReviewers.hasAny([request.auth.uid]) &&
+      (request.resource.data.assignedReviewersMeta[request.auth.uid] != null &&
+       (request.resource.data.assignedReviewersMeta[request.auth.uid].invitationStatus == 'accepted' ||
+        request.resource.data.assignedReviewersMeta[request.auth.uid].invitationStatus == 'declined')
+     )) ||
+     // Or allow updating reviewer submissions and decisions
+     request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+       'reviewerSubmissions',
+       'reviewerDecisionMeta',
+       'assignedReviewersMeta.' + request.auth.uid
+     ])))
+  );
+  
+  // Only allow admins to delete
+  allow delete: if request.auth != null && 
+                get(/databases/$(database)/documents/Users/$(request.auth.uid)).data.role == "Admin";
+  
+  // Keep the existing adminFeedback subcollection rules
+  match /adminFeedback/{feedbackId} {
+        // Allow read if user is admin, the feedback author, the manuscript submitter, or a co-author
+        allow read: if request.auth != null && (
+          // Admin can read all
+          get(/databases/$(database)/documents/Users/$(request.auth.uid)).data.role == "Admin" ||
+          // Feedback author can read their own feedback
+          resource.data.createdBy == request.auth.uid ||
+          // Manuscript submitter can read all feedback on their manuscript
+          get(/databases/$(database)/documents/manuscripts/$(manuscriptId)).data.submitterId == request.auth.uid ||
+          // Co-authors can read all feedback on their manuscript
+          (get(/databases/$(database)/documents/Users/$(request.auth.uid)).data.role == "Co-Author" &&
+           get(/databases/$(database)/documents/manuscripts/$(manuscriptId)).data.coAuthorIds != null &&
+           get(/databases/$(database)/documents/manuscripts/$(manuscriptId)).data.coAuthorIds.hasAny([request.auth.uid]))
+        );
+
+        // Allow create if user is admin or the feedback author
+        allow create: if request.auth != null && (
+          // Admin can create feedback
+          get(/databases/$(database)/documents/Users/$(request.auth.uid)).data.role == "Admin" ||
+          // User can create feedback if they are the author
+          request.resource.data.createdBy == request.auth.uid
+        );
+
+        // Allow update if user is admin or the feedback author
+        allow update: if request.auth != null && (
+          // Admin can update any feedback
+          get(/databases/$(database)/documents/Users/$(request.auth.uid)).data.role == "Admin" ||
+          // Author can update their own feedback
+          resource.data.createdBy == request.auth.uid
+        );
+
+        // Only allow admins to delete feedback
+        allow delete: if request.auth != null && 
+                      get(/databases/$(database)/documents/Users/$(request.auth.uid)).data.role == "Admin";
+      }
+    }
+
+    match /completedReviews/{reviewId} {
+      // Allow read if user is authenticated
+      allow read: if request.auth != null && (
+        get(/databases/$(database)/documents/Users/$(request.auth.uid)).data.role == "Admin" ||
+        resource.data.reviewerId == request.auth.uid ||
+        get(/databases/$(database)/documents/manuscripts/$(resource.data.manuscriptId)).data.submitterId == request.auth.uid
+      );
+      
+      // Only allow creating/updating through Cloud Functions or admin
+      allow create, update: if request.auth != null && 
+                            get(/databases/$(database)/documents/Users/$(request.auth.uid)).data.role == "Admin";
+    }
+
+    // deadlineSettings collection (admin only)
+    match /deadlineSettings/{docId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && 
+                   get(/databases/$(database)/documents/Users/$(request.auth.uid)).data.role == "Admin";
+    }
+
+    // formatGuidelines collection
+    match /formatGuidelines/{docId} {
+      allow read: if true;  // Public read access
+      allow write: if request.auth != null && 
+                   get(/databases/$(database)/documents/Users/$(request.auth.uid)).data.role == "Admin";
+    }
+
+    // forms collection
+    match /forms/{formId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && 
+                   get(/databases/$(database)/documents/Users/$(request.auth.uid)).data.role == "Admin";
+    }
+// submissionCounters collection
+match /submissionCounters/{counterId} {
+  // Allow any authenticated user to read counters
+  allow read: if request.auth != null;
+  
+  // Allow users to create/update their own counters
+  allow create: if request.auth != null && 
+                (counterId.startsWith(request.auth.uid + '_') ||
+                 get(/databases/$(database)/documents/Users/$(request.auth.uid)).data.role == "Admin");
+  
+  // Allow updates to the counter
+  allow update: if request.auth != null && 
+                (counterId.startsWith(request.auth.uid + '_') ||
+                 get(/databases/$(database)/documents/Users/$(request.auth.uid)).data.role == "Admin");
+  
+  // Allow admins full access
+  allow read, write: if request.auth != null && 
+                     get(/databases/$(database)/documents/Users/$(request.auth.uid)).data.role == "Admin";
+}
+    // Content collection (for static content)
+    match /Content/{document} {
+      allow read: if true;  // Public read access
+      allow write: if request.auth != null && 
+                   get(/databases/$(database)/documents/Users/$(request.auth.uid)).data.role == "Admin";
     }
   }
+  
 }

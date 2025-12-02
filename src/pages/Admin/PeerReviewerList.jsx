@@ -2,12 +2,12 @@ import React, { useState, useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { getAuth } from "firebase/auth";
 import { db } from "../../firebase/firebase";
-
+import { functions } from "../../firebase/firebase";
 import {
   checkProfileComplete,
   getProfileCompletionStatus,
 } from "../../components/profile/profileUtils";
-import EmailService from "../../utils/emailService.js";
+import EmailService from "../../utils/EmailService.js";
 import {
   collection,
   getDocs,
@@ -20,10 +20,13 @@ import {
   serverTimestamp,
   Timestamp,
 } from "firebase/firestore";
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import { FaSearch } from "react-icons/fa";
+import { app } from '../../firebase/firebase';  // Make sure this points to your firebase config
 
 export default function PeerReviewerList() {
   const [reviewers, setReviewers] = useState([]);
+   const functions = getFunctions(app, 'asia-east2');
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
@@ -34,12 +37,13 @@ export default function PeerReviewerList() {
   const [invitationDeadline, setInvitationDeadline] = useState(7); // Default to 7 days
   const [showAvailableOnly, setShowAvailableOnly] = useState(true); // Filter for available reviewers
   const [expertiseFilter, setExpertiseFilter] = useState(""); // Filter by expertise
+  const [invitingReviewerId, setInvitingReviewerId] = useState(null); // Track which reviewer is being invited
   const location = useLocation();
   const navigate = useNavigate();
   const params = new URLSearchParams(location.search);
   const manuscriptId = params.get("manuscriptId");
   const deadlineParam = params.get("deadline"); // from URL if provided
-
+const emailService = React.useMemo(() => new EmailService(functions), []);
   // List of expertise options
   const expertiseOptions = [
     "", // Empty for 'All Expertises'
@@ -89,6 +93,8 @@ export default function PeerReviewerList() {
   // These statuses indicate a revision is in progress
   const REVISION_STATUSES = ["For Revision (Minor)", "For Revision (Major)"];
 
+  // Reviewer availability is now managed by the reviewers themselves
+
   const fetchReviewers = async () => {
     setLoading(true);
 
@@ -98,24 +104,28 @@ export default function PeerReviewerList() {
       const allUsers = usersSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
 
       // Filter for peer reviewers with complete profiles
-      const reviewersOnly = allUsers.filter((user) => {
-        // Must be a peer reviewer
-        if (user.role !== "Peer Reviewer") {
-          if (user.role) {
-          } else {
-          }
-          return false;
-        }
-
-        // Get detailed completion status
-        const completionStatus = getProfileCompletionStatus(user);
-
-        if (!completionStatus.complete) {
-        } else {
-        }
-
-        return completionStatus.complete;
-      });
+      const reviewersOnly = allUsers
+        .filter((user) => {
+          // Only include users with role 'Peer Reviewer' and complete profiles
+          if (user.role !== 'Peer Reviewer') return false;
+          
+          // Check for required profile fields
+          const hasRequiredFields = 
+            user.firstName && 
+            user.lastName && 
+            user.email && 
+            user.expertise;
+            
+          return hasRequiredFields;
+        })
+        .map(reviewer => ({
+          ...reviewer,
+          // Ensure isAvailableForReview is always a boolean (default to true if not set)
+          isAvailableForReview: reviewer.isAvailableForReview !== false,
+          // Map other fields as needed
+          name: reviewer.name || `${reviewer.firstName} ${reviewer.lastName}`,
+          assignedCount: reviewer.assignedCount || 0
+        }));
 
       const reviewersWithCount = await Promise.all(
         reviewersOnly.map(async (r) => {
@@ -231,23 +241,25 @@ export default function PeerReviewerList() {
     }
   };
 
-  const handleAssign = async (reviewerId) => {
-    if (!manuscriptId) {
-      alert("No manuscript selected for invitation.");
+const handleAssign = async (reviewerId) => {
+  setInvitingReviewerId(reviewerId); // Set loading state
+  if (!manuscriptId) {
+    alert("No manuscript selected for invitation.");
+    return;
+  }
+
+  try {
+    const auth = getAuth();
+    const currentUser = auth.currentUser;
+    if (!currentUser) throw new Error("Not signed in");
+
+    const msRef = doc(db, "manuscripts", manuscriptId);
+    const msSnap = await getDoc(msRef);
+    
+    if (!msSnap.exists()) {
+      alert("Manuscript not found.");
       return;
     }
-
-    try {
-      const auth = getAuth();
-      const currentUser = auth.currentUser;
-      if (!currentUser) throw new Error("Not signed in");
-
-      const msRef = doc(db, "manuscripts", manuscriptId);
-      const msSnap = await getDoc(msRef);
-      if (!msSnap.exists()) {
-        alert("Manuscript not found.");
-        return;
-      }
 
       const msData = msSnap.data();
       const assigned = [...(msData.assignedReviewers || [])];
@@ -303,7 +315,7 @@ export default function PeerReviewerList() {
           deadlineForFirestore = Timestamp.fromDate(newDeadlineDate);
         }
 
-        // ✅ Build reviewer metadata (admin-side)
+        // Build reviewer metadata (admin-side)
         const newMeta = {
           ...(assignedMeta[reviewerId] || {}),
           assignedAt: serverTimestamp(),
@@ -312,8 +324,8 @@ export default function PeerReviewerList() {
           invitationStatus: "pending",
           invitedAt,
           respondedAt: null,
-          acceptedAt: null, // ✅ will be filled when reviewer accepts
-          declinedAt: null, // ✅ will be filled when reviewer declines
+          acceptedAt: null, // will be filled when reviewer accepts
+          declinedAt: null, // will be filled when reviewer declines
           decision: null,
           deadline: deadlineForFirestore,
           // Track which versions this reviewer is assigned to
@@ -357,28 +369,29 @@ export default function PeerReviewerList() {
         const reviewerData = reviewerDoc.data();
 
         // Send invitation email
-        try {
-          const emailService = new EmailService();
+       // Send invitation email
+try {
+  const emailData = {
+    reviewerEmail: reviewerData.email,
+    reviewerName: `${reviewerData.firstName} ${reviewerData.lastName}`,
+    manuscriptTitle: msData.title,
+    deadlineDate: deadlineDate.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    }),
+    manuscriptId: manuscriptId,
+    adminName: currentUser.displayName || 'Admin'
+  };
 
-          const emailData = EmailService.createInvitationData(
-            reviewerData,
-            { id: manuscriptId, title: msData.title },
-            deadlineDate,
-            { displayName: currentUser.displayName, email: currentUser.email }
-          );
-
-          if (EmailService.validateEmailData(emailData)) {
-            const emailResult = await emailService.sendReviewerInvitation(
-              emailData
-            );
-          } else {
-            console.warn("Email data validation failed, skipping email send");
-          }
-        } catch (emailError) {
-          console.error("Failed to send invitation email:", emailError);
-          // Don't fail the entire process if email fails, but log it
-          // The reviewer is still assigned in Firestore
-        }
+  // Call the Firebase Function directly
+  const sendInvitationEmail = httpsCallable(functions, 'sendReviewerInvitationEmail');
+  await sendInvitationEmail(emailData);
+} catch (emailError) {
+  console.error("Failed to send invitation email:", emailError);
+  // Don't fail the entire process if email fails
+  // The reviewer is still assigned in Firestore
+}
 
         // Update the local state immediately for better UX
         setReviewers((prevReviewers) =>
@@ -391,6 +404,9 @@ export default function PeerReviewerList() {
               : reviewer
           )
         );
+
+        // Reset loading state
+        setInvitingReviewerId(null);
 
         // Send notification with deadline information
         const notificationRef = collection(
@@ -432,6 +448,13 @@ export default function PeerReviewerList() {
       }
     } catch (err) {
       console.error("Error assigning reviewer:", err);
+      // Reset loading state on error
+      setInvitingReviewerId(null);
+      // Show error message to user
+      setAlert({
+        message: `Failed to assign reviewer: ${err.message}`,
+        type: "error",
+      });
       alert("Failed to invite reviewer.");
     }
   };
@@ -679,17 +702,42 @@ export default function PeerReviewerList() {
                       </div>
                       <div className="flex justify-between">
                         <span className="font-medium">Status:</span>
-                        <span className="text-right">
-                          {r.assignedCount > 0 ? "Busy" : "Available"}
-                        </span>
+                        <div className="flex items-center space-x-2">
+                          <span className="text-sm text-gray-600">
+                            {r.assignedCount || 0} assigned
+                          </span>
+                          <div className="h-1 w-1 rounded-full bg-gray-400"></div>
+                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                            r.isAvailableForReview === false 
+                              ? 'bg-red-100 text-red-800' 
+                              : 'bg-green-100 text-green-800'
+                          }`}>
+                            {r.isAvailableForReview === false ? "Unavailable" : "Available"}
+                          </span>
+                        </div>
                       </div>
                       {manuscriptId && (
                         <div className="pt-2">
                           <button
-                            className="w-full bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 text-sm"
+                            className={`w-full bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 text-sm whitespace-nowrap flex items-center justify-center ${
+                              invitingReviewerId === r.id
+                                ? 'bg-blue-400 cursor-not-allowed'
+                                : 'bg-blue-500 hover:bg-blue-600 text-white'
+                            }`}
                             onClick={() => handleAssign(r.id)}
+                            disabled={invitingReviewerId === r.id}
                           >
-                            Invite
+                            {invitingReviewerId === r.id ? (
+                              <>
+                                <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                                Sending...
+                              </>
+                            ) : (
+                              'Invite'
+                            )}
                           </button>
                         </div>
                       )}
@@ -747,10 +795,25 @@ export default function PeerReviewerList() {
                     {manuscriptId && (
                       <div className="px-2 text-center col-span-2">
                         <button
-                          className="w-full bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 text-sm whitespace-nowrap"
+                          className={`w-full bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 text-sm whitespace-nowrap flex items-center justify-center ${
+                            invitingReviewerId === r.id
+                              ? 'bg-blue-400 cursor-not-allowed'
+                              : 'bg-blue-500 hover:bg-blue-600 text-white'
+                          }`}
                           onClick={() => handleAssign(r.id)}
+                          disabled={invitingReviewerId === r.id}
                         >
-                          Invite
+                          {invitingReviewerId === r.id ? (
+                            <>
+                              <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                              </svg>
+                              Sending...
+                            </>
+                          ) : (
+                            'Invite'
+                          )}
                         </button>
                       </div>
                     )}

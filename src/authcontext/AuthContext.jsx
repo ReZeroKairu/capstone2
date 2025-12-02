@@ -14,7 +14,7 @@ import {
   sendEmailVerification,
 } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
-import { auth, db } from "../firebase/firebase"; // adjust path
+import { auth, db } from "../firebase/firebase";
 
 export const AuthContext = createContext();
 
@@ -23,33 +23,39 @@ export const AuthProvider = ({ children }) => {
   const [role, setRole] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  // Fetch user role from Firestore
+  const fetchUserRole = async (uid) => {
+    try {
+      const userDoc = await getDoc(doc(db, "Users", uid));
+      if (userDoc.exists()) {
+        return userDoc.data().role || "Researcher";
+      }
+      return "Researcher"; // Default role if user doesn't exist
+    } catch (error) {
+      console.error("Error fetching user role:", error);
+      return "Researcher"; // Default role if there's an error
+    }
+  };
+
+  // Handle auth state changes
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(
       auth,
       async (user) => {
         setCurrentUser(user);
-
+        
         if (user) {
-          // Fetch role from Firestore
-          try {
-            const userDoc = await getDoc(doc(db, "Users", user.uid));
-            if (userDoc.exists()) {
-              setRole(userDoc.data().role);
-            } else {
-              setRole("Researcher"); // default role
-            }
-          } catch (err) {
-            console.error("Error fetching user role:", err);
-            setRole("Researcher");
-          }
+          const userRole = await fetchUserRole(user.uid);
+          setRole(userRole);
         } else {
           setRole(null);
         }
-
+        
         setLoading(false);
       },
       (error) => {
         console.error("Auth state error:", error);
+        setRole("Researcher");
         setLoading(false);
       }
     );
@@ -57,15 +63,27 @@ export const AuthProvider = ({ children }) => {
     return () => unsubscribe();
   }, []);
 
+  // Login with email and password
   const login = async (email, password) => {
-    const userCredential = await signInWithEmailAndPassword(
-      auth,
-      email,
-      password
-    );
-    return userCredential.user;
+    try {
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      const user = userCredential.user;
+      
+      if (!user.emailVerified) {
+        await signOut(auth);
+        throw new Error("Please verify your email before signing in.");
+      }
+      
+      const userRole = await fetchUserRole(user.uid);
+      setRole(userRole);
+      return user;
+    } catch (error) {
+      console.error("Login error:", error);
+      throw error;
+    }
   };
 
+  // Register new user
   const register = async (email, password) => {
     const userCredential = await createUserWithEmailAndPassword(
       auth,
@@ -73,16 +91,18 @@ export const AuthProvider = ({ children }) => {
       password
     );
     await sendEmailVerification(userCredential.user);
-    await signOut(auth); // prevent auto-login until email verified
+    await signOut(auth); // Prevent auto-login until email is verified
     return userCredential.user;
   };
 
+  // Logout user
   const logout = async () => {
     await signOut(auth);
     setCurrentUser(null);
     setRole(null);
   };
 
+  // Context value
   const value = useMemo(
     () => ({
       currentUser,

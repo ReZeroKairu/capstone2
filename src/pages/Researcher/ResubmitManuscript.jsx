@@ -3,6 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { db, auth } from "../../firebase/firebase";
 import NotificationService from "../../utils/notificationService";
 import { formatFirestoreDate } from "../../utils/dateUtils";
+import UserLogService from '../../utils/userLogService';
 
 import {
   doc,
@@ -60,23 +61,7 @@ async function updateReviewerDeadlines(manuscriptId, newStatus) {
   }
 }
 
-// Log manuscript submission
-async function logManuscriptSubmission(manuscriptId, version, action) {
-  try {
-    const logRef = doc(collection(db, 'manuscriptLogs'));
-    await setDoc(logRef, {
-      manuscriptId,
-      version,
-      action,
-      timestamp: serverTimestamp(),
-      userId: auth.currentUser?.uid,
-      userEmail: auth.currentUser?.email
-    });
-  } catch (error) {
-    console.error('Error logging manuscript submission:', error);
-    // Don't fail the operation if logging fails
-  }
-}
+
 
 export default function ResubmitManuscript() {
   const { manuscriptId } = useParams();
@@ -89,8 +74,9 @@ export default function ResubmitManuscript() {
   const [message, setMessage] = useState("");
   const [messageVisible, setMessageVisible] = useState(false);
 
+  const { logManuscriptResubmission } = useUserLogs();
   const { notifyManuscriptSubmission } = useNotifications();
-  const { logManuscriptSubmission } = useUserLogs();
+ 
 
   const showMessage = (msg) => {
     setMessage(msg);
@@ -185,30 +171,40 @@ export default function ResubmitManuscript() {
   const handleResubmit = async (e) => {
     e.preventDefault();
 
-    // Check if profile is complete
-    const profileComplete = await isProfileComplete(auth.currentUser.uid);
-    if (!profileComplete) {
-      alert('Please complete your profile before resubmitting a manuscript. All required fields must be filled out.');
-      navigate('/profile');
-      return;
-    }
-
-    if (!newFile) {
-      showMessage("Please upload a revised manuscript file.");
-      return;
-    }
-
-    if (!["application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"].includes(newFile.type)) {
-      showMessage("Only Word documents (.doc or .docx) are allowed.");
-      return;
-    }
-
-    if (!revisionNotes.trim()) {
-      showMessage("Please provide revision notes explaining your changes.");
-      return;
-    }
-
     try {
+      // Check if profile is complete
+      const profileComplete = await isProfileComplete(auth.currentUser.uid);
+      if (!profileComplete) {
+        alert('Please complete your profile before resubmitting a manuscript. All required fields must be filled out.');
+        navigate('/profile');
+        return;
+      }
+
+      // Validate file
+      if (!newFile || !newFile.url) {
+        showMessage("Please upload a revised manuscript file.");
+        return;
+      }
+
+      // Validate file type
+      const allowedTypes = [
+        "application/msword", 
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+      ];
+      
+      if (!allowedTypes.includes(newFile.type) && 
+          !newFile.name.toLowerCase().endsWith('.doc') && 
+          !newFile.name.toLowerCase().endsWith('.docx')) {
+        showMessage("Only Word documents (.doc or .docx) are allowed.");
+        return;
+      }
+
+      // Validate revision notes
+      if (!revisionNotes.trim()) {
+        showMessage("Please provide revision notes explaining your changes.");
+        return;
+      }
+
       setSubmitting(true);
 
       const msRef = doc(db, "manuscripts", manuscriptId);
@@ -218,16 +214,16 @@ export default function ResubmitManuscript() {
       const currentVersion = manuscript.versionNumber || 1;
       const newVersion = currentVersion + 1;
 
-      // Update the file in answeredQuestions
+      // Safely update the file in answeredQuestions
       const updatedAnsweredQuestions = (manuscript.answeredQuestions || []).map((q) => {
         if (q.type === "file") {
           return {
             ...q,
-            answer: newFile.url || null,
-            fileName: newFile.name || null,
-            fileType: newFile.type || null,
-            fileSize: newFile.size || null,
-            storagePath: newFile.storagePath,
+            answer: newFile?.url || null,
+            fileName: newFile?.name || null,
+            fileType: newFile?.type || null,
+            fileSize: newFile?.size || 0,
+            storagePath: newFile?.storagePath || null,
           };
         }
         return q;
@@ -465,6 +461,9 @@ export default function ResubmitManuscript() {
 
       // Update the manuscript document with the cleaned data
       await updateDoc(msRef, cleanedUpdateData);
+      console.log('Manuscript updated successfully');
+
+      // Notification is now handled by the NotificationService.createBulkNotifications call below
 
       // Create a revision history entry
       await addDoc(collection(db, "manuscripts", manuscriptId, "revisionHistory"), {
@@ -514,34 +513,68 @@ export default function ResubmitManuscript() {
         // Don't fail the entire submission if deadline update fails
       }
       
-      // Log the submission
-      await logManuscriptSubmission(manuscriptId, newVersion, 'resubmitted');
+      // Log the resubmission using the useUserLogs hook
+      const manuscriptTitle = manuscript.manuscriptTitle || manuscript.title || "Untitled";
+      const version = newVersion;
+      const previousVersion = manuscript.versionNumber || 1;
       
+      await logManuscriptResubmission(
+        currentUser.uid,
+        manuscriptId,
+        manuscriptTitle,
+        version,
+        previousVersion
+      );
+      
+      console.log('Manuscript resubmission logged:', {
+        manuscriptId,
+        title: manuscriptTitle,
+        version,
+        previousVersion
+      });
+
       // Notify admins about the resubmission
       try {
-        const adminIds = await NotificationService.getAdminUserIds();
-        if (adminIds && adminIds.length > 0) {
-          await NotificationService.createBulkNotifications(
-            adminIds,
-            "Manuscript Resubmission",
-            `Manuscript Resubmitted: ${manuscript.manuscriptTitle || manuscript.title || "Untitled Manuscript"}`,
-            `A revised version of "${manuscript.manuscriptTitle || manuscript.title || "Untitled Manuscript"}" has been resubmitted by ${currentUser.displayName || 'the author'}.`,
-            {
-              manuscriptId,
-              manuscriptTitle: manuscript.manuscriptTitle || manuscript.title || "Untitled Manuscript",
-              oldStatus: manuscript.status,
-              newStatus: 'Back to Admin',
-              isResubmission: true,
-              versionNumber: newVersion,
-              actionUrl: `/manuscripts?manuscriptId=${manuscriptId}`
-            }
-          );
-          console.log('Notification sent to admins');
+        const adminUsersRef = collection(db, "Users");
+        const q = query(adminUsersRef, where("role", "==", "Admin"));
+        const querySnapshot = await getDocs(q);
+        
+        const adminIds = querySnapshot.docs.map(doc => doc.id);
+        console.log('Found admin users:', adminIds);
+        
+        if (adminIds.length > 0) {
+          const notificationPromises = adminIds.map(adminId => {
+            const notificationData = {
+              type: "manuscript_resubmitted",
+              title: `Manuscript Resubmitted: ${manuscript.manuscriptTitle || manuscript.title || "Untitled"}`,
+              message: `A revised version of "${manuscript.manuscriptTitle || manuscript.title || "the manuscript"}" has been resubmitted by ${currentUser.displayName || 'the author'}.`,
+              manuscriptId: manuscriptId,
+              timestamp: serverTimestamp(),
+              read: false,
+              actionUrl: `/manuscripts?manuscriptId=${manuscriptId}`,
+              metadata: {
+                version: newVersion,
+                previousVersion: currentVersion,
+                submittedBy: currentUser.uid,
+                submittedAt: serverTimestamp(),
+                oldStatus: manuscript.status,
+                newStatus: 'Back to Admin',
+                isResubmission: true
+              }
+            };
+            
+            console.log('Creating notification for admin:', adminId, 'with data:', notificationData);
+            
+            return addDoc(collection(db, `Users/${adminId}/Notifications`), notificationData);
+          });
+
+          await Promise.all(notificationPromises);
+          console.log(`Successfully created ${adminIds.length} admin notifications`);
         } else {
           console.warn('No admin users found to notify');
         }
       } catch (error) {
-        console.error('Error sending notification to admins:', error);
+        console.error('Error creating admin notifications:', error);
         // Don't fail the submission if notification fails
       }
 
@@ -555,17 +588,16 @@ export default function ResubmitManuscript() {
     }
   };
 
-  if (loading) return <p className="text-center py-10">Loading manuscript...</p>;
-  if (!manuscript) return <p className="text-center py-10">Manuscript not found.</p>;
+  if (loading) return <div className="min-h-screen flex items-center justify-center"><p className="text-center py-10">Loading manuscript...</p></div>;
+  if (!manuscript) return <div className="min-h-screen flex items-center justify-center"><p className="text-center py-10">Manuscript not found.</p></div>;
 
   return (
-    <div className="min-h-screen px-4 md:py-12 lg:py-16 mx-auto max-w-3xl mt-12 bg-white text-[#222]">
-      <h1 className="text-2xl font-semibold mb-6 text-[#111] text-center">
-        Resubmit Revised Manuscript
-      </h1>
+    <div className="min-h-screen bg-gray-50 pt-32 pb-32 sm:pt-28 sm:pb-28">
+      <div className="w-full max-w-4xl mx-auto p-5 sm:p-8 bg-white rounded-lg shadow-sm">
+      <h1 className="text-xl sm:text-2xl font-bold text-gray-800 mb-6 sm:mb-8">Resubmit Revised Manuscript</h1>
 
-      <div className="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
-        <h2 className="text-lg font-semibold mb-2">{manuscript.manuscriptTitle || manuscript.title}</h2>
+      <div className="mb-8 sm:mb-10 p-5 sm:p-6 bg-gray-50 rounded-lg border border-gray-200">
+        <h2 className="text-lg sm:text-xl font-semibold mb-2">{manuscript.manuscriptTitle || manuscript.title}</h2>
         <p className="text-sm text-gray-600">
           <strong>Status:</strong> {manuscript.status}
         </p>
@@ -579,8 +611,8 @@ export default function ResubmitManuscript() {
 
       {/* Submission History */}
       {manuscript.submissionHistory && manuscript.submissionHistory.length > 0 ? (
-        <div className="mb-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
-          <h3 className="text-base font-semibold mb-3">Submission History</h3>
+        <div className="mb-8 sm:mb-10 p-5 sm:p-6 bg-gray-50 rounded-lg border border-gray-200">
+          <h3 className="text-sm sm:text-base font-semibold mb-2 sm:mb-3">Submission History</h3>
           <div className="space-y-2">
             {manuscript.submissionHistory.map((submission, idx) => (
               <div key={idx} className="bg-white p-3 rounded border flex justify-between items-center">
@@ -614,8 +646,8 @@ export default function ResubmitManuscript() {
           </div>
         </div>
       ) : (
-        <div className="mb-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
-          <h3 className="text-base font-semibold mb-3">Current Submission</h3>
+        <div className="mb-8 sm:mb-10 p-5 sm:p-6 bg-gray-50 rounded-lg border border-gray-200">
+          <h3 className="text-sm sm:text-base font-semibold mb-2 sm:mb-3">Current Submission</h3>
           <div className="bg-white p-3 rounded border flex justify-between items-center">
             <div>
               <p className="text-sm font-medium text-gray-800">Version 1 (Initial Submission)</p>
@@ -640,7 +672,7 @@ export default function ResubmitManuscript() {
 
       {/* Display review feedback */}
       {manuscript.reviewerSubmissions && manuscript.reviewerSubmissions.length > 0 && (
-        <div className="mb-6 p-4 bg-yellow-100 rounded-lg border border-yellow-200">
+        <div className="mb-4 sm:mb-6 p-3 sm:p-4 bg-yellow-100 rounded-lg border border-yellow-200">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-base font-semibold">📝 Reviewer Feedback</h3>
             <span className="text-sm bg-gray-300 px-2 py-1 rounded">
@@ -675,9 +707,9 @@ export default function ResubmitManuscript() {
         currentVersion={String(manuscript.versionNumber || 1)}
       />
 
-      <form onSubmit={handleResubmit} className="space-y-6">
+      <form onSubmit={handleResubmit} className="space-y-8 sm:space-y-10 mt-10 sm:mt-12">
         {/* Upload revised file */}
-        <div className="bg-[#e0e0e0] rounded-xl p-4">
+        <div className="bg-[#e0e0e0] rounded-xl p-5 sm:p-6 mb-8 sm:mb-10">
           <label className="block font-semibold mb-2">
             Upload Revised Manuscript (Version {(manuscript.versionNumber || 1) + 1}) <span className="text-red-500">*</span>
           </label>
@@ -701,7 +733,7 @@ export default function ResubmitManuscript() {
         </div>
 
         {/* Revision notes */}
-        <div className="bg-[#e0e0e0] rounded-xl p-4">
+        <div className="bg-[#e0e0e0] rounded-xl p-5 sm:p-6 mb-8 sm:mb-10">
           <label htmlFor="revision-notes" className="block font-semibold mb-2">
             Revision Notes (Version {(manuscript.versionNumber || 1) + 1}) <span className="text-red-500">*</span>
           </label>
@@ -720,18 +752,18 @@ export default function ResubmitManuscript() {
         </div>
 
         {/* Submit button */}
-        <div className="flex justify-end gap-3">
+        <div className="flex flex-col sm:flex-row justify-end gap-4 w-full mt-10 sm:mt-12">
           <button
             type="button"
             onClick={() => navigate("/manuscripts")}
-            className="px-6 py-2 rounded-lg font-medium text-base bg-gray-300 hover:bg-gray-400 transition-colors"
+            className="w-full sm:w-auto px-4 sm:px-6 py-2 rounded-lg font-medium text-sm sm:text-base bg-gray-300 hover:bg-gray-400 transition-colors text-center"
           >
             Cancel
           </button>
           <button
             type="submit"
             disabled={submitting || !newFile}
-            className={`px-6 py-2 rounded-lg font-medium text-base transition-colors duration-200 ${
+            className={`w-full sm:w-auto px-4 sm:px-6 py-2 rounded-lg font-medium text-sm sm:text-base transition-colors duration-200 ${
               submitting || !newFile
                 ? "bg-gray-400 cursor-not-allowed"
                 : "bg-green-600 hover:bg-green-700 text-white focus:ring-2 focus:ring-green-500 focus:ring-offset-2"
@@ -744,7 +776,7 @@ export default function ResubmitManuscript() {
 
       {message && messageVisible && (
         <div
-          className={`fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 px-6 py-4 rounded-lg shadow-lg z-50 transition-opacity duration-500 ${
+          className={`fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 px-4 py-3 sm:px-6 sm:py-4 rounded-lg shadow-lg z-50 transition-opacity duration-500 max-w-[90vw] w-auto ${
             message.toLowerCase().includes("success")
               ? "bg-green-100 text-green-700"
               : "bg-red-100 text-red-700"
@@ -753,6 +785,7 @@ export default function ResubmitManuscript() {
           {message}
         </div>
       )}
+    </div>
     </div>
   );
 }

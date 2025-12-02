@@ -417,7 +417,7 @@ const Dashboard = ({ sidebarOpen }) => {
   let latestDeadlineTime = 0;
 
   Object.entries(manuscript.assignedReviewersMeta).forEach(([reviewerId, meta]) => {
-    // Skip declined reviewers or entries without deadlines
+      // Skip declined reviewers or entries without deadlines
     if (meta.invitationStatus === 'declined' || !meta.deadline) {
       return;
     }
@@ -490,9 +490,28 @@ const getActiveDeadline = (manuscript, role, currentUserId) => {
         
         // Only return the deadline if the reviewer hasn't submitted for the current version
         if (!hasSubmitted) {
-          return reviewerMeta.deadline.toDate 
+          const deadline = reviewerMeta.deadline.toDate 
             ? reviewerMeta.deadline.toDate() 
             : new Date(reviewerMeta.deadline);
+            
+          // Get the assigned date for this reviewer, if available
+          const assignedAt = reviewerMeta.assignedAt 
+            ? (reviewerMeta.assignedAt.toDate ? reviewerMeta.assignedAt.toDate() : new Date(reviewerMeta.assignedAt))
+            : null;
+            
+          // If we have an assigned date, return both start and end dates
+          if (assignedAt) {
+            // Ensure the assigned date is not in the future
+            const now = new Date();
+            const effectiveStart = assignedAt > now ? now : assignedAt;
+            
+            return {
+              start: effectiveStart,
+              end: deadline
+            };
+          }
+          
+          return deadline;
         }
       }
       return null;
@@ -503,6 +522,7 @@ const getActiveDeadline = (manuscript, role, currentUserId) => {
       const currentVersion = manuscript.versionNumber || 1;
       let latestDeadline = null;
       let latestDeadlineTime = 0;
+      let latestAssignedAt = null;
 
       Object.entries(manuscript.assignedReviewersMeta).forEach(([reviewerId, meta]) => {
         // Skip declined reviewers or those without a deadline
@@ -533,14 +553,33 @@ const getActiveDeadline = (manuscript, role, currentUserId) => {
         const reviewerDeadline = meta.deadline.toDate 
           ? meta.deadline.toDate() 
           : new Date(meta.deadline);
+          
+        // Get the assigned date for this reviewer, if available
+        const assignedAt = meta.assignedAt 
+          ? (meta.assignedAt.toDate ? meta.assignedAt.toDate() : new Date(meta.assignedAt))
+          : null;
 
+        // If this is the latest deadline, update the assigned date as well
         if (!latestDeadline || reviewerDeadline.getTime() > latestDeadlineTime) {
           latestDeadline = reviewerDeadline;
           latestDeadlineTime = reviewerDeadline.getTime();
+          latestAssignedAt = assignedAt;
         }
       });
 
       if (latestDeadline) {
+        // If we have an assigned date, use it to calculate the deadline
+        if (latestAssignedAt) {
+          // Ensure the assigned date is not in the future
+          const now = new Date();
+          const effectiveStart = latestAssignedAt > now ? now : latestAssignedAt;
+          
+          // Return an object with both start and end dates
+          return {
+            start: effectiveStart,
+            end: latestDeadline
+          };
+        }
         return latestDeadline;
       }
     }
@@ -584,18 +623,31 @@ const getActiveDeadline = (manuscript, role, currentUserId) => {
             if (!isAssigned) continue;
           }
 
-          const deadline = getActiveDeadline(manuscript, role, currentUserId);
+          try {
+            // Use the same getActiveDeadline function as in ManuscriptItem
+            const deadline = await getReviewerDeadline(
+              manuscript,
+              role,
+              currentUserId,
+              manuscript.coAuthorsIds?.includes(currentUserId),
+              manuscript.submitterId === currentUserId
+            );
 
-          // Process the deadline if found
-          if (deadline) {
-            const deadlineDate = deadline.toDate ? deadline.toDate() : new Date(deadline);
-            // Only show future deadlines or those within the last 7 days
-            const oneWeekAgo = new Date();
-            oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
-            
-            if (deadlineDate > oneWeekAgo) {
-              deadlines[manuscript.id] = deadlineDate;
+            if (deadline) {
+              // Convert to Date object if it's a Firestore timestamp
+              const deadlineDate = deadline.toDate ? deadline.toDate() : new Date(deadline);
+              
+              // Only show future deadlines or those within the last 7 days
+              const oneWeekAgo = new Date();
+              oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+              
+              if (deadlineDate > oneWeekAgo) {
+                // Store the deadline date
+                deadlines[manuscript.id] = deadlineDate;
+              }
             }
+          } catch (error) {
+            console.error("Error loading deadline for manuscript:", manuscript.id, error);
           }
         } catch (error) {
           console.error("Error loading deadline for manuscript:", manuscript.id, error);
@@ -946,14 +998,29 @@ const getActiveDeadline = (manuscript, role, currentUserId) => {
               const isCompleted = displayStatus === "For Publication";
               const isAccepted = displayStatus === "Accepted";
 
-              // Set status color based on the display status
-              let statusColor = "yellow";
-              if (displayStatus === 'For Publication') statusColor = "green";
-              else if (['Rejected', 'Peer Reviewer Rejected', 'Review Declined'].includes(displayStatus)) statusColor = "red";
-              else if (displayStatus === 'For Revision (Minor)') statusColor = "blue";
-              else if (displayStatus === 'For Revision (Major)') statusColor = "orange";
-              else if (displayStatus === 'Accepted') statusColor = "teal";
-              else if (displayStatus === 'Pending Acceptance') statusColor = "yellow";
+              // Status color mapping to match ManuscriptStatusBadge
+              const statusColors = {
+                'Pending': 'bg-gray-100 text-gray-800',
+                'Accepted': 'bg-teal-100 text-teal-800',
+                'Assigning Peer Reviewer': 'bg-blue-100 text-blue-800',
+                'Peer Reviewer Assigned': 'bg-indigo-100 text-indigo-800',
+                'Peer Reviewer Reviewing': 'bg-purple-100 text-purple-800',
+                'Back to Admin': 'bg-yellow-100 text-yellow-800',
+                'For Revision (Minor)': 'bg-orange-100 text-orange-800',
+                'For Revision (Major)': 'bg-orange-200 text-orange-900',
+                'In Finalization': 'bg-blue-100 text-blue-800',
+                'For Publication': 'bg-green-100 text-green-800',
+                'Rejected': 'bg-red-100 text-red-800',
+                'Peer Reviewer Rejected': 'bg-red-100 text-red-800',
+                'Review Declined': 'bg-red-100 text-red-800',
+                'Revision Overdue': 'bg-red-700 text-white',
+                'Finalized': 'bg-green-100 text-green-800',
+                'Pending Acceptance': 'bg-yellow-100 text-yellow-800',
+                'default': 'bg-gray-100 text-gray-800'
+              };
+              
+              // Get the appropriate status class or use default
+              const statusClass = statusColors[displayStatus] || statusColors['default'];
 
               return (
                 <div
@@ -978,19 +1045,7 @@ const getActiveDeadline = (manuscript, role, currentUserId) => {
                       )}
                     </div>
                     <span
-                      className={`px-3 py-1 rounded-full text-xs font-medium ${
-                        statusColor === "green"
-                          ? "bg-green-100 text-green-800"
-                          : statusColor === "red"
-                          ? "bg-red-100 text-red-800"
-                          : statusColor === "blue"
-                          ? "bg-blue-100 text-blue-800"
-                          : statusColor === "orange"
-                          ? "bg-orange-100 text-orange-800"
-                          : statusColor === "teal"
-                          ? "bg-teal-100 text-teal-800"
-                          : "bg-yellow-100 text-yellow-800"
-                      }`}
+                      className={`px-3 py-1 rounded-full text-xs font-medium ${statusClass}`}
                     >
                       {displayStatus}
                     </span>
@@ -1020,9 +1075,16 @@ const getActiveDeadline = (manuscript, role, currentUserId) => {
                       <div className="mt-1">
                         <div className="flex items-center text-sm text-gray-600">
                           <DeadlineBadge
-                            start={m.submittedAt || new Date()}
+                            start={(() => {
+                              // Use the same logic as in ManuscriptItem
+                              const startDate = m.assignedAt || m.submittedAt || new Date();
+                              const now = new Date();
+                              const effectiveStart = new Date(startDate) > now ? now : new Date(startDate);
+                              return effectiveStart?.toDate ? effectiveStart.toDate() : new Date(effectiveStart);
+                            })()}
                             end={activeDeadlines[m.id]}
                             formatDate={formatDate}
+                            className="mt-1"
                           />
                         </div>
                       </div>

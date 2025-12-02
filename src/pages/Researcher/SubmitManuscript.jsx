@@ -17,6 +17,7 @@ import {
   serverTimestamp,
   query,
   orderBy,
+  increment  // Add this back
 } from "firebase/firestore";
 import { useNotifications } from "../../hooks/useNotifications";
 import { useUserLogs } from "../../hooks/useUserLogs";
@@ -25,6 +26,7 @@ import { debounce } from "lodash";
 import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import { useNavigate } from "react-router-dom";
+
 
 export default function SubmitManuscript() {
   const [forms, setForms] = useState([]);
@@ -47,9 +49,16 @@ export default function SubmitManuscript() {
   const questionsPerPage = 5;
 
   const [monthlyCount, setMonthlyCount] = useState(0);
-  const [monthlyLimit, setMonthlyLimit] = useState(6);
+  const [monthlyLimit, setMonthlyLimit] = useState(3); // Set monthly limit to 3
+  const [error, setError] = useState(null);
   const [isFileUploading, setIsFileUploading] = useState(false);
-
+const isMounted = useRef(true);
+const navigate = useNavigate();
+useEffect(() => {
+  return () => {
+    isMounted.current = false;
+  };
+}, []);
   const cooldownRef = useRef(0);
   useEffect(() => {
     cooldownRef.current = cooldown;
@@ -71,6 +80,26 @@ export default function SubmitManuscript() {
     const m = String(date.getUTCMonth() + 1).padStart(2, "0");
     return `${y}-${m}`;
   };
+
+  // Fetch monthly submission count
+  const fetchMonthlyCount = useCallback(async () => {
+    if (!currentUser?.uid) return;
+    
+    try {
+      const monthKey = getMonthKey();
+      const counterRef = doc(db, `submissionCounters/${currentUser.uid}_${monthKey}`);
+      const counterDoc = await getDoc(counterRef);
+      
+      if (counterDoc.exists()) {
+        setMonthlyCount(counterDoc.data().count || 0);
+      } else {
+        setMonthlyCount(0);
+      }
+    } catch (err) {
+      console.error("Error fetching monthly count:", err);
+      setError("Failed to load submission data. Please refresh the page.");
+    }
+  }, [currentUser]);
 
   // Fetch forms, researchers, and user info
   useEffect(() => {
@@ -101,10 +130,22 @@ export default function SubmitManuscript() {
           }
           setCurrentUser(user);
 
-          const userSnap = await getDoc(doc(db, "Users", user.uid));
-          if (!userSnap.exists()) return showMessage("User record not found.");
-          const role = userSnap.data().role || "Researcher";
-          setMonthlyLimit(role === "Researcher" ? 6 : Infinity);
+          if (user) {
+            try {
+              const userSnap = await getDoc(doc(db, "Users", user.uid));
+              if (!userSnap.exists()) {
+                showMessage("User record not found.");
+                return;
+              }
+              const role = userSnap.data().role || "Researcher";
+              setMonthlyLimit(role === "Researcher" ? 3 : Infinity);
+              setCurrentUser({ ...user, role });
+              await fetchMonthlyCount(); // Fetch the current count after user is set
+            } catch (err) {
+              console.error("Error fetching user data:", err);
+              setError("Failed to load user information. Please try again.");
+            }
+          }
 
           const monthKey = getMonthKey();
           const counterDoc = await getDoc(
@@ -262,6 +303,7 @@ export default function SubmitManuscript() {
     
     setLoading(true);
     
+    
     try {
       // Check if profile is complete
       const profileComplete = await isProfileComplete(currentUser.uid);
@@ -293,8 +335,14 @@ export default function SubmitManuscript() {
         return;
       }
       
-      if (monthlyCount >= monthlyLimit) {
-        showMessage(`Monthly submission limit of ${monthlyLimit} reached.`);
+      // Check monthly limit from Firestore to ensure it's up-to-date
+      const monthKey = getMonthKey();
+      const counterRef = doc(db, `submissionCounters/${currentUser.uid}_${monthKey}`);
+      const counterDoc = await getDoc(counterRef);
+      const currentCount = counterDoc.exists() ? counterDoc.data().count || 0 : 0;
+      
+      if (currentCount >= monthlyLimit) {
+        showMessage(`You have reached your monthly submission limit of ${monthlyLimit} manuscripts. Please try again next month.`);
         setLoading(false);
         return;
       }
@@ -447,7 +495,6 @@ export default function SubmitManuscript() {
         assignedReviewers: [],
         status: initialStatus,
         versionNumber: 1,
-        parentResponseId: null,
         searchIndex,
         submittedAt: serverTimestamp(),
         fileUrl: downloadURL,
@@ -472,41 +519,70 @@ export default function SubmitManuscript() {
         },
       });
 
-      const monthKey = getMonthKey();
-      const counterRef = doc(
-        db,
-        `submissionCounters/${currentUser.uid}_${monthKey}`
-      );
-      await updateDoc(counterRef, { count: monthlyCount + 1 }).catch(
-        async () =>
-          await setDoc(counterRef, {
-            count: 1,
-            uid: currentUser.uid,
-            month: monthKey,
-          })
-      );
-      setMonthlyCount((prev) => prev + 1);
+    // Update the submission counter
+    try {
+      // First try to update the counter atomically
+      await updateDoc(counterRef, {
+        count: increment(1),
+        lastUpdated: serverTimestamp()
+      });
+    } catch (error) {
+      // If document doesn't exist, create it
+      if (error.code === 'not-found') {
+        await setDoc(counterRef, {
+          count: 1,
+          uid: currentUser.uid,
+          month: monthKey,
+          createdAt: serverTimestamp(),
+          lastUpdated: serverTimestamp()
+        });
+      } else {
+        throw error; // Re-throw other errors
+      }
+    }
+
+setMonthlyCount(prev => prev + 1);
 
       await notifyManuscriptSubmission(
         manuscriptRef.id,
         manuscriptTitleAnswer || form.title || "Untitled Manuscript",
         currentUser.uid
       );
+      // Ensure we have a valid title before logging
+      const manuscriptTitle = manuscriptTitleAnswer || form.title || "Untitled Manuscript";
       await logManuscriptSubmission(
         currentUser.uid,
         manuscriptRef.id,
-        manuscriptTitleAnswer || form.title || "Untitled Manuscript"
+        manuscriptTitle
       );
+      
+      // Also log to console for debugging
+      console.log('Logged manuscript submission:', {
+        userId: currentUser.uid,
+        manuscriptId: manuscriptRef.id,
+        title: manuscriptTitle
+      });
 
       setAnswers({});
       setSelectedUsers([]);
       showMessage("Manuscript submitted successfully!");
-    } catch (err) {
-      console.error("Error submitting form:", err);
-      showMessage("Failed to submit form. Please try again.");
-    } finally {
-      setLoading(false);
-    }
+      // Navigate to dashboard after successful submission
+    navigate('/dashboard', { replace: true });
+ } catch (err) {
+  console.error("Error in form submission:", err);
+  const errorMessage = err.message || "Failed to submit form. Please try again.";
+  showMessage(errorMessage);
+  setError(errorMessage);
+  
+  // If it's a permission error, suggest re-authenticating
+  if (err.code === 'permission-denied' || err.code === 'permission_denied') {
+    console.warn("Permission denied - user may need to re-authenticate");
+  }
+} finally {
+  if (isMounted.current) {
+    setLoading(false);
+  }
+}
   };
 
   // Track last saved draft content
@@ -651,7 +727,7 @@ export default function SubmitManuscript() {
   if (loading) return <p className="text-center py-10">Loading...</p>;
 
   return (
-    <div className="min-h-screen px-4 md:py-12 lg:py-16 mx-auto max-w-3xl mt-12 bg-white text-[#222] relative">
+    <div className="min-h-screen px-4 py-16 md:py-12 lg:py-16 mx-auto max-w-3xl mt-4 md:mt-12 bg-white text-[#222] relative pb-28 sm:pb-28 mb-6">
       <ToastContainer
         position="top-right"
         autoClose={3000}
@@ -663,16 +739,33 @@ export default function SubmitManuscript() {
         draggable
         pauseOnHover
       />
-      <h1 className="text-2xl font-semibold mb-6 text-[#111] text-center">
+      <h1 className="text-xl md:text-2xl font-semibold mb-4 md:mb-6 text-[#111] text-center">
         Submit Manuscript
       </h1>
+
+      {/* Monthly Limit Alert */}
+      {monthlyCount >= monthlyLimit && (
+        <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-6 rounded" role="alert">
+          <div className="flex">
+            <div className="flex-shrink-0">
+              <svg className="h-5 w-5 text-red-600" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+              </svg>
+            </div>
+            <div className="ml-3">
+              <p className="font-bold">Monthly Submission Limit Reached</p>
+              <p className="text-sm">You have used all {monthlyLimit} of your monthly manuscript submissions. Please try again next month.</p>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="mb-6">
         <label className="block mb-2 font-semibold">Select Form:</label>
         <select
           value={form?.id || ""}
           onChange={(e) => selectForm(e.target.value)}
-          className="border p-2 rounded w-full focus:outline-none focus:ring-2 focus:ring-green-400"
+          className="border p-2 rounded w-full focus:outline-none focus:ring-2 focus:ring-green-400 text-sm md:text-base"
         >
           <option value="" disabled>
             -- Select a Form --
@@ -893,7 +986,7 @@ export default function SubmitManuscript() {
           </div>
 
           {form.questions.length > questionsPerPage && (
-            <div className="flex justify-between items-center mt-4">
+            <div className="mt-6 mb-8 md:mb-0 flex flex-col sm:flex-row justify-between items-center gap-4 fixed bottom-0 left-0 right-0 bg-white p-4 shadow-lg md:static md:shadow-none md:bg-transparent md:p-0">
               <button
                 type="button"
                 onClick={() => handlePageChange(Math.max(currentPage - 1, 0))}

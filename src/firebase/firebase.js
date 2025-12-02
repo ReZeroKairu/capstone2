@@ -33,6 +33,7 @@ const db = getFirestore(app); // Firestore
 const auth = getAuth(app); // Authentication
 const provider = new GoogleAuthProvider(); // Google login
 const storage = getStorage(app); // Firebase Storage
+const functions = getFunctions(app, "asia-east2"); // Initialize Functions with correct region
 
 // Export initialized services
-export { app, db, auth, provider, storage, analytics };
+export { app, db, auth, provider, storage, analytics, functions };

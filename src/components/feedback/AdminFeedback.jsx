@@ -445,36 +445,77 @@ const AdminFeedback = ({
       ?.scrollIntoView({ behavior: "smooth" });
   };
 
-  // Handle deleting feedback
-  const handleDeleteFeedback = async (id, storagePath) => {
-    if (
-      window.confirm(
-        "Are you sure you want to delete this feedback? This action cannot be undone."
-      )
-    ) {
-      try {
-        // If there's a file associated with this feedback, delete it from storage
-        if (storagePath) {
-          try {
-            const fileRef = ref(storage, storagePath);
-            await deleteObject(fileRef);
-          } catch (error) {
-            console.warn("Error deleting file from storage:", error);
-            // Continue with feedback deletion even if file deletion fails
-          }
-        }
+ // In handleDeleteFeedback function
+const handleDeleteFeedback = async (id, storagePath) => {
+  if (!currentUser) {
+    console.error('No user is signed in');
+    alert('You must be signed in to delete feedback');
+    return;
+  }
 
-        // Delete the feedback document
-        await deleteDoc(
-          doc(db, "manuscripts", manuscriptId, "adminFeedback", id)
-        );
+  if (!window.confirm("Are you sure you want to delete this feedback? This action cannot be undone.")) {
+    return;
+  }
+
+  try {
+    console.log('Current user UID:', currentUser.uid);
+    console.log('Is admin?', isAdmin);
+    console.log('Storage path to delete:', storagePath);
+
+    // If there's a file associated with this feedback, delete it from storage
+    if (storagePath) {
+      try {
+        // Decode and clean the path
+        const decodedPath = decodeURIComponent(storagePath);
+        const cleanPath = decodedPath.startsWith('/') ? decodedPath.substring(1) : decodedPath;
+        
+        console.log("Cleaned path:", cleanPath);
+        
+        // Create a reference to the file
+        const fileRef = ref(storage, cleanPath);
+        console.log("File reference created:", fileRef.fullPath);
+        
+        // Test if the file exists and is readable
+        try {
+          const url = await getDownloadURL(fileRef);
+          console.log("File exists and is readable. URL:", url);
+        } catch (error) {
+          console.warn("File access test failed, but will still attempt deletion:", error.message);
+        }
+        
+        // Delete the file
+        await deleteObject(fileRef);
+        console.log("File deleted successfully from storage");
       } catch (error) {
-        console.error("Error deleting feedback:", error);
-        alert("Failed to delete feedback. Please try again.");
+        console.error("Error deleting file from storage:", {
+          code: error.code,
+          message: error.message,
+          details: error
+        });
+        // Continue with feedback deletion even if file deletion fails
       }
     }
-  };
 
+    // Delete the feedback document
+    console.log("Deleting feedback document with ID:", id);
+    await deleteDoc(doc(db, "manuscripts", manuscriptId, "adminFeedback", id));
+    console.log("Feedback document deleted successfully");
+
+  } catch (error) {
+    console.error("Error in handleDeleteFeedback:", {
+      code: error.code,
+      message: error.message,
+      details: error
+    });
+    
+    let errorMessage = "Failed to delete feedback. Please try again.";
+    if (error.code === 'storage/unauthorized') {
+      errorMessage = "You don't have permission to delete this file. Please make sure you're logged in as an admin.";
+    }
+    
+    alert(errorMessage);
+  }
+};
   // Toggle feedback expansion - fixed version
   const toggleFeedback = useCallback(
     (version, isLatestVersion) => {

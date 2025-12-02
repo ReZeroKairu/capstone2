@@ -77,7 +77,28 @@ export const FeedbackItem = ({
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center px-3 py-1.5 border border-gray-200 rounded-md bg-gray-50 hover:bg-gray-100 text-sm text-gray-800"
-                download
+                download={!item.fileType?.includes('pdf')}
+                onClick={(e) => {
+                  if (item.fileType?.includes('pdf')) {
+                    e.preventDefault();
+                    const pdfWindow = window.open('', '_blank');
+                    pdfWindow.document.write(`
+                      <html>
+                        <head>
+                          <title>${item.fileName || 'Document'}</title>
+                          <style>
+                            body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; }
+                            iframe { width: 100%; height: 100%; border: none; }
+                          </style>
+                        </head>
+                        <body>
+                          <iframe src="${item.fileUrl}"></iframe>
+                        </body>
+                      </html>
+                    `);
+                    pdfWindow.document.close();
+                  }
+                }}
               >
                 {getFileIcon(item.fileType)}
                 <span className="ml-2 max-w-xs truncate">
@@ -130,4 +151,4 @@ export const FeedbackItem = ({
   );
 };
 
-export default FeedbackItem;
+export default FeedbackItem

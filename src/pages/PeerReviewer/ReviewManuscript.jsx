@@ -11,6 +11,7 @@ import {
   getDoc,
   arrayRemove,
   deleteField,
+  serverTimestamp
 } from "firebase/firestore";
 import { ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
 import NotificationService from "../../utils/notificationService";
@@ -213,7 +214,7 @@ export default function ReviewManuscript() {
       if (userDoc.exists()) {
         const userData = userDoc.data();
         const requiredFields = {
-          'Researcher': ['institution', 'fieldOfStudy', 'education', 'researchInterests'],
+          'Researcher': [ 'education', 'researchInterests'],
           'Peer Reviewer': ['affiliation', 'expertise', 'education']
         };
 
@@ -283,10 +284,8 @@ export default function ReviewManuscript() {
           alert("File size exceeds 30MB. Please upload a smaller file.");
           return;
         }
-        const fileRef = storageRef(
-          storage,
-          `reviews/${manuscriptId}/${reviewerId}-${file.name}`
-        );
+      
+const fileRef = storageRef(storage, `reviews/${manuscriptId}/${reviewerId}/${file.name}`);
         const metadata = {
           contentType: file.type,
           contentDisposition: `attachment; filename="${file.name}"`,
@@ -345,6 +344,12 @@ export default function ReviewManuscript() {
         selected.manuscriptTitle || selected.title || "Untitled",
         decision
       );
+
+      // Update reviewer's last review timestamp without changing availability
+      const reviewerRef = doc(db, "Users", reviewerId);
+      await updateDoc(reviewerRef, {
+        lastReviewedAt: serverTimestamp()
+      }, { merge: true });
 
       // Show success message
       alert("Your review has been submitted successfully!");

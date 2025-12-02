@@ -3,7 +3,6 @@ import { db } from '../firebase/firebase';
 import { doc, getDoc, setDoc, serverTimestamp, collection } from 'firebase/firestore';
 import NotificationService from "./notificationService";
 
-
 /**
  * Compute final manuscript status based on reviewer decisions and submissions.
  * @param {Object} reviewerDecisionMeta - { reviewerId: { decision } }
@@ -84,7 +83,7 @@ export function filterRejectedReviewers(
  */
 export async function handleManuscriptStatusChange(manuscriptId, manuscriptTitle, oldStatus, newStatus, authorId, adminId, reviewerIds = []) {
   if (oldStatus !== newStatus) {
-    await notificationService.notifyManuscriptStatusChange(
+    await NotificationService.notifyManuscriptStatusChange(
       manuscriptId, 
       manuscriptTitle, 
       oldStatus, 
@@ -104,7 +103,7 @@ export async function handleManuscriptStatusChange(manuscriptId, manuscriptTitle
  * @param {string} assignedByAdminId - Admin who assigned reviewers
  */
 export async function handlePeerReviewerAssignment(manuscriptId, manuscriptTitle, reviewerIds, assignedByAdminId) {
-  await notificationService.notifyPeerReviewerAssignment(
+  await NotificationService.notifyPeerReviewerAssignment(
     manuscriptId, 
     manuscriptTitle, 
     reviewerIds, 
@@ -120,8 +119,8 @@ export async function handlePeerReviewerAssignment(manuscriptId, manuscriptTitle
  * @param {string} decision - Decision (accept/reject/backedOut)
  */
 export async function handlePeerReviewerDecision(manuscriptId, manuscriptTitle, reviewerId, decision) {
-  const adminIds = await notificationService.getAdminUserIds();
-  await notificationService.notifyPeerReviewerDecision(
+  const adminIds = await NotificationService.getAdminUserIds();
+  await NotificationService.notifyPeerReviewerDecision(
     manuscriptId, 
     manuscriptTitle, 
     reviewerId, 
@@ -159,6 +158,7 @@ export async function handlePeerReviewerDecision(manuscriptId, manuscriptTitle, 
     }
 
     // 3. Get admin IDs for notification
+
     const adminIds = await NotificationService.getAdminUserIds();
 
     // 4. Create a unique ID for this review using manuscriptId, reviewerId, and version
@@ -174,8 +174,7 @@ export async function handlePeerReviewerDecision(manuscriptId, manuscriptTitle, 
       versionNumber,
       reviewerId,
       decision: manuscriptData.reviewerDecisionMeta?.[reviewerId]?.decision || 'pending',
-      recommendation: manuscriptData.reviewerDecisionMeta?.[reviewerId]?.recommendation || null,
-      status: review.status,
+status: review.status,
       comment: review.comment || '',
       reviewFileUrl: review.reviewFileUrl || null,
       reviewFileName: review.reviewFileName || null,

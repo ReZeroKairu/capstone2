@@ -9,9 +9,22 @@ const logger = require("firebase-functions/logger");
 const tmp = require("tmp");
 const fs = require("fs");
 
-functions.setGlobalOptions({ region: "asia-southeast1" });
+// In functions/index.js
+const { notifyAdmins, createBulkNotifications } = require('./src/notificationService');
+const EmailServiceBackend = require("./emailService"); // backend Resend EmailService
 
-if (!admin.apps.length) admin.initializeApp();
+
+
+// Set global options
+const { setGlobalOptions } = require('firebase-functions/v2');
+setGlobalOptions({ 
+  region: 'asia-east2',
+  maxInstances: 10
+});
+
+if (!admin.apps.length) {
+  admin.initializeApp();
+}
 
 const db = admin.firestore();
 const MONTH_LIMIT = 3;
@@ -21,6 +34,7 @@ function getMonthKey(date = new Date()) {
   const m = String(date.getUTCMonth() + 1).padStart(2, "0");
   return `${y}-${m}`;
 }
+
 
 // ----------------------
 // HTTP Upload Function
@@ -41,7 +55,10 @@ exports.uploadFile = onRequest(async (req, res) => {
 
   try {
     const bucket = storage.bucket("pubtrack2.firebasestorage.app");
-    const storagePath = `profilePics/${Date.now()}_${file.name.replace(/[^\w\d.-]/g, "_")}`;
+    const storagePath = `profilePics/${Date.now()}_${file.name.replace(
+      /[^\w\d.-]/g,
+      "_"
+    )}`;
     const fileUpload = bucket.file(storagePath);
     await fileUpload.save(file.data);
 
@@ -62,13 +79,21 @@ exports.uploadFile = onRequest(async (req, res) => {
 // ----------------------
 exports.deleteUserAccount = onCall(async (request) => {
   const context = request.auth;
-  if (!context) throw new functions.https.HttpsError("unauthenticated", "Not signed in");
+  if (!context)
+    throw new functions.https.HttpsError("unauthenticated", "Not signed in");
 
   const requesterUid = context.uid;
-  const userDoc = await admin.firestore().collection("Users").doc(requesterUid).get();
+  const userDoc = await admin
+    .firestore()
+    .collection("Users")
+    .doc(requesterUid)
+    .get();
 
   if (!userDoc.exists || userDoc.data().role !== "Admin") {
-    throw new functions.https.HttpsError("permission-denied", "Only admins can delete users.");
+    throw new functions.https.HttpsError(
+      "permission-denied",
+      "Only admins can delete users."
+    );
   }
 
   const { uid } = request.data;
@@ -91,13 +116,19 @@ exports.deleteUserAccount = onCall(async (request) => {
 // ----------------------
 exports.createManuscript = onCall(async (data, context) => {
   if (!context.auth || !context.auth.uid) {
-    throw new functions.https.HttpsError("unauthenticated", "Please sign in first.");
+    throw new functions.https.HttpsError(
+      "unauthenticated",
+      "Please sign in first."
+    );
   }
 
   const uid = context.auth.uid;
   const manuscriptData = data?.manuscript;
   if (!manuscriptData) {
-    throw new functions.https.HttpsError("invalid-argument", "Missing manuscript data.");
+    throw new functions.https.HttpsError(
+      "invalid-argument",
+      "Missing manuscript data."
+    );
   }
 
   const userSnap = await db.collection("Users").doc(uid).get();
@@ -149,6 +180,135 @@ exports.createManuscript = onCall(async (data, context) => {
   } catch (err) {
     console.error("createManuscript error:", err);
     if (err instanceof functions.https.HttpsError) throw err;
-    throw new functions.https.HttpsError("internal", "Failed to create manuscript.");
+    throw new functions.https.HttpsError(
+      "internal",
+      "Failed to create manuscript."
+    );
   }
 });
+
+// ----------------------
+// Email Service Functions
+// ----------------------
+
+/**
+ * Send reviewer invitation email
+ *//**
+ * Send reviewer invitation email
+ */
+exports.sendReviewerInvitationEmail = onCall(
+  {
+    region: "asia-east2",
+    enforceAppCheck: false, // Set to true if using App Check
+    cors: true
+  },
+  async (request) => {
+    const context = request.auth;
+    if (!context) {
+      throw new functions.https.HttpsError("unauthenticated", "Not signed in");
+    }
+
+    try {
+      const {
+        reviewerEmail,
+        reviewerName,
+        manuscriptTitle,
+        deadlineDate,
+        manuscriptId,
+        adminName
+      } = request.data;
+
+      // Input validation
+      if (!reviewerEmail || !reviewerName || !manuscriptTitle || !deadlineDate || !manuscriptId) {
+        throw new functions.https.HttpsError(
+          "invalid-argument",
+          "Missing required fields: reviewerEmail, reviewerName, manuscriptTitle, deadlineDate, and manuscriptId are required"
+        );
+      }
+
+      // Send the email using the EmailServiceBackend
+      const result = await EmailServiceBackend.sendReviewerInvitation({
+        reviewerEmail,
+        reviewerName,
+        manuscriptTitle,
+        deadlineDate,
+        manuscriptId,
+        adminName: adminName || 'Admin'
+      });
+
+      logger.info(`Reviewer invitation email sent successfully to ${reviewerEmail}`);
+
+      return {
+        success: true,
+        messageId: result.messageId,
+        message: "Invitation email sent successfully",
+      };
+    } catch (error) {
+      logger.error("Error in sendReviewerInvitationEmail:", error);
+      throw new functions.https.HttpsError(
+        "internal",
+        error.message || "Failed to send invitation email"
+      );
+    }
+  }
+);
+
+/**
+ * Send general notification email
+ */
+/**
+ * Create a notification for a user
+ */
+exports.createNotification = onCall(async (request) => {
+  const context = request.auth;
+  if (!context) {
+    throw new functions.https.HttpsError("unauthenticated", "Not signed in");
+  }
+
+  const { userId, type, title, message, metadata = {} } = request.data;
+
+  // Input validation
+  if (!userId || !type || !title || !message) {
+    throw new functions.https.HttpsError(
+      "invalid-argument",
+      "Missing required fields: userId, type, title, and message are required"
+    );
+  }
+
+  try {
+    const notificationData = {
+      type,
+      title,
+      message,
+      recipientId: userId,
+      seen: false,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      ...metadata
+    };
+
+    // Add notification to the user's subcollection
+    const notificationRef = await admin.firestore()
+      .collection('Users')
+      .doc(userId)
+      .collection('Notifications')
+      .add(notificationData);
+
+    logger.info(`Notification created for user ${userId}`);
+
+    return { 
+      success: true, 
+      notificationId: notificationRef.id,
+      message: "Notification created successfully"
+    };
+  } catch (error) {
+    logger.error("Error creating notification:", error);
+    throw new functions.https.HttpsError(
+      "internal", 
+      "Failed to create notification",
+      { error: error.message }
+    );
+  }
+});// Export notification functions
+// At the very end of the file:
+exports.notifyAdmins = notifyAdmins;
+exports.createBulkNotifications = createBulkNotifications;

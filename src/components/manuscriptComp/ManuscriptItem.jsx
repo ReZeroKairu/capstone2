@@ -3,6 +3,7 @@ import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { doc, updateDoc, getDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "../../firebase/firebase";
+import { notificationService } from "../../utils/notificationService";
 import { getActiveDeadline as getReviewerDeadline } from "../../utils/deadlineUtils";
 import SubmissionHistory from "./SubmissionHistory";
 import ReviewerFeedback from "./ReviewerFeedback";
@@ -14,10 +15,13 @@ import {
   filterAcceptedReviewers,
   filterRejectedReviewers,
 } from "../../utils/manuscriptHelpers";
+
 import ManuscriptStatusBadge from "../ManuscriptStatusBadge";
 import DeadlineBadge from "./DeadlineBadge";
 import StatusActionButtons from "./StatusActionButtons";
 import AdminFeedback from "../feedback/AdminFeedback";
+import { httpsCallable } from 'firebase/functions';
+import { collection, query, where, getDocs } from 'firebase/firestore';
 
 const statusToDeadlineField = {
   "Assigning Peer Reviewer": "invitationDeadline",
@@ -47,7 +51,17 @@ const ManuscriptItem = ({
   const [activeDeadline, setActiveDeadline] = useState(null);
   const { downloadFileCandidate } = useFileDownloader();
   const { assignReviewer } = useReviewerAssignment();
-  
+  const getAdminUserIds = async () => {
+  try {
+    const usersRef = collection(db, 'Users');
+    const q = query(usersRef, where('role', '==', 'Admin'));
+    const querySnapshot = await getDocs(q);
+    return querySnapshot.docs.map(doc => doc.id);
+  } catch (error) {
+    console.error('Error fetching admin user IDs:', error);
+    return [];
+  }
+};
   if (!manuscript || Object.keys(manuscript).length === 0) return null;
 
   const {
@@ -400,7 +414,21 @@ const ManuscriptItem = ({
 
     loadDeadline();
   }, [manuscript, role, currentUserId]);
-
+const handleSendNotifications = async (userIds, type, title, message, metadata = {}) => {
+  try {
+    await notificationService.createBulkNotifications(
+      userIds,
+      type,
+      title,
+      message,
+      metadata
+    );
+    return { success: true };
+  } catch (error) {
+    console.error('Error sending notifications:', error);
+    throw error;
+  }
+};
   const handleStatusChange = async (manuscriptId, newStatus, note = '') => {
     console.log('handleStatusChange called with:', { 
       manuscriptId, 
@@ -513,31 +541,48 @@ const ManuscriptItem = ({
         // For new revisions, we need to reset the review data
         const currentReviewers = ms.assignedReviewers || [];
 
-        // If coming from "Back to Admin", keep the current reviewers
-        if (ms.status === "Back to Admin") {
-          updatedAssignedReviewers = buildReviewerObjects(currentReviewers);
-          updatedAssignedMeta = { ...ms.assignedReviewersMeta };
-        } else {
-          // For major revisions, only keep reviewers who accepted
-          const acceptedReviewerIds =
-            newStatus === "For Revision (Major)"
-              ? filterAcceptedReviewers(
-                  ms.reviewerDecisionMeta,
-                  currentReviewers.map((id) => ({ id }))
-                ).map((r) => r.id)
-              : [];
-
-          updatedAssignedReviewers = buildReviewerObjects(acceptedReviewerIds);
-          updatedAssignedMeta = Object.fromEntries(
-            updatedAssignedReviewers.map((r) => [
-              r.id,
-              ms.assignedReviewersMeta?.[r.id] || {
-                assignedAt: serverTimestamp(),
-                assignedBy: currentUserId || 'system',
-              },
-            ])
-          );
+      // In your handleStatusChange function, update the "Back to Admin" section:
+if (newStatus === "Back to Admin") {
+  try {
+    const adminIds = await getAdminUserIds();
+    if (adminIds.length > 0) {
+      await handleSendNotifications(
+        adminIds,
+        'status_change',
+        'Manuscript Requires Attention',
+        `Manuscript "${manuscriptTitle}" has been sent back to admin for review.`,
+        {
+          manuscriptId,
+          status: newStatus,
+          actionUrl: `/manuscripts?manuscriptId=${manuscriptId}`
         }
+      );
+    }
+  } catch (error) {
+    console.error('Error sending admin notifications:', error);
+    // Don't block the status change if notification fails
+  }
+} else {
+  // For major revisions, only keep reviewers who accepted
+  const acceptedReviewerIds =
+    newStatus === "For Revision (Major)"
+      ? filterAcceptedReviewers(
+          ms.reviewerDecisionMeta,
+          currentReviewers.map((id) => ({ id }))
+        ).map((r) => r.id)
+      : [];
+
+  updatedAssignedReviewers = buildReviewerObjects(acceptedReviewerIds);
+  updatedAssignedMeta = Object.fromEntries(
+    updatedAssignedReviewers.map((r) => [
+      r.id,
+      ms.assignedReviewersMeta?.[r.id] || {
+        assignedAt: serverTimestamp(),
+        assignedBy: currentUserId || 'system',
+      },
+    ])
+  );
+}
       }
 
       // ---------- Auto-change to "Back to Admin" only when appropriate ----------
@@ -659,9 +704,14 @@ const ManuscriptItem = ({
 
               // For Admins - show for all manuscripts
               if (role === "Admin") {
+                // Use the assigned date or submission date, but ensure it's not in the future
+                const startDate = manuscript.assignedAt || manuscript.submittedAt || new Date();
+                const now = new Date();
+                const effectiveStart = new Date(startDate) > now ? now : new Date(startDate);
+                
                 return (
                   <DeadlineBadge
-                    start={manuscript.submittedAt || new Date()}
+                    start={effectiveStart}
                     end={activeDeadline}
                     formatDate={formatDate}
                     className="mt-1"
@@ -703,11 +753,16 @@ const ManuscriptItem = ({
               if (role === "Researcher" && 
                   (manuscript.submitterId === currentUserId || 
                    manuscript.coAuthorsIds?.includes(currentUserId))) {
+                // Use the assigned date or submission date, but ensure it's not in the future
+                const startDate = manuscript.assignedAt || manuscript.submittedAt || new Date();
+                const now = new Date();
+                const effectiveStart = new Date(startDate) > now ? now : new Date(startDate);
+                
                 return (
                   <div className="mt-2">
                     <div className="flex items-center text-sm text-gray-600">
-                                      <DeadlineBadge
-                        start={manuscript.submittedAt || new Date()}
+                      <DeadlineBadge
+                        start={effectiveStart}
                         end={activeDeadline}
                         formatDate={formatDate}
                       />
@@ -828,15 +883,15 @@ const ManuscriptItem = ({
         </div>
       )}
 
-      {/* Admin Feedback Section - Show to Admin and Researcher, hide from Peer Reviewer */}
-      {role !== "Peer Reviewer" && (
+      {/* Admin Feedback Section - Show to Admin, Researcher, and Co-authors, hide from Peer Reviewer */}
+      {(role === "Admin" || role === "Researcher" || role === "Co-Author") && (
         <div className="mt-6 space-y-4">
-                   <AdminFeedback 
-              manuscriptId={manuscript.id} 
-              userRole={role}
-              status={manuscript.status}
-              currentVersion={manuscript.versionNumber?.toString() || '1'}
-            />
+          <AdminFeedback 
+            manuscriptId={manuscript.id} 
+            userRole={role}
+            status={manuscript.status}
+            currentVersion={manuscript.versionNumber?.toString() || '1'}
+          />
         </div>
       )}
           

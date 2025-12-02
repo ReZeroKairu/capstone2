@@ -74,26 +74,42 @@ const UserLog = ({ onLogsUpdated }) => {
         return;
       }
 
-      const fetchedLogs = await Promise.all(
-        logsSnapshot.docs.map(async (doc) => {
+      const fetchedLogs = [];
+      
+      for (const doc of logsSnapshot.docs) {
+        try {
           const data = doc.data();
           const fullName = await fetchFullName(data);
-          const timestamp =
-            data.timestamp instanceof Timestamp
+          
+          // Handle timestamp - prioritize server timestamp
+          let timestamp = new Date(); // fallback to now
+          if (data.timestamp) {
+            timestamp = data.timestamp instanceof Timestamp 
               ? data.timestamp.toDate()
-              : data.timestamp?.seconds
-              ? new Date(data.timestamp.seconds * 1000)
-              : new Date();
+              : data.timestamp.seconds 
+                ? new Date(data.timestamp.seconds * 1000)
+                : new Date(data.timestamp);
+          }
 
           // Get email from data, userEmail, or metadata
-          const email =
-            data.userEmail || data.email || data.metadata?.email || "";
+          const email = data.userEmail || data.email || data.metadata?.email || "";
+          
+          // Format timestamp consistently
+          const formattedTimestamp = timestamp.toLocaleString('en-US', {
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: true
+          });
 
-          return {
+          fetchedLogs.push({
             id: doc.id,
             timestamp,
-            formattedTimestamp: timestamp.toLocaleString(),
-            email: email,
+            formattedTimestamp,
+            email,
             action: data.action || "",
             adminId: data.adminId || "",
             newFirstName: data.newFirstName || "",
@@ -104,11 +120,14 @@ const UserLog = ({ onLogsUpdated }) => {
             previousLastName: data.previousLastName || "",
             userId: data.userId || "",
             fullName,
-            // Include metadata for debugging
             metadata: data.metadata || {},
-          };
-        })
-      );
+          });
+        } catch (error) {
+          console.error(`Error processing log ${doc.id}:`, error);
+          // Continue with next log entry even if one fails
+          continue;
+        }
+      }
 
       setLogs(fetchedLogs);
 
@@ -324,8 +343,10 @@ const UserLog = ({ onLogsUpdated }) => {
                       {log.action}
                     </p>
                   )}
-                  {/* Show manuscript details for review actions */}
-                  {log.action === "Manuscript Reviewed" &&
+                  {/* Show manuscript details for manuscript actions */}
+                  {(log.action === "Manuscript Reviewed" || 
+                    log.action === "Manuscript Submitted" || 
+                    log.action === "Manuscript Resubmitted") &&
                     log.metadata?.manuscriptTitle && (
                       <p className="text-sm md:text-base truncate">
                         <span className="font-semibold text-gray-700">
@@ -336,11 +357,13 @@ const UserLog = ({ onLogsUpdated }) => {
                           onClick={() =>
                             log.metadata?.manuscriptId &&
                             navigate(
+                              log.metadata.manuscriptLink || 
                               `/manuscripts?manuscriptId=${log.metadata.manuscriptId}`
                             )
                           }
                         >
-                          {log.metadata.manuscriptTitle}
+                          {log.metadata.displayTitle || log.metadata.manuscriptTitle || `Manuscript ${log.metadata.manuscriptId}`}
+                          {log.metadata.version ? ` (v${log.metadata.version})` : ''}
                         </span>
                       </p>
                     )}

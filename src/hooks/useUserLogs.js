@@ -16,14 +16,23 @@ export const useUserLogs = () => {
 
   // Manuscript logs
   const logManuscriptSubmission = useCallback(
-    async (manuscriptId, manuscriptTitle) => {
-      const userId = getCurrentUserId();
+    async (userId, manuscriptId, manuscriptTitle) => {
       if (userId) {
         await UserLogService.logManuscriptSubmission(
           userId,
           manuscriptId,
           manuscriptTitle
         );
+      } else {
+        // Fallback to getting current user ID if not provided
+        const currentUserId = getCurrentUserId();
+        if (currentUserId) {
+          await UserLogService.logManuscriptSubmission(
+            currentUserId,
+            manuscriptId,
+            manuscriptTitle
+          );
+        }
       }
     },
     []
@@ -99,8 +108,36 @@ export const useUserLogs = () => {
     []
   );
 
+  const logManuscriptResubmission = useCallback(
+    async (userId, manuscriptId, manuscriptTitle, version, previousVersion) => {
+      if (userId) {
+        await UserLogService.logManuscriptResubmission(
+          userId,
+          manuscriptId,
+          manuscriptTitle,
+          version,
+          previousVersion
+        );
+      } else {
+        // Fallback to getting current user ID if not provided
+        const currentUserId = getCurrentUserId();
+        if (currentUserId) {
+          await UserLogService.logManuscriptResubmission(
+            currentUserId,
+            manuscriptId,
+            manuscriptTitle,
+            version,
+            previousVersion
+          );
+        }
+      }
+    },
+    []
+  );
+
   return {
     logManuscriptSubmission,
+    logManuscriptResubmission,
     logManuscriptReview,
     logReviewerAssignment,
     logProfileUpdate,

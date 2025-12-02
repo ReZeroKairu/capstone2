@@ -158,7 +158,7 @@ const Guidelines = () => {
     );
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="min-h-screen flex flex-col mx-6">
       <main className="flex-grow w-full px-12 mt-32 pb-10">
         <div className="text-4xl font-bold text-[#7a0f0f] mb-12">
           Guidelines for Submission

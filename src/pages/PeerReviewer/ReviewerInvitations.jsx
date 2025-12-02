@@ -1,7 +1,8 @@
 import React, { useEffect, useState, useMemo } from "react";
 import { getAuth } from "firebase/auth";
 import { useNavigate } from "react-router-dom";
-import { notificationService } from "../../utils/notificationService";
+import NotificationService from "../../utils/notificationService";
+const notificationService = new NotificationService();
 import { toast } from "react-toastify";
 import {
   collection,
@@ -14,6 +15,7 @@ import {
   getDoc,
 } from "firebase/firestore";
 import { db } from "../../firebase/firebase";
+
 import {
   parseDeadline,
   getRemainingDays,
@@ -21,7 +23,7 @@ import {
 } from "../../utils/deadlineUtils";
 import { formatFirestoreDate } from "../../utils/dateUtils"; // new import
 
-import { Timestamp } from "firebase/firestore";
+import { Timestamp, arrayRemove } from "firebase/firestore";
 
 // countdown hook that updates every second and returns formatted string with minutes
 function useCountdown(deadlineDate) {
@@ -91,16 +93,16 @@ const ReviewerInvitations = () => {
   // Fetch and set initial availability status
   useEffect(() => {
     if (!currentUser) return;
-    
+
     const fetchAvailability = async () => {
       try {
-        const userRef = doc(db, 'Users', currentUser.uid);
+        const userRef = doc(db, "Users", currentUser.uid);
         const userDoc = await getDoc(userRef);
         if (userDoc.exists()) {
           setIsAvailable(userDoc.data().isAvailableForReview ?? true);
         }
       } catch (err) {
-        console.error('Error fetching availability status:', err);
+        console.error("Error fetching availability status:", err);
       }
     };
 
@@ -110,22 +112,24 @@ const ReviewerInvitations = () => {
   // Toggle availability status
   const toggleAvailability = async () => {
     if (!currentUser) return;
-    
+
     try {
       const newStatus = !isAvailable;
-      const userRef = doc(db, 'Users', currentUser.uid);
+      const userRef = doc(db, "Users", currentUser.uid);
       await updateDoc(userRef, {
         isAvailableForReview: newStatus,
-        lastUpdated: serverTimestamp()
+        lastUpdated: serverTimestamp(),
       });
       setIsAvailable(newStatus);
       toast.success(
-        `You are now ${newStatus ? 'available' : 'unavailable'} for new review assignments`,
+        `You are now ${
+          newStatus ? "available" : "unavailable"
+        } for new review assignments`,
         { autoClose: 3000 }
       );
     } catch (err) {
-      console.error('Error updating availability status:', err);
-      toast.error('Failed to update availability status', { autoClose: 3000 });
+      console.error("Error updating availability status:", err);
+      toast.error("Failed to update availability status", { autoClose: 3000 });
     }
   };
 
@@ -210,7 +214,11 @@ const ReviewerInvitations = () => {
                   }
                 }
                 // check assignedReviewersMeta for reviewer-specific keys
-                if (!deadline && meta?.assignedReviewersMeta && currentUser.uid) {
+                if (
+                  !deadline &&
+                  meta?.assignedReviewersMeta &&
+                  currentUser.uid
+                ) {
                   const arm = meta.assignedReviewersMeta[currentUser.uid];
                   if (arm) {
                     for (const k of keys.concat(["assignedAt", "invitedAt"])) {
@@ -314,155 +322,161 @@ const ReviewerInvitations = () => {
       console.error("Error updating reviewer status:", error);
     }
   };
-  const handleDecision = async (manuscriptId, isAccepted) => {
+ const handleDecision = async (manuscriptId, isAccepted) => {
     if (!currentUser || !manuscriptId) return;
 
     setProcessingId(manuscriptId);
     setError(null);
 
     try {
-      const msRef = doc(db, "manuscripts", manuscriptId);
-      const msSnap = await getDoc(msRef);
+        const msRef = doc(db, "manuscripts", manuscriptId);
+        const msSnap = await getDoc(msRef);
 
-      if (!msSnap.exists()) {
-        console.error("Manuscript not found:", manuscriptId);
-        setProcessingId(null);
-        return;
-      }
-
-      const msData = msSnap.data();
-      const meta = msData.assignedReviewersMeta || {};
-      const reviewerMeta = meta[currentUser.uid] || {};
-
-      // Compute deadline if accepting
-      let deadline = reviewerMeta.deadline;
-      if (isAccepted) {
-        try {
-          const settingsRef = doc(db, "deadlineSettings", "deadlines");
-          const settingsSnap = await getDoc(settingsRef);
-          if (settingsSnap.exists()) {
-            const settings = settingsSnap.data();
-            const isReReview = reviewerMeta.isReReview === true;
-            const reviewDeadlineDays = isReReview
-              ? settings.reReviewDeadline || settings.reviewDeadline || 2
-              : settings.reviewDeadline || 4;
-            const deadlineDate = new Date();
-            deadlineDate.setDate(deadlineDate.getDate() + reviewDeadlineDays);
-            deadline = deadlineDate;
-          } else {
-            const isReReview = reviewerMeta.isReReview === true;
-            const fallbackDays = isReReview ? 2 : 4;
-            const deadlineDate = new Date();
-            deadlineDate.setDate(deadlineDate.getDate() + fallbackDays);
-            deadline = deadlineDate;
-          }
-        } catch (err) {
-          console.error("Error fetching deadline settings:", err);
-          const isReReview = reviewerMeta.isReReview === true;
-          const fallbackDays = isReReview ? 2 : 4;
-          const deadlineDate = new Date();
-          deadlineDate.setDate(deadlineDate.getDate() + fallbackDays);
-          deadline = deadlineDate;
+        if (!msSnap.exists()) {
+            console.error("Manuscript not found:", manuscriptId);
+            setProcessingId(null);
+            return;
         }
-      }
 
-      // Prepare updated reviewer meta
-      const updateFields = {
-        ...reviewerMeta,
-        invitationStatus: isAccepted ? "accepted" : "declined",
-        respondedAt: serverTimestamp(),
-        acceptedAt: isAccepted ? serverTimestamp() : reviewerMeta.acceptedAt,
-        declinedAt: !isAccepted ? serverTimestamp() : reviewerMeta.declinedAt,
-        ...(isAccepted && deadline && { deadline }),
-        ...(reviewerMeta.isReReview && isAccepted
-          ? { isReReview: false, reReviewRespondedAt: serverTimestamp() }
-          : {}),
-      };
+        const msData = msSnap.data();
+        const meta = msData.assignedReviewersMeta || {};
+        const reviewerMeta = meta[currentUser.uid] || {};
 
-      meta[currentUser.uid] = updateFields;
-
-      // Prepare data update
-      const updateData = {
-        assignedReviewersMeta: meta,
-      };
-
-      // Remove reviewer from assignedReviewers array if declined
-      if (!isAccepted) {
-        updateData.assignedReviewers = msData.assignedReviewers?.filter(
-          (uid) => uid !== currentUser.uid
-        );
-      }
-
-      // Update manuscript status if accepting and at least one reviewer accepted
-      if (isAccepted) {
-        const hasAcceptedReviewer = Object.values(meta).some(
-          (m) => m.invitationStatus === "accepted"
-        );
-        if (hasAcceptedReviewer) {
-          // Set initial status to Peer Reviewer Assigned
-          updateData.status = "Peer Reviewer Assigned";
-          
-          // Schedule status update to Peer Reviewer Reviewing after 5 seconds
-          setTimeout(async () => {
+        // Compute deadline if accepting
+        let deadline = reviewerMeta.deadline;
+        if (isAccepted) {
             try {
-              const msSnap = await getDoc(msRef);
-              if (msSnap.exists()) {
-                const currentStatus = msSnap.data().status;
-                // Only update if the status is still Peer Reviewer Assigned
-                if (currentStatus === "Peer Reviewer Assigned") {
-                  await updateDoc(msRef, {
-                    status: "Peer Reviewer Reviewing"
-                  });
+                const settingsRef = doc(db, "deadlineSettings", "deadlines");
+                const settingsSnap = await getDoc(settingsRef);
+                const isReReview = reviewerMeta.isReReview === true;
+                const fallbackDays = isReReview ? 2 : 4;
+                
+                if (settingsSnap.exists()) {
+                    const settings = settingsSnap.data();
+                    const reviewDeadlineDays = isReReview
+                        ? settings.reReviewDeadline || settings.reviewDeadline || fallbackDays
+                        : settings.reviewDeadline || fallbackDays;
+                    const deadlineDate = new Date();
+                    deadlineDate.setDate(deadlineDate.getDate() + reviewDeadlineDays);
+                    deadline = deadlineDate;
+                } else {
+                    const deadlineDate = new Date();
+                    deadlineDate.setDate(deadlineDate.getDate() + fallbackDays);
+                    deadline = deadlineDate;
                 }
-              }
-            } catch (error) {
-              console.error("Error updating to Peer Reviewer Reviewing status:", error);
+            } catch (err) {
+                console.error("Error fetching deadline settings:", err);
+                const deadlineDate = new Date();
+                deadlineDate.setDate(deadlineDate.getDate() + (reviewerMeta.isReReview ? 2 : 4));
+                deadline = deadlineDate;
             }
-          }, 5000); // 5 seconds delay
         }
-      }
+
+        // Prepare the update data
+        const updateData = {
+            [`assignedReviewersMeta.${currentUser.uid}`]: {
+                ...reviewerMeta,
+                invitationStatus: isAccepted ? 'accepted' : 'declined',
+                respondedAt: serverTimestamp(),
+                ...(isAccepted && { 
+                    acceptedAt: serverTimestamp(),
+                    ...(deadline && { deadline })
+                }),
+                ...(!isAccepted && { 
+                    declinedAt: serverTimestamp() 
+                }),
+                ...(reviewerMeta.isReReview && isAccepted && { 
+                    isReReview: false, 
+                    reReviewRespondedAt: serverTimestamp() 
+                }),
+            }
+        };
+
+        // If declining, use arrayRemove to safely remove from assignedReviewers
+        if (!isAccepted) {
+            updateData.assignedReviewers = arrayRemove(currentUser.uid);
+        }
+
+        // Check if we should update the status
+        if (isAccepted) {
+            const hasAcceptedReviewer = Object.entries(meta).some(
+                ([uid, m]) => 
+                    (uid === currentUser.uid && isAccepted) || 
+                    (uid !== currentUser.uid && m.invitationStatus === "accepted")
+            );
+            
+            if (hasAcceptedReviewer) {
+                updateData.status = "Peer Reviewer Assigned";
+                
+                // Schedule status update to Peer Reviewer Reviewing after 5 seconds
+                setTimeout(async () => {
+                    try {
+                        const updatedSnap = await getDoc(msRef);
+                        if (updatedSnap.exists()) {
+                            const currentStatus = updatedSnap.data().status;
+                            if (currentStatus === "Peer Reviewer Assigned") {
+                                await updateDoc(msRef, {
+                                    status: "Peer Reviewer Reviewing",
+                                });
+                            }
+                        }
+                    } catch (error) {
+                        console.error("Error updating to Peer Reviewer Reviewing status:", error);
+                    }
+                }, 5000);
+            }
+        }
 
       await updateDoc(msRef, updateData);
 
       // Notify admins
-      let adminIds = await notificationService.getAdminUserIds();
-      
+      let adminIds = await NotificationService.getAdminUserIds();
+
       if (!Array.isArray(adminIds)) {
         adminIds = adminIds ? [adminIds] : [];
       }
-      
+
       if (adminIds.length > 0) {
         try {
           // Get the manuscript title, checking all possible fields
-          const manuscriptTitle = 
-            msData.manuscriptTitle || 
-            msData.title || 
-            (msData.answeredQuestions && 
-              msData.answeredQuestions.find(q => q.question && q.question.toLowerCase().includes('title'))?.answer) || 
-            'Untitled Manuscript';
-          
-          if (isAccepted) {
-            await notificationService.notifyPeerReviewerAccept(
-              manuscriptId,
-              manuscriptTitle,
-              currentUser.uid,
-              adminIds
-            );
-          } else {
-            await notificationService.notifyPeerReviewerDecline(
-              manuscriptId,
-              manuscriptTitle,
-              currentUser.uid,
-              adminIds
-            );
-          }
+          const manuscriptTitle =
+            msData.manuscriptTitle ||
+            msData.title ||
+            (msData.answeredQuestions &&
+              msData.answeredQuestions.find(
+                (q) => q.question && q.question.toLowerCase().includes("title")
+              )?.answer) ||
+            "Untitled Manuscript";
+
+         // To this:
+if (isAccepted) {
+  await notificationService.notifyPeerReviewerAccept(
+    manuscriptId,
+    manuscriptTitle,
+    currentUser.uid,
+    adminIds
+  );
+} else {
+  // Use the instance method that doesn't rely on the Cloud Function
+  await notificationService.notifyPeerReviewerDecision(
+    manuscriptId,
+    manuscriptTitle,
+    currentUser.uid,
+    adminIds,
+    false // false for decline
+  );
+}
         } catch (error) {
-          console.error('Error sending notification:', error);
+          console.error("Error sending notification:", error);
+          // Don't fail the whole operation if notification fails
+          toast.error(
+            "Notification could not be sent, but your response was recorded",
+            { autoClose: 3000 }
+          );
         }
       } else {
-        console.warn('No admin users found to notify');
+        console.warn("No admin users found to notify");
       }
-
       // Update local state
       setInvitations((prev) =>
         prev.filter((inv) => !(inv.id === manuscriptId && !isAccepted))
@@ -675,18 +689,18 @@ const ReviewerInvitations = () => {
           </h1>
           <div className="flex items-center space-x-3">
             <span className="text-sm font-medium text-gray-700">
-              {isAvailable ? 'Available' : 'Unavailable'} for new reviews
+              {isAvailable ? "Available" : "Unavailable"} for new reviews
             </span>
             <button
               onClick={toggleAvailability}
               className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 ${
-                isAvailable ? 'bg-green-500' : 'bg-gray-200'
+                isAvailable ? "bg-green-500" : "bg-gray-200"
               }`}
               aria-pressed={isAvailable}
             >
               <span
                 className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                  isAvailable ? 'translate-x-6' : 'translate-x-1'
+                  isAvailable ? "translate-x-6" : "translate-x-1"
                 }`}
               />
             </button>

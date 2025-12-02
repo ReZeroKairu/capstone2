@@ -33,33 +33,50 @@ export const getRemainingTime = (endDate) => {
  * Determine the badge color based on percentage of time left.
  * Matches the reviewer's implementation exactly.
  */
+// Updated getDeadlineColor function with consistent color calculation
 export const getDeadlineColor = (startDate, endDate) => {
-  const s = parseDateSafe(startDate);
-  const e = parseDateSafe(endDate);
+  try {
+    const s = parseDateSafe(startDate) || new Date(); // Default to now if no start date
+    const e = parseDateSafe(endDate);
 
-  if (!s || !e) return "bg-gray-100 text-gray-700";
+    if (!e) return "bg-gray-100 text-gray-800";
 
-  const now = new Date();
-  const total = e - s;
-  const remaining = e - now;
-  const percentLeft = remaining / total;
-
-  // Match the reviewer's color scheme exactly
-  if (remaining <= 0) {
-    // Overdue
-    return "bg-red-100 text-red-800";
-  } else if (percentLeft < 0.1) {
-    // Less than 10% time remaining
-    return "bg-red-100 text-red-700";
-  } else if (percentLeft < 0.3) {
-    // 10% to 30% time remaining
-    return "bg-yellow-100 text-yellow-700";
-  } else {
-    // More than 30% time remaining
-    return "bg-green-100 text-green-700";
+    const now = new Date();
+    // Ensure start date is not in the future and not after end date
+    const effectiveStart = s > now ? now : s;
+    const effectiveEnd = e;
+    
+    // Calculate total duration (in ms)
+    const totalDuration = effectiveEnd - effectiveStart;
+    const remainingTime = effectiveEnd - now;
+    
+    // If end date is in the past, it's overdue
+    if (remainingTime <= 0) {
+      return "bg-red-100 text-red-800";
+    }
+    
+    // Calculate percentage of time remaining
+    const percentRemaining = remainingTime / totalDuration;
+    
+    // Return color based on percentage remaining
+    if (percentRemaining < 0.2) {
+      // Less than 20% time remaining
+      return "bg-red-100 text-red-700";
+    } else if (percentRemaining < 0.4) {
+      // 20% to 40% time remaining
+      return "bg-yellow-100 text-yellow-700";
+    } else if (percentRemaining < 0.6) {
+      // 40% to 60% time remaining
+      return "bg-blue-100 text-blue-700";
+    } else {
+      // More than 60% time remaining
+      return "bg-green-100 text-green-700";
+    }
+  } catch (error) {
+    console.error("Error calculating deadline color:", error);
+    return "bg-gray-100 text-gray-800";
   }
 };
-
 /**
  * Get the active deadline for a manuscript based on role and status
  * For Peer Reviewers: Returns their individual deadline

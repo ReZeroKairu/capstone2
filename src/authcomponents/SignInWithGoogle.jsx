@@ -91,21 +91,10 @@ function SignInwithGoogle() {
     } catch (error) {
       console.error("Error logging in with Google:", error.message);
 
-      // Log failed Google sign-in attempt
-      const emailFromError = error?.customData?.email || "Unknown";
-      await UserLogService.logLoginFailure(
-        emailFromError,
-        error.message || "Unknown error during Google sign-in",
-        "google"
-      );
+      
 
-      // Log security event for failed login
-      await UserLogService.logSecurityEvent(
-        "anonymous",
-        "google_login_failed",
-        `Failed Google sign-in attempt for ${emailFromError}: ${error.message}`,
-        "warning"
-      );
+    
+      
     }
   }
 

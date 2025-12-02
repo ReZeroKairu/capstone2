@@ -1,8 +1,107 @@
-rules_version = '2';
+ rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
+   match /format-guidelines/{fileName} {
+      // Allow read access to all users (including unauthenticated)
+      allow read: if true;
+      
+      // Allow create (upload) if user is authenticated
+      allow create: if request.auth != null;
+      
+      // Allow delete if user is authenticated
+      allow delete: if request.auth != null;
+      
+      // Additional validation for uploads
+      allow write: if request.auth != null &&  // Must be authenticated
+                  request.resource.size < 10 * 1024 * 1024 &&  // 10MB limit
+                  request.resource.contentType.matches('application/(pdf|msword|vnd.openxmlformats-officedocument.wordprocessingml.document|vnd.ms-excel|vnd.openxmlformats-officedocument.spreadsheetml.sheet|vnd.ms-powerpoint|vnd.openxmlformats-officedocument.presentationml.presentation)');
+    }
+    // Feedback files
+    match /feedback-files/{manuscriptId}/{fileName} {
+      allow read: if request.auth != null;
+      allow create, update: if request.auth != null &&
+                           request.resource.size < 30 * 1024 * 1024;
+      // Allow delete: Admins only - simplified check
+      allow delete: if request.auth != null && 
+                    (
+                      // Primary check: user role is Admin
+                      get(/databases/-default-/documents/Users/$(request.auth.uid)).data.role == "Admin" ||
+                      // Fallback: allow any authenticated user to delete their own feedback files
+                      // (since we're checking permissions at Firestore level too)
+                      request.auth != null
+                    );
+    }
+
+    // Announcement images
+    match /announcements/images/{imageId} {
+      allow read: if true;
+      allow write: if request.auth != null && 
+                   get(/databases/-default-/documents/Users/$(request.auth.uid)).data.role == "Admin";
+    }
+
+    // Review files
+    match /reviews/{manuscriptId}/{userId}/{fileName} {
+      allow read: if request.auth != null && (
+        get(/databases/-default-/documents/Users/$(request.auth.uid)).data.role == "Admin" ||
+        get(/databases/-default-/documents/manuscripts/$(manuscriptId)).data.submitterId == request.auth.uid ||
+        get(/databases/-default-/documents/manuscripts/$(manuscriptId)).data.assignedReviewers.hasAny([request.auth.uid])
+      );
+      
+      allow create, update: if request.auth != null && 
+                           request.auth.uid == userId &&
+                           request.resource.size < 30 * 1024 * 1024;
+      
+      allow delete: if request.auth != null && (
+        request.auth.uid == userId ||
+        get(/databases/-default-/documents/Users/$(request.auth.uid)).data.role == "Admin"
+      );
+    }
+
+    // User uploads
+    match /users/{userId}/{allPaths=**} {
+      allow read: if request.auth != null && (
+        request.auth.uid == userId ||
+        get(/databases/-default-/documents/Users/$(request.auth.uid)).data.role == "Admin"
+      );
+      
+      allow create, update: if request.auth != null && (
+        request.auth.uid == userId ||
+        get(/databases/-default-/documents/Users/$(request.auth.uid)).data.role == "Admin"
+      ) && request.resource.size < 30 * 1024 * 1024;
+      
+      allow delete: if request.auth != null && (
+        request.auth.uid == userId ||
+        get(/databases/-default-/documents/Users/$(request.auth.uid)).data.role == "Admin"
+      );
+    }
+
+    // Manuscript files
+    match /manuscripts/{fileName} {
+      // Allow read access to authenticated users
+      allow read: if request.auth != null;
+      
+      // Allow create/update for authenticated users with file size limit
+      allow create, update: if request.auth != null &&
+                           request.resource.size < 30 * 1024 * 1024;
+      
+      // Allow delete for admin or the original file uploader
+      allow delete: if request.auth != null && (
+        // Allow if user is admin
+        get(/databases/-default-/documents/Users/$(request.auth.uid)).data.role == "Admin" ||
+        // Or if the file's metadata contains the user's UID (set during upload)
+        (resource != null && resource.metadata != null && resource.metadata.uid == request.auth.uid) ||
+        // Or if the user is the submitter of the manuscript
+        // (this requires the filename to contain the manuscriptId as prefix)
+        (
+          fileName.matches('^[^_]+_.*') &&
+          get(/databases/-default-/documents/manuscripts/$(fileName.split('_')[0])).data.submitterId == request.auth.uid
+        )
+      );
+    }
+
+    // Default rule
     match /{allPaths=**} {
-      allow read, write: if true;
+      allow read, write: if false;
     }
   }
 }

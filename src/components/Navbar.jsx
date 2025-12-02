@@ -87,49 +87,28 @@ const Navbar = ({ onLogout }) => {
     return () => unsubscribe();
   }, []);
 
-  const handleLogout = async () => {
-    const confirmLogout = window.confirm("Are you sure you want to sign out?");
-    if (!confirmLogout) return;
+ const handleLogout = async () => {
+  const confirmLogout = window.confirm("Are you sure you want to sign out?");
+  if (!confirmLogout) return;
 
-    try {
-      // Store user info before logging out
-      const userId = user?.uid;
-      const userEmail = user?.email;
+  try {
+    // Store user info before logging out
+    const userId = user?.uid;
+    const userEmail = user?.email;
 
-      if (!userId || !userEmail) {
-        throw new Error("User information not available");
-      }
-
-      // Sign out first to prevent race conditions
-      await onLogout();
-
-      // Log the sign-out action
-      await UserLogService.logUserLogout(userId, userEmail);
-
-      navigate("/signin");
-    } catch (error) {
-      console.error("Error during sign out:", error);
-
-      // Log the failed sign-out attempt
-      if (user?.uid) {
-        await UserLogService.logSecurityEvent(
-          user.uid,
-          "logout_failed",
-          `Failed to sign out: ${error.message}`,
-          "error"
-        );
-
-        // Also log the error as a login failure for consistency
-        await UserLogService.logLoginFailure(
-          user.email || "Unknown",
-          `Logout failed: ${error.message}`,
-          "system"
-        );
-      }
-    } finally {
-      sessionStorage.removeItem("firestorePhoto");
+    if (!userId || !userEmail) {
+      throw new Error("User information not available");
     }
-  };
+
+    // Sign out first to prevent race conditions
+    await onLogout();
+    navigate("/signin");
+  } catch (error) {
+    console.error("Error during sign out:", error);
+  } finally {
+    sessionStorage.removeItem("firestorePhoto");
+  }
+};
 
   const toggleDropdown = () => setDropdownOpen((prev) => !prev);
   const toggleMobileMenu = () => setMobileMenuOpen((prev) => !prev);

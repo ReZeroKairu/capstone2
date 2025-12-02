@@ -1,110 +1,116 @@
-import { getFunctions, httpsCallable } from "firebase/functions";
+const nodemailer = require("nodemailer");
+const axios = require("axios");
+const functions = require("firebase-functions");
+require("dotenv").config();
 
-/**
- * Email utility functions for the frontend
- */
-class EmailService {
-  constructor() {
-    this.functions = getFunctions();
-  }
+// ----------------------
+// ----------------------
+// SMTP Transport Setup
+// ----------------------
 
+const smtpTransporter = nodemailer.createTransport({
+  host: process.env.SMTP_HOST || functions.config().smtp.host,
+  port: Number(process.env.SMTP_PORT || functions.config().smtp.port),
+  secure: false,
+  auth: {
+    user: process.env.SMTP_USER || functions.config().smtp.user,
+    pass: process.env.SMTP_PASS || functions.config().smtp.pass,
+  },
+});
+
+// ----------------------
+// EmailServiceBackend
+// ----------------------
+const EmailServiceBackend = {
   /**
-   * Send reviewer invitation email
-   * @param {Object} emailData - Email data object
-   * @param {string} emailData.reviewerEmail - Reviewer's email address
-   * @param {string} emailData.reviewerName - Reviewer's full name
-   * @param {string} emailData.manuscriptTitle - Manuscript title
-   * @param {string} emailData.deadlineDate - Formatted deadline date
-   * @param {string} emailData.manuscriptId - Manuscript ID
-   * @param {string} emailData.adminName - Admin's name
-   * @returns {Promise<Object>} - Result of email send operation
+   * Send reviewer invitation
    */
-  async sendReviewerInvitation(emailData) {
+  async sendReviewerInvitation({
+    reviewerEmail,
+    reviewerName,
+    manuscriptTitle,
+    deadlineDate,
+    manuscriptId,
+    adminName,
+  }) {
+    const subject = `Invitation to review: ${manuscriptTitle}`;
+    const reviewLink = `https://pubtrack.vercel.app/reviewer-invitations`;
+    const htmlBody = `
+      <p>Hi ${reviewerName},</p>
+      <p>You have been invited by ${adminName} to review the manuscript titled:</p>
+      <p><strong>${manuscriptTitle}</strong></p>
+      <p>Deadline: ${deadlineDate}</p>
+      <p><a href="${reviewLink}">Click here to review</a></p>
+      <p>Thank you!</p>
+    `;
+
+    // Try Resend API first
     try {
-      const sendReviewerInvitationEmail = httpsCallable(
-        this.functions,
-        "sendReviewerInvitationEmail"
+      const response = await axios.post(
+        "https://api.resend.com/emails",
+        {
+          from: process.env.SMTP_FROM,
+          to: reviewerEmail,
+          subject,
+          html: htmlBody,
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+            "Content-Type": "application/json",
+          },
+        }
       );
-      const result = await sendReviewerInvitationEmail(emailData);
-      return result.data;
-    } catch (error) {
-      console.error("Error sending reviewer invitation email:", error);
-      throw error;
+      return { messageId: response.data.id || "resend-success" };
+    } catch (err) {
+      console.warn("Resend failed, falling back to SMTP:", err.message);
+
+      // Fallback to SMTP
+      const info = await smtpTransporter.sendMail({
+        from: process.env.SMTP_FROM,
+        to: reviewerEmail,
+        subject,
+        html: htmlBody,
+      });
+      return { messageId: info.messageId };
     }
-  }
+  },
 
   /**
    * Send general notification email
-   * @param {Object} emailData - Email data object
-   * @param {string} emailData.to - Recipient email
-   * @param {string} emailData.subject - Email subject
-   * @param {string} emailData.htmlBody - HTML email body
-   * @param {string} emailData.textBody - Plain text email body (optional)
-   * @returns {Promise<Object>} - Result of email send operation
    */
-  async sendNotification(emailData) {
+  async sendNotification({ to, subject, htmlBody, textBody }) {
     try {
-      const sendNotificationEmail = httpsCallable(
-        this.functions,
-        "sendNotificationEmail"
+      const response = await axios.post(
+        "https://api.resend.com/emails",
+        {
+          from: process.env.SMTP_FROM,
+          to,
+          subject,
+          html: htmlBody,
+          text: textBody,
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+            "Content-Type": "application/json",
+          },
+        }
       );
-      const result = await sendNotificationEmail(emailData);
-      return result.data;
-    } catch (error) {
-      console.error("Error sending notification email:", error);
-      throw error;
+      return { messageId: response.data.id || "resend-success" };
+    } catch (err) {
+      console.warn("Resend failed, falling back to SMTP:", err.message);
+
+      const info = await smtpTransporter.sendMail({
+        from: process.env.SMTP_FROM,
+        to,
+        subject,
+        html: htmlBody,
+        text: textBody,
+      });
+      return { messageId: info.messageId };
     }
-  }
+  },
+};
 
-  /**
-   * Format deadline date for email
-   * @param {Date} date - Date object
-   * @returns {string} - Formatted date string
-   */
-  static formatDeadlineDate(date) {
-    return date.toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-    });
-  }
-
-  /**
-   * Validate email data before sending
-   * @param {Object} emailData - Email data to validate
-   * @returns {boolean} - True if valid
-   */
-  static validateEmailData(emailData) {
-    const required = [
-      "reviewerEmail",
-      "reviewerName",
-      "manuscriptTitle",
-      "deadlineDate",
-      "manuscriptId",
-    ];
-    return required.every(
-      (field) => emailData[field] && emailData[field].trim() !== ""
-    );
-  }
-
-  /**
-   * Create reviewer invitation email data object
-   * @param {Object} reviewer - Reviewer object
-   * @param {Object} manuscript - Manuscript object
-   * @param {Date} deadlineDate - Deadline date
-   * @param {Object} admin - Admin user object
-   * @returns {Object} - Email data object
-   */
-  static createInvitationData(reviewer, manuscript, deadlineDate, admin) {
-    return {
-      reviewerEmail: reviewer.email,
-      reviewerName: `${reviewer.firstName} ${reviewer.lastName}`,
-      manuscriptTitle: manuscript.title || "Untitled Manuscript",
-      deadlineDate: this.formatDeadlineDate(deadlineDate),
-      manuscriptId: manuscript.id,
-      adminName: admin?.displayName || admin?.email || "Admin",
-    };
-  }
-}
-
-export default EmailService;
+module.exports = EmailServiceBackend;

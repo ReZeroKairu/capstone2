@@ -59,7 +59,15 @@ const Notifications = ({ user }) => {
           const fetchedNotifications = [];
           querySnapshot.forEach((doc) => {
             const data = doc.data();
-            const timestamp = data.timestamp ? data.timestamp.toDate() : null;
+            let timestamp = null;
+            
+            if (data.timestamp) {
+              // Handle both Firestore Timestamp and JavaScript Date objects
+              timestamp = typeof data.timestamp.toDate === 'function' 
+                ? data.timestamp.toDate() 
+                : (data.timestamp instanceof Date ? data.timestamp : new Date(data.timestamp));
+            }
+            
             fetchedNotifications.push({
               id: doc.id,
               ...data,
@@ -520,7 +528,15 @@ case "new_submission":
         const fetchedNotifications = [];
         querySnapshot.forEach((doc) => {
           const data = doc.data();
-          const timestamp = data.timestamp ? data.timestamp.toDate() : null;
+          let timestamp = null;
+          
+          if (data.timestamp) {
+            // Handle both Firestore Timestamp and JavaScript Date objects
+            timestamp = typeof data.timestamp.toDate === 'function' 
+              ? data.timestamp.toDate() 
+              : (data.timestamp instanceof Date ? data.timestamp : new Date(data.timestamp));
+          }
+          
           fetchedNotifications.push({
             id: doc.id,
             ...data,

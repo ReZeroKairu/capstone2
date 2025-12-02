@@ -12,6 +12,7 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 import SignInwithGoogle from "./SignInWithGoogle";
 import { UserLogService } from "../utils/userLogService";
+import { logUserAction } from "../utils/logger";
 
 function SignIn() {
   const [email, setEmail] = useState("");
@@ -35,12 +36,12 @@ function SignIn() {
         });
         await auth.signOut();
 
-        // Log failed login attempt - unverified email
-        await UserLogService.logLoginFailure(
-          user.email,
-          "Email not verified",
-          "email"
-        );
+        // ✅ log failed login attempt
+        await logUserAction({
+          actingUserId: user.uid,
+          email: user.email,
+          action: "Sign In Blocked (Unverified Email)",
+        });
 
         return false;
       }
@@ -116,19 +117,19 @@ function SignIn() {
           type: "error",
         });
 
-        // Log failed login (no profile)
-        await UserLogService.logLoginFailure(
-          user.email,
-          "No user profile found",
-          "email"
-        );
+        // ✅ log failed login (no profile)
+        await logUserAction({
+          actingUserId: user.uid,
+          email: user.email,
+          action: "Sign In Blocked (No Profile)",
+        });
 
         await auth.signOut();
         setLoading(false);
         return;
       }
 
-      // Log successful login
+      // Log successful login with detailed information
       await UserLogService.logUserLogin(user.uid, user.email, "email");
 
       setAlert({ message: "User logged in successfully!", type: "success" });
@@ -159,11 +160,7 @@ function SignIn() {
       setAlert({ message: errorMessage, type: "error" });
 
       // Log failed login attempt
-      await UserLogService.logLoginFailure(
-        email || "Unknown",
-        errorMessage,
-        "email"
-      );
+      await UserLogService.logLoginFailure(email, error);
     } finally {
       setLoading(false);
     }

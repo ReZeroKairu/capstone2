@@ -604,7 +604,7 @@ function Profile() {
 
   return (
     <div
-      className="container mx-auto px-4 pt-24 pb-8 max-w-4xl relative"
+      className="container mx-auto px-4 pt-24 pb-8 max-w-4xl relative mt-6 mb-32"
       style={{ zIndex: 1 }}
     >
       {/* Status Message - Fixed Position */}

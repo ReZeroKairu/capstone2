@@ -1,50 +1,124 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 
-const ResearcherForm = ({ profile, isEditing, formData, onChange }) => {
+const ResearcherForm = ({ profile, formData: initialFormData, onChange, isEditing }) => {
+  // Local state for form data
+  const [localFormData, setLocalFormData] = useState(initialFormData);
+  
+  // Update local form data when initialFormData changes
+  useEffect(() => {
+    setLocalFormData(initialFormData);
+  }, [initialFormData]);
+
+  // Handle input changes and update both local and parent state
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    const updatedFormData = {
+      ...localFormData,
+      [name]: value
+    };
+    setLocalFormData(updatedFormData);
+    onChange(e); // Still notify parent of changes
+  };
+
+  // Handle array field changes
+  const handleArrayChange = (field, index, value) => {
+    const updatedArray = [...(localFormData[field] || [])];
+    updatedArray[index] = value;
+    const updatedFormData = {
+      ...localFormData,
+      [field]: updatedArray
+    };
+    setLocalFormData(updatedFormData);
+    // Create a synthetic event to notify parent
+    const e = {
+      target: {
+        name: field,
+        value: updatedArray
+      }
+    };
+    onChange(e);
+  };
+
   // Use refs to track previous values and prevent unnecessary updates
   const prevProfileRef = useRef(profile);
   const prevIsEditingRef = useRef(isEditing);
   
   // Initialize state with empty values
-  const [educationEntries, setEducationEntries] = useState([{ school: '', degree: '', year: '' }]);
-  const [publicationEntries, setPublicationEntries] = useState([{ title: '', year: '', journal: '' }]);
-  const [presentationEntries, setPresentationEntries] = useState([{ title: '', year: '', conference: '' }]);
-  const [awards, setAwards] = useState(['']);
+  // Initialize arrays from form data with fallback to profile data
+  const [educationEntries, setEducationEntries] = useState(
+    localFormData.educations?.length > 0 
+      ? localFormData.educations 
+      : profile?.educations || [{ school: '', degree: '', year: '' }]
+  );
   
+  const [publicationEntries, setPublicationEntries] = useState(
+    localFormData.publications?.length > 0 
+      ? localFormData.publications 
+      : profile?.publications || [{ title: '', year: '', journal: '' }]
+  );
+  
+  const [presentationEntries, setPresentationEntries] = useState(
+    localFormData.presentations?.length > 0 
+      ? localFormData.presentations 
+      : profile?.presentations || [{ title: '', year: '', conference: '' }]
+  );
+  
+  const [awards, setAwards] = useState(
+    localFormData.awards?.length > 0 
+      ? localFormData.awards 
+      : profile?.awards || ['']
+  );
+  
+  // Sync local array states with form data
+  useEffect(() => {
+    if (localFormData.educations) {
+      setEducationEntries(localFormData.educations);
+    }
+    if (localFormData.publications) {
+      setPublicationEntries(localFormData.publications);
+    }
+    if (localFormData.presentations) {
+      setPresentationEntries(localFormData.presentations);
+    }
+    if (localFormData.awards) {
+      setAwards(localFormData.awards);
+    }
+  }, [localFormData]);
+
   // Memoize derived state to prevent unnecessary re-renders
   const hasChanges = useRef(false);
 
   // Memoize the profile data to prevent unnecessary effect triggers
   const profileData = useMemo(() => ({
     // Basic info
-    university: formData?.university || profile?.university || '',
-    universityAddress: formData?.universityAddress || profile?.universityAddress || '',
-    country: formData?.country || profile?.country || '',
-    continent: formData?.continent || profile?.continent || '',
-    citizenship: formData?.citizenship || profile?.citizenship || '',
-    residentialAddress: formData?.residentialAddress || profile?.residentialAddress || '',
-    zipCode: formData?.zipCode || profile?.zipCode || '',
-    currentPosition: formData?.currentPosition || profile?.currentPosition || '',
-    affiliation: formData?.affiliation || profile?.affiliation || '',
-    department: formData?.department || profile?.department || '',
-    researchInterests: formData?.researchInterests || profile?.researchInterests || '',
+    university: localFormData?.university || profile?.university || '',
+    universityAddress: localFormData?.universityAddress || profile?.universityAddress || '',
+    country: localFormData?.country || profile?.country || '',
+    continent: localFormData?.continent || profile?.continent || '',
+    citizenship: localFormData?.citizenship || profile?.citizenship || '',
+    residentialAddress: localFormData?.residentialAddress || profile?.residentialAddress || '',
+    zipCode: localFormData?.zipCode || profile?.zipCode || '',
+    currentPosition: localFormData?.currentPosition || profile?.currentPosition || '',
+    affiliation: localFormData?.affiliation || profile?.affiliation || '',
+    department: localFormData?.department || profile?.department || '',
+    researchInterests: localFormData?.researchInterests || profile?.researchInterests || '',
     
     // Array fields
-    educations: formData?.educations || profile?.educations || [],
-    education: formData?.education || profile?.education || '',
-    publications: formData?.publications || profile?.publications || [],
-    presentations: formData?.presentations || profile?.presentations || [],
-    awards: formData?.awards || profile?.awards || []
-  }), [profile, formData]);
+    educations: localFormData?.educations || profile?.educations || [],
+    education: localFormData?.education || profile?.education || '',
+    publications: localFormData?.publications || profile?.publications || [],
+    presentations: localFormData?.presentations || profile?.presentations || [],
+    awards: localFormData?.awards || profile?.awards || []
+  }), [profile, localFormData]);
 
   // Initialize form data when profile or formData changes or when toggling to edit mode
   useEffect(() => {
-    if (!profile && !formData) return;
+    if (!profile && !localFormData) return;
     
     // Only update state if there are actual changes to prevent unnecessary re-renders
     const updateState = () => {
       // Use formData from props if available, otherwise use profile data
-      const dataSource = formData || profileData;
+      const dataSource = localFormData || profileData;
       
       // Set education entries
       if (dataSource.educations?.length > 0) {
@@ -95,7 +169,7 @@ const ResearcherForm = ({ profile, isEditing, formData, onChange }) => {
 
     updateState();
     hasChanges.current = false;
-  }, [profile, formData, isEditing]);
+  }, [profile, localFormData, isEditing]);
 
   // Memoize the form data to prevent unnecessary effect triggers
   const formState = useMemo(() => ({
@@ -113,17 +187,17 @@ const ResearcherForm = ({ profile, isEditing, formData, onChange }) => {
     // Create updates object with current state
     const updates = {
       // Basic info fields  
-      university: formData?.university || '',
-      universityAddress: formData?.universityAddress || '',
-      country: formData?.country || '',
-      continent: formData?.continent || '',
-      citizenship: formData?.citizenship || '',
-      residentialAddress: formData?.residentialAddress || '',
-      zipCode: formData?.zipCode || '',
-      currentPosition: formData?.currentPosition || '',
-      affiliation: formData?.affiliation || '',
-      department: formData?.department || '',
-      researchInterests: formData?.researchInterests || '',
+      university: localFormData?.university || '',
+      universityAddress: localFormData?.universityAddress || '',
+      country: localFormData?.country || '',
+      continent: localFormData?.continent || '',
+      citizenship: localFormData?.citizenship || '',
+      residentialAddress: localFormData?.residentialAddress || '',
+      zipCode: localFormData?.zipCode || '',
+      currentPosition: localFormData?.currentPosition || '',
+      affiliation: localFormData?.affiliation || '',
+      department: localFormData?.department || '',
+      researchInterests: localFormData?.researchInterests || '',
       // Update education field for backward compatibility
       education: educationEntries[0]?.school || '',
       // Update array fields
@@ -135,7 +209,7 @@ const ResearcherForm = ({ profile, isEditing, formData, onChange }) => {
     
     // Only update if there are actual changes
     const hasUpdates = Object.entries(updates).some(([key, value]) => {
-      const currentValue = formData?.[key];
+      const currentValue = localFormData?.[key];
       return JSON.stringify(currentValue) !== JSON.stringify(value);
     });
     
@@ -150,7 +224,7 @@ const ResearcherForm = ({ profile, isEditing, formData, onChange }) => {
     }
     
     hasChanges.current = false;
-  }, [isEditing, educationEntries, publicationEntries, presentationEntries, awards, formData, onChange]);
+  }, [isEditing, educationEntries, publicationEntries, presentationEntries, awards, localFormData, onChange]);
   
   // Update parent form data when any of the arrays change in edit mode
   useEffect(() => {
@@ -201,8 +275,8 @@ const ResearcherForm = ({ profile, isEditing, formData, onChange }) => {
           type={type}
           id={id}
           name={id}
-          value={formData[id] || ''}
-          onChange={onChange}
+          value={localFormData[id] || ''}
+          onChange={handleChange}
           placeholder={placeholder}
           className="block w-full border border-gray-300 p-2 shadow-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 sm:text-base"
           required={required}
@@ -222,8 +296,8 @@ const ResearcherForm = ({ profile, isEditing, formData, onChange }) => {
         <textarea
           id={id}
           name={id}
-          value={formData[id] || ''}
-          onChange={onChange}
+          value={localFormData[id] || ''}
+          onChange={handleChange}
           rows={rows}
           className="block w-full border border-gray-300 p-2 shadow-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 sm:text-base"
           required={required}
@@ -237,12 +311,11 @@ const ResearcherForm = ({ profile, isEditing, formData, onChange }) => {
   );
 
   const handleEducationChange = (index, field, value) => {
-    hasChanges.current = true;
-    setEducationEntries(prev => {
-      const updatedEntries = [...prev];
-      updatedEntries[index] = { ...updatedEntries[index], [field]: value };
-      return updatedEntries;
-    });
+    const updatedEntries = [...educationEntries];
+    updatedEntries[index] = { ...updatedEntries[index], [field]: value };
+    setEducationEntries(updatedEntries);
+    // Update form data
+    handleArrayChange('educations', index, updatedEntries[index]);
   };
 
   const renderEducationSection = () => (
@@ -284,7 +357,11 @@ const ResearcherForm = ({ profile, isEditing, formData, onChange }) => {
                 {index === educationEntries.length - 1 && (
                   <button
                     type="button"
-                    onClick={() => setEducationEntries([...educationEntries, { school: '', degree: '', year: '' }])}
+                    onClick={() => {
+                  const newEntry = { school: '', degree: '', year: '' };
+                  setEducationEntries([...educationEntries, newEntry]);
+                  handleArrayChange('educations', educationEntries.length, newEntry);
+                }}
                     className="text-green-600 hover:text-green-800 text-xl"
                   >
                     +
@@ -327,12 +404,11 @@ const ResearcherForm = ({ profile, isEditing, formData, onChange }) => {
   );
 
   const handlePublicationChange = (index, field, value) => {
-    hasChanges.current = true;
-    setPublicationEntries(prev => {
-      const updatedEntries = [...prev];
-      updatedEntries[index] = { ...updatedEntries[index], [field]: value };
-      return updatedEntries;
-    });
+    const updatedEntries = [...publicationEntries];
+    updatedEntries[index] = { ...updatedEntries[index], [field]: value };
+    setPublicationEntries(updatedEntries);
+    // Update form data
+    handleArrayChange('publications', index, updatedEntries[index]);
   };
 
   const renderPublicationsSection = () => (
@@ -374,7 +450,11 @@ const ResearcherForm = ({ profile, isEditing, formData, onChange }) => {
                 {index === publicationEntries.length - 1 && (
                   <button
                     type="button"
-                    onClick={() => setPublicationEntries([...publicationEntries, { title: '', year: '', journal: '' }])}
+                    onClick={() => {
+                  const newEntry = { title: '', year: '', journal: '' };
+                  setPublicationEntries([...publicationEntries, newEntry]);
+                  handleArrayChange('publications', publicationEntries.length, newEntry);
+                }}
                     className="text-green-600 hover:text-green-800 text-xl"
                   >
                     +
@@ -417,12 +497,11 @@ const ResearcherForm = ({ profile, isEditing, formData, onChange }) => {
   );
 
   const handlePresentationChange = (index, field, value) => {
-    hasChanges.current = true;
-    setPresentationEntries(prev => {
-      const updatedEntries = [...prev];
-      updatedEntries[index] = { ...updatedEntries[index], [field]: value };
-      return updatedEntries;
-    });
+    const updatedEntries = [...presentationEntries];
+    updatedEntries[index] = { ...updatedEntries[index], [field]: value };
+    setPresentationEntries(updatedEntries);
+    // Update form data
+    handleArrayChange('presentations', index, updatedEntries[index]);
   };
 
   const renderPresentationsSection = () => (
@@ -464,7 +543,11 @@ const ResearcherForm = ({ profile, isEditing, formData, onChange }) => {
                 {index === presentationEntries.length - 1 && (
                   <button
                     type="button"
-                    onClick={() => setPresentationEntries([...presentationEntries, { title: '', year: '', conference: '' }])}
+                    onClick={() => {
+                  const newEntry = { title: '', year: '', conference: '' };
+                  setPresentationEntries([...presentationEntries, newEntry]);
+                  handleArrayChange('presentations', presentationEntries.length, newEntry);
+                }}
                     className="text-green-600 hover:text-green-800 text-xl"
                   >
                     +
@@ -507,12 +590,11 @@ const ResearcherForm = ({ profile, isEditing, formData, onChange }) => {
   );
 
   const handleAwardChange = (index, value) => {
-    hasChanges.current = true;
-    setAwards(prev => {
-      const newAwards = [...prev];
-      newAwards[index] = value;
-      return newAwards;
-    });
+    const newAwards = [...awards];
+    newAwards[index] = value;
+    setAwards(newAwards);
+    // Update form data
+    handleArrayChange('awards', index, value);
   };
 
   const renderAwardsSection = () => (
@@ -532,7 +614,10 @@ const ResearcherForm = ({ profile, isEditing, formData, onChange }) => {
               {index === awards.length - 1 && (
                 <button
                   type="button"
-                  onClick={() => setAwards([...awards, ''])}
+                  onClick={() => {
+                  setAwards([...awards, '']);
+                  handleArrayChange('awards', awards.length, '');
+                }}
                   className="text-green-600 hover:text-green-800 text-xl"
                 >
                   +
@@ -599,8 +684,8 @@ const ResearcherForm = ({ profile, isEditing, formData, onChange }) => {
             <select
               id="researchInterests"
               name="researchInterests"
-              value={formData.researchInterests || ''}
-              onChange={onChange}
+              value={localFormData.researchInterests || ''}
+              onChange={handleChange}
               className="mt-1 block w-full border border-gray-300 p-3 shadow-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 sm:text-base"
               required
             >

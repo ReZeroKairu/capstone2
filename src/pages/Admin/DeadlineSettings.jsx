@@ -25,9 +25,9 @@ const DeadlineSettings = () => {
           setDeadlines(snap.data());
         } else {
           setDeadlines({
-            invitationDeadline: 7,
-            reviewDeadline: 30,
-            revisionDeadline: 14,
+            invitationDeadline: 3,
+            reviewDeadline: 7,
+            revisionDeadline: 7,
             finalizationDeadline: 5,
           });
         }
