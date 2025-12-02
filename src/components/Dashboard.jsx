@@ -920,30 +920,31 @@ const getActiveDeadline = (manuscript, role, currentUserId) => {
       </div>
 
       <div className="flex flex-col lg:flex-row gap-8">
-        {role && (
-          <div className="lg:w-1/4">
-            <div className="sticky top-32 bg-gradient-to-b from-indigo-50 to-white rounded-2xl p-6 shadow-lg">
-              <h2 className="text-xl font-semibold mb-4 text-gray-700">
-                Dashboard
-              </h2>
-            <ul className="space-y-4">
-              {summaryCounts.map(({ label, count }) => (
-                <li
-                  key={label}
-                  className={`flex justify-between items-center cursor-pointer hover:bg-indigo-100 p-2 rounded-lg transition ${
-                    filterStatus === label ? "bg-indigo-100 font-semibold" : ""
-                  }`}
-                  onClick={() => setFilterStatus(label)}
-                >
-                  <span className="text-gray-600 font-medium">{label}</span>
-                  <span className="text-indigo-600 font-bold text-lg">
-                    {count}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </div>
+  {role && (
+    <div className="lg:w-1/4">
+      <div className="sticky top-32 bg-white border-2 border-red-900 rounded-2xl p-6 shadow-lg">
+        <h2 className="text-xl font-semibold mb-4 text-black">
+          Dashboard
+        </h2>
+        <ul className="space-y-4">
+          {summaryCounts.map(({ label, count }) => (
+            <li
+              key={label}
+              className={`flex justify-between items-center cursor-pointer hover:bg-gray-100 p-2 rounded-lg transition ${
+                filterStatus === label ? "bg-gray-100 font-semibold" : ""
+              }`}
+              onClick={() => setFilterStatus(label)}
+            >
+              <span className="text-black font-medium">{label}</span>
+              <span className="text-black font-bold text-lg">
+                {count}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+
         )}
 
         <div className="flex-1">
