@@ -167,8 +167,6 @@ function Profile() {
     email: "",
     phone: "",
 
-    // Common Fields
-    department: "",
 
     // Researcher Info
     education: "",
@@ -271,6 +269,7 @@ function Profile() {
         return date.toISOString().split('T')[0];
       };
 
+      // Base form data with common fields
       const baseFormData = {
         // Basic info
         firstName: profile.firstName || "",
@@ -279,7 +278,6 @@ function Profile() {
         birthDate: formatDateForInput(profile.birthDate) || "",
         email: profile.email || "",
         phone: profile.phone || "",
-        department: profile.department || "",
 
         // Common fields
         education: profile.education || "",
@@ -346,201 +344,187 @@ function Profile() {
   };
 
   const handleSave = async (e) => {
-    e?.preventDefault(); // Make it work with both form submit and programmatic calls
+  e?.preventDefault(); // Make it work with both form submit and programmatic calls
 
-    try {
-      const userIdToUpdate = userId || currentUser?.uid;
-      if (!userIdToUpdate) {
-        showMessage("User not authenticated.", "error");
-        return;
-      }
+  try {
+    const userIdToUpdate = userId || currentUser?.uid;
+    if (!userIdToUpdate) {
+      showMessage("User not authenticated.", "error");
+      return;
+    }
 
-      // Get user role to check if they're an admin
-      const userDoc = await getDoc(doc(db, "Users", userIdToUpdate));
-      const userRole = userDoc.data()?.role;
+    // Create the updated fields object
+    const fieldsToUpdate = {
+      ...formData,
+      // Preserve existing photoURL if no new photo is selected
+      photoURL: selectedFile ? await fileToBase64(selectedFile) : profile.photoURL,
+      updatedAt: new Date().toISOString(),
+    };
 
-      // Check if user can update profile (admins bypass the limit)
-      if (!canUpdateProfile(userRole)) {
-        showMessage(
-          "You've reached the weekly limit of 5 profile updates. Please try again next week.",
-          "error"
-        );
-        return;
-      }
+    // Validate the updated profile
+    const validation = validateProfile(fieldsToUpdate);
+    console.log("Validation result:", validation);
+    console.log("Form data being validated:", fieldsToUpdate);
 
-      // Create the updated fields object
-      const fieldsToUpdate = {
-        ...formData,
-        // Add any additional fields that aren't in the form
-        photoURL: profile.photoURL,
-        updatedAt: new Date().toISOString(),
-      };
+    if (!validation.valid) {
+      const errorMessage = `Please fill in all required fields: ${validation.missingFields.join(", ")}`;
+      console.log("Validation failed. Missing fields:", validation.missingFields);
+      showMessage(errorMessage, "error");
 
-      // Handle file upload if a new photo was selected
-      if (selectedFile) {
-        fieldsToUpdate.photoURL = await fileToBase64(selectedFile);
-      }
-
-      // Validate the updated profile
-      const validation = validateProfile(fieldsToUpdate);
-      console.log("Validation result:", validation);
-      console.log("Form data being validated:", fieldsToUpdate);
-
-      if (!validation.valid) {
-        const errorMessage = `Please fill in all required fields: ${validation.missingFields.join(
-          ", "
-        )}`;
-        console.log(
-          "Validation failed. Missing fields:",
-          validation.missingFields
-        );
-        showMessage(errorMessage, "error");
-
-        if (validation.missingFields.length > 0) {
-          const firstMissingField = validation.missingFields[0].toLowerCase();
-          const fieldVariations = [
-            firstMissingField,
-            firstMissingField + "Input",
-            firstMissingField + "-input",
-            "input-" + firstMissingField,
-            firstMissingField.replace(/[A-Z]/g, (m) => "-" + m.toLowerCase()),
-          ];
-
-          let fieldElement = null;
-          for (const fieldName of fieldVariations) {
-            fieldElement = document.getElementById(fieldName);
-            if (fieldElement) break;
-            fieldElement = document.querySelector(`[name="${fieldName}"]`);
-            if (fieldElement) break;
-          }
-
-          if (fieldElement) {
-            fieldElement.scrollIntoView({
-              behavior: "smooth",
-              block: "center",
-            });
-            fieldElement.focus();
-            fieldElement.classList.add("ring-2", "ring-red-500");
-            setTimeout(() => {
-              fieldElement.classList.remove("ring-2", "ring-red-500");
-            }, 3000);
-          }
-        }
-        return;
-      }
-
-      // Update Firestore
-      const userRef = doc(db, "Users", userIdToUpdate);
-      await updateDoc(userRef, fieldsToUpdate);
-
-      // Update weekly update count
-      await updateWeeklyCount(userIdToUpdate);
-
-      // Log the profile update - only basic information
-      try {
-        // Define which fields we want to log
-        const loggableFields = [
-          "firstName",
-          "middleName",
-          "lastName",
-          "email",
-          "phone",
-          "department",
+      if (validation.missingFields.length > 0) {
+        const firstMissingField = validation.missingFields[0].toLowerCase();
+        const fieldVariations = [
+          firstMissingField,
+          firstMissingField + "Input",
+          firstMissingField + "-input",
+          "input-" + firstMissingField,
+          firstMissingField.replace(/[A-Z]/g, (m) => "-" + m.toLowerCase()),
         ];
 
-        // Get changed fields (only loggable ones)
-        const changedFields = [];
-        for (const key of loggableFields) {
-          if (JSON.stringify(profile[key]) !== JSON.stringify(formData[key])) {
-            changedFields.push(key);
-          }
+        let fieldElement = null;
+        for (const fieldName of fieldVariations) {
+          fieldElement = document.getElementById(fieldName);
+          if (fieldElement) break;
+          fieldElement = document.querySelector(`[name="${fieldName}"]`);
+          if (fieldElement) break;
         }
 
-        // Only log if there are relevant changes
-        if (changedFields.length > 0) {
-          await UserLogService.logUserActivity(
-            userIdToUpdate,
-            "Updated Profile",
-            `Updated basic profile information: ${changedFields.join(", ")}`,
-            {
-              changedFields,
-              actionType: "profile_update",
-              previousValues: Object.fromEntries(
-                changedFields.map((field) => [field, profile[field] || ""])
-              ),
-              newValues: Object.fromEntries(
-                changedFields.map((field) => [field, formData[field] || ""])
-              ),
-            },
-            profile.email
-          );
+        if (fieldElement) {
+          fieldElement.scrollIntoView({
+            behavior: "smooth",
+            block: "center",
+          });
+          fieldElement.focus();
+          fieldElement.classList.add("ring-2", "ring-red-500");
+          setTimeout(() => {
+            fieldElement.classList.remove("ring-2", "ring-red-500");
+          }, 3000);
         }
-      } catch (logError) {
-        console.error("Error logging profile update:", logError);
-        // Continue with the profile update even if logging fails
       }
-
-      // Update local state
-      setProfile((prev) => ({
-        ...prev,
-        ...fieldsToUpdate,
-      }));
-
-      if (selectedFile) {
-        originalPhotoRef.current = fieldsToUpdate.photoURL;
-        setSelectedFile(null);
-      }
-
-      // Update original name references
-      if (fieldsToUpdate.firstName)
-        setOriginalFirstName(fieldsToUpdate.firstName);
-      if (fieldsToUpdate.middleName !== undefined)
-        setOriginalMiddleName(fieldsToUpdate.middleName);
-      if (fieldsToUpdate.lastName) setOriginalLastName(fieldsToUpdate.lastName);
-
-      // Create the complete profile object with all fields
-      const completeProfile = {
-        ...profile,
-        ...fieldsToUpdate,
-        // Include role-specific fields
-        ...(profile.role === "Peer Reviewer" ? peerReviewerInfo : {}),
-        ...(profile.role === "Researcher" ? researcherInfo : {}),
-      };
-
-      // Update profile completion status using getProfileCompletionStatus
-      const completionStatus = getProfileCompletionStatus(completeProfile);
-      console.log("Profile completion status:", completionStatus);
-
-      // Update the profile state
-      setProfile(completeProfile);
-      setIsProfileComplete(completionStatus.complete);
-
-      // Log the completion status for debugging
-      if (!completionStatus.complete) {
-        console.log(
-          "Profile still incomplete. Missing fields:",
-          completionStatus.missingFields
-        );
-      }
-
-      // Show success message
-      showMessage("Profile updated successfully!", "success");
-
-      // Only exit edit mode if the profile is complete
-      if (completionStatus.complete) {
-        setIsEditing(false);
-      } else {
-        // Show a message about what's still needed
-        showMessage(
-          `Please complete: ${completionStatus.missingFields.join(", ")}`,
-          "info"
-        );
-      }
-    } catch (error) {
-      console.error("Error updating profile:", error);
-      showMessage("Failed to update profile. Please try again.", "error");
+      return; // Exit early on validation failure, but keep the form data
     }
-  };
+
+    // Get user role to check if they're an admin
+    const userDoc = await getDoc(doc(db, "Users", userIdToUpdate));
+    const userRole = userDoc.data()?.role;
+
+    // Check if user can update profile (admins bypass the limit)
+    if (!canUpdateProfile(userRole)) {
+      showMessage(
+        "You've reached the weekly limit of 5 profile updates. Please try again next week.",
+        "error"
+      );
+      return;
+    }
+
+    // Update Firestore
+    const userRef = doc(db, "Users", userIdToUpdate);
+    await updateDoc(userRef, fieldsToUpdate);
+
+    // Update weekly update count
+    await updateWeeklyCount(userIdToUpdate);
+
+    // Log the profile update - only basic information
+    try {
+      const loggableFields = [
+        "firstName",
+        "middleName",
+        "lastName",
+        "email",
+        "phone"
+      ];
+
+      // Get changed fields (only loggable ones)
+      const changedFields = [];
+      for (const key of loggableFields) {
+        if (JSON.stringify(profile[key]) !== JSON.stringify(formData[key])) {
+          changedFields.push(key);
+        }
+      }
+
+      // Only log if there are relevant changes
+      if (changedFields.length > 0) {
+        await UserLogService.logUserActivity(
+          userIdToUpdate,
+          "Updated Profile",
+          `Updated basic profile information: ${changedFields.join(", ")}`,
+          {
+            changedFields,
+            actionType: "profile_update",
+            previousValues: Object.fromEntries(
+              changedFields.map((field) => [field, profile[field] || ""])
+            ),
+            newValues: Object.fromEntries(
+              changedFields.map((field) => [field, formData[field] || ""])
+            ),
+          },
+          profile.email
+        );
+      }
+    } catch (logError) {
+      console.error("Error logging profile update:", logError);
+      // Continue with the profile update even if logging fails
+    }
+
+    // Update local state
+    setProfile((prev) => ({
+      ...prev,
+      ...fieldsToUpdate,
+    }));
+
+    if (selectedFile) {
+      originalPhotoRef.current = fieldsToUpdate.photoURL;
+      setSelectedFile(null);
+    }
+
+    // Update original name references
+    if (fieldsToUpdate.firstName) setOriginalFirstName(fieldsToUpdate.firstName);
+    if (fieldsToUpdate.middleName !== undefined) setOriginalMiddleName(fieldsToUpdate.middleName);
+    if (fieldsToUpdate.lastName) setOriginalLastName(fieldsToUpdate.lastName);
+
+    // Create the complete profile object with all fields
+    const completeProfile = {
+      ...profile,
+      ...fieldsToUpdate,
+      // Include role-specific fields
+      ...(profile.role === "Peer Reviewer" ? peerReviewerInfo : {}),
+      ...(profile.role === "Researcher" ? researcherInfo : {}),
+    };
+
+    // Update profile completion status using getProfileCompletionStatus
+    const completionStatus = getProfileCompletionStatus(completeProfile);
+    console.log("Profile completion status:", completionStatus);
+
+    // Update the profile state
+    setProfile(completeProfile);
+    setIsProfileComplete(completionStatus.complete);
+
+    // Log the completion status for debugging
+    if (!completionStatus.complete) {
+      console.log(
+        "Profile still incomplete. Missing fields:",
+        completionStatus.missingFields
+      );
+    }
+
+    // Show success message
+    showMessage("Profile updated successfully!", "success");
+
+    // Only exit edit mode if the profile is complete
+    if (completionStatus.complete) {
+      setIsEditing(false);
+    } else {
+      // Show a message about what's still needed
+      showMessage(
+        `Please complete: ${completionStatus.missingFields.join(", ")}`,
+        "info"
+      );
+    }
+  } catch (error) {
+    console.error("Error updating profile:", error);
+    showMessage("Failed to update profile. Please try again.", "error");
+  }
+};
 
   const handleCancel = () => {
     setIsEditing(false);

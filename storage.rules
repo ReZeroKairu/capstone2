@@ -1,4 +1,4 @@
- rules_version = '2';
+rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
    match /format-guidelines/{fileName} {
@@ -40,11 +40,18 @@ service firebase.storage {
     }
 
     // Review files
-    match /reviews/{manuscriptId}/{userId}/{fileName} {
+match /reviews/{manuscriptId}/{userId}/{fileName} {
+      // Allow read if:
+      // 1. User is an admin, OR
+      // 2. User is the manuscript submitter, OR
+      // 3. User is the reviewer who uploaded the file, OR
+      // 4. User is an assigned reviewer of this manuscript
       allow read: if request.auth != null && (
         get(/databases/-default-/documents/Users/$(request.auth.uid)).data.role == "Admin" ||
         get(/databases/-default-/documents/manuscripts/$(manuscriptId)).data.submitterId == request.auth.uid ||
-        get(/databases/-default-/documents/manuscripts/$(manuscriptId)).data.assignedReviewers.hasAny([request.auth.uid])
+        userId == request.auth.uid ||
+        (exists(/databases/-default-/documents/manuscripts/$(manuscriptId)) && 
+         get(/databases/-default-/documents/manuscripts/$(manuscriptId)).data.assignedReviewers.hasAny([request.auth.uid]))
       );
       
       allow create, update: if request.auth != null && 
@@ -74,6 +81,43 @@ service firebase.storage {
         get(/databases/-default-/documents/Users/$(request.auth.uid)).data.role == "Admin"
       );
     }
+match /cvs/{fileName} {
+  // Allow read if user is authenticated
+  allow read: if request.auth != null;
+  
+  // Allow upload if authenticated and file is a valid document type
+  allow create: if request.auth != null &&
+               request.resource.size < 10 * 1024 * 1024 &&  // 10MB limit
+               request.resource.contentType.matches('application/(pdf|msword|vnd\\.openxmlformats-officedocument\\.wordprocessingml\\.document)');
+  
+  // Allow delete if user is admin or the file owner
+  allow delete: if request.auth != null && (
+    get(/databases/-default-/documents/Users/$(request.auth.uid)).data.role == "Admin" ||
+    (resource != null && resource.metadata != null && resource.metadata.uid == request.auth.uid)
+  );
+}
+
+ // Researcher CVs - Allow researchers to manage their own CVs
+    match /researcher-cvs/{userId}/{fileName} {
+      // Allow read if the user is the owner or an admin
+      allow read: if request.auth != null && (
+        request.auth.uid == userId ||
+        get(/databases/-default-/documents/Users/$(request.auth.uid)).data.role == "Admin"
+      );
+      
+      // Allow create/update if the user is the owner
+      allow create, update: if request.auth != null &&
+                           request.auth.uid == userId &&
+                           request.resource.size < 10 * 1024 * 1024 &&  // 10MB limit
+                           request.resource.contentType.matches('application/(pdf|msword|vnd\\.openxmlformats-officedocument\\.wordprocessingml\\.document)');
+      
+      // Allow delete if the user is the owner or an admin
+      allow delete: if request.auth != null && (
+        request.auth.uid == userId ||
+        get(/databases/-default-/documents/Users/$(request.auth.uid)).data.role == "Admin"
+      );
+    }
+
 
     // Manuscript files
     match /manuscripts/{fileName} {

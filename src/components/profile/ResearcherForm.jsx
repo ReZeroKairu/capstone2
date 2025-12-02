@@ -1,6 +1,14 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { getAuth } from "firebase/auth";
+import { doc, updateDoc, getFirestore } from "firebase/firestore";
 
 const ResearcherForm = ({ profile, formData: initialFormData, onChange, isEditing }) => {
+  const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const storage = getStorage();
+  const auth = getAuth();
+  const db = getFirestore();
   // Local state for form data
   const [localFormData, setLocalFormData] = useState(initialFormData);
   
@@ -265,6 +273,88 @@ const ResearcherForm = ({ profile, formData: initialFormData, onChange, isEditin
     return null;
   }
 
+  const handleFileUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    // Check file type (only allow PDF, DOC, DOCX)
+    const validTypes = [
+      "application/pdf",
+      "application/msword",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ];
+    if (!validTypes.includes(file.type)) {
+      alert("Please upload a valid document (PDF or Word)");
+      return;
+    }
+
+    // Check file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      alert("File size should be less than 5MB");
+      return;
+    }
+
+    try {
+      setUploading(true);
+      setUploadProgress(0);
+
+      // Create a reference to the file in Firebase Storage with user ID as folder
+      const fileRef = ref(
+        storage,
+        `researcher-cvs/${auth.currentUser.uid}/${Date.now()}_${file.name}`
+      );
+
+      // Upload the file
+      const uploadTask = uploadBytes(fileRef, file);
+
+      // Get the download URL
+      const snapshot = await uploadTask;
+      const downloadURL = await getDownloadURL(snapshot.ref);
+
+      // Update the form data with CV information
+      const updatedFormData = {
+        ...localFormData,
+        cvUrl: downloadURL,
+        cvFileName: file.name,
+        cvLastUpdated: new Date().toISOString()
+      };
+      
+      setLocalFormData(updatedFormData);
+
+      // Notify parent component of the change
+      onChange({
+        target: {
+          name: 'researcherForm',
+          value: updatedFormData
+        }
+      });
+
+      // Also update the user's profile in Firestore
+      const userRef = doc(db, "Users", auth.currentUser.uid);
+      await updateDoc(userRef, {
+        cvUrl: downloadURL,
+        cvFileName: file.name,
+        cvLastUpdated: new Date().toISOString(),
+      });
+
+      setUploadProgress(100);
+      alert("CV uploaded successfully!");
+    } catch (error) {
+      console.error("Error uploading CV:", error);
+      alert("Error uploading CV. Please try again.");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleDownloadCV = (e) => {
+    e.preventDefault();
+    const cvUrl = localFormData.cvUrl || profile?.cvUrl;
+    if (cvUrl) {
+      window.open(cvUrl, "_blank");
+    }
+  };
+
   const renderInputField = (id, label, required = false, type = 'text', placeholder = '') => (
     <div className="mb-4">
       <label htmlFor={id} className="block text-sm font-medium text-gray-700 mb-1">
@@ -320,8 +410,9 @@ const ResearcherForm = ({ profile, formData: initialFormData, onChange, isEditin
 
   const renderEducationSection = () => (
     <div className="mt-8">
-      <h4 className="text-md font-medium text-gray-900 mb-4 border-b pb-2">Education</h4>
-      {isEditing ? (
+     <h4 className="text-md font-medium text-gray-900 mb-4 border-b pb-2">
+  Education <span className="text-red-500">*</span>
+</h4>     {isEditing ? (
         <div className="space-y-4">
           {educationEntries.map((entry, index) => (
             <div key={index} className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -413,7 +504,7 @@ const ResearcherForm = ({ profile, formData: initialFormData, onChange, isEditin
 
   const renderPublicationsSection = () => (
     <div className="mt-8">
-      <h4 className="text-md font-medium text-gray-900 mb-4 border-b pb-2">List of Publications (Last 5 Years)</h4>
+      <h4 className="text-md font-medium text-gray-900 mb-4 border-b pb-2">List of Publications (Last 5 Years) <span className="text-red-500">*</span></h4>
       {isEditing ? (
         <div className="space-y-4">
           {publicationEntries.map((entry, index) => (
@@ -506,7 +597,7 @@ const ResearcherForm = ({ profile, formData: initialFormData, onChange, isEditin
 
   const renderPresentationsSection = () => (
     <div className="mt-8">
-      <h4 className="text-md font-medium text-gray-900 mb-4 border-b pb-2">List of Paper Presentations (Last 5 Years)</h4>
+      <h4 className="text-md font-medium text-gray-900 mb-4 border-b pb-2">List of Paper Presentations (Last 5 Years) <span className="text-red-500">*</span></h4>
       {isEditing ? (
         <div className="space-y-4">
           {presentationEntries.map((entry, index) => (
@@ -599,7 +690,7 @@ const ResearcherForm = ({ profile, formData: initialFormData, onChange, isEditin
 
   const renderAwardsSection = () => (
     <div className="mt-8">
-      <h4 className="text-md font-medium text-gray-900 mb-4 border-b pb-2">List of Research Related Awards</h4>
+      <h4 className="text-md font-medium text-gray-900 mb-4 border-b pb-2">List of Research Related Awards <span className="text-red-500">*</span></h4>
       {isEditing ? (
         <div className="space-y-2">
           {awards.map((award, index) => (
@@ -654,9 +745,7 @@ const ResearcherForm = ({ profile, formData: initialFormData, onChange, isEditin
   );
 
   return (
-    <div className="space-y-6">
- 
-      
+    <div className="space-y-6">      
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {renderInputField('university', 'University', true)}
         {renderTextArea('universityAddress', 'University Address', true)}
@@ -705,6 +794,66 @@ const ResearcherForm = ({ profile, formData: initialFormData, onChange, isEditin
           )}
         </div>
       </div>
+
+      {/* CV Section - Moved to bottom */}
+      {isEditing ? (
+        <div className="mt-6">
+          <h4 className="text-md font-medium text-gray-900 mb-4 border-b pb-2">
+            Curriculum Vitae
+          </h4>
+          <div className="space-y-4">
+            <div className="flex items-center space-x-4">
+              <label className="cursor-pointer bg-white py-2 px-3 border border-gray-300 rounded-md shadow-sm text-sm leading-4 font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                {uploading ? "Uploading..." : "Choose File"}
+                <input
+                  type="file"
+                  className="sr-only"
+                  onChange={handleFileUpload}
+                  accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                  disabled={uploading}
+                />
+              </label>
+              {uploading && (
+                <div className="ml-4 w-full max-w-xs">
+                  <div className="w-full bg-gray-200 rounded-full h-2.5">
+                    <div
+                      className="bg-blue-600 h-2.5 rounded-full"
+                      style={{ width: `${uploadProgress}%` }}
+                    ></div>
+                  </div>
+                </div>
+              )}
+            </div>
+            {localFormData.cvFileName && (
+              <p className="mt-1 text-sm text-gray-600">
+                Current CV: {localFormData.cvFileName}
+              </p>
+            )}
+          </div>
+        </div>
+      ) : (profile.cvUrl || localFormData.cvUrl) ? (
+        <div className="mt-6">
+          <h4 className="text-md font-medium text-gray-900 mb-4 border-b pb-2">
+            Curriculum Vitae
+          </h4>
+          <div className="flex items-center space-x-4">
+            <button
+              onClick={handleDownloadCV}
+              className="text-blue-600 hover:text-blue-800 flex items-center"
+            >
+              <svg className="h-5 w-5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+              </svg>
+              {localFormData.cvFileName || profile.cvFileName || 'Download CV'}
+            </button>
+            {(localFormData.cvLastUpdated || profile.cvLastUpdated) && (
+              <span className="text-sm text-gray-500">
+                Last updated: {new Date(localFormData.cvLastUpdated || profile.cvLastUpdated).toLocaleDateString()}
+              </span>
+            )}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 };

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from "react";
+import React, { useState, useEffect, useRef, useMemo, useCallback  } from "react";
 import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { getAuth } from "firebase/auth";
 import { doc, updateDoc, getFirestore } from "firebase/firestore";
@@ -36,141 +36,140 @@ const PeerReviewerForm = ({ profile, isEditing, formData, onChange }) => {
       setEducationEntries([]);
     }
   }, [profile, formData, isEditing]);
+const handleEducationChange = useCallback((index, field, value) => {
+  hasChanges.current = true;
+  setEducationEntries((prev) => {
+    // Only update if the value has actually changed
+    if (prev[index]?.[field] === value) return prev;
+    
+    const updatedEntries = [...prev];
+    updatedEntries[index] = { 
+      ...updatedEntries[index], 
+      [field]: value 
+    };
 
-  const handleEducationChange = (index, field, value) => {
-    hasChanges.current = true;
-    setEducationEntries((prev) => {
-      const updatedEntries = [...prev];
-      updatedEntries[index] = { ...updatedEntries[index], [field]: value };
-
-      // Update the parent form data
-      onChange({
-        target: {
-          name: "educations",
-          value: updatedEntries,
-        },
-      });
-
-      return updatedEntries;
+    // Update the parent form data
+    onChange({
+      target: {
+        name: "educations",
+        value: updatedEntries,
+      },
     });
-  };
 
-  const renderEducationSection = () => (
-    <div className="mt-6">
-      <h4 className="text-md font-medium text-gray-900 mb-4 border-b pb-2">
-        Education
-      </h4>
-      {isEditing ? (
-        <div className="space-y-4">
-          {educationEntries.map((entry, index) => (
-            <div key={index} className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <input
-                  type="text"
-                  name="school"
-                  value={entry.school || ""}
-                  onChange={(e) =>
-                    handleEducationChange(index, "school", e.target.value)
-                  }
-                  placeholder="School/University"
-                  className="w-full border border-gray-300 p-2 rounded"
-                />
-              </div>
-              <div>
-                <input
-                  type="text"
-                  name="degree"
-                  value={entry.degree || ""}
-                  onChange={(e) =>
-                    handleEducationChange(index, "degree", e.target.value)
-                  }
-                  placeholder="Degree/Certificate"
-                  className="w-full border border-gray-300 p-2 rounded"
-                />
-              </div>
-              <div className="flex items-center space-x-2">
-                <input
-                  type="text"
-                  name="year"
-                  value={entry.year || ""}
-                  onChange={(e) =>
-                    handleEducationChange(index, "year", e.target.value)
-                  }
-                  placeholder="Year Graduated"
-                  className="w-full border border-gray-300 p-2 rounded"
-                />
-                {index === educationEntries.length - 1 && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const newEntries = [
-                        ...educationEntries,
-                        { school: "", degree: "", year: "" },
-                      ];
-                      setEducationEntries(newEntries);
-                      onChange({
-                        target: {
-                          name: "educations",
-                          value: newEntries,
-                        },
-                      });
-                    }}
-                    className="text-green-600 hover:text-green-800 text-xl"
-                  >
-                    +
-                  </button>
-                )}
-                {educationEntries.length > 1 && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const filteredEntries = educationEntries.filter(
-                        (_, i) => i !== index
-                      );
-                      setEducationEntries(filteredEntries);
-                      onChange({
-                        target: {
-                          name: "educations",
-                          value: filteredEntries,
-                        },
-                      });
-                    }}
-                    className="text-red-600 hover:text-red-800 text-xl"
-                  >
-                    −
-                  </button>
-                )}
-              </div>
+    return updatedEntries;
+  });
+}, [onChange]);
+
+const renderEducationSection = () => (
+  <div className="mt-6">
+    <h4 className="text-md font-medium text-gray-900 mb-4 border-b pb-2">
+      Education <span className="text-red-500">*</span>
+    </h4>
+    {isEditing ? (
+      <div className="space-y-4">
+        {educationEntries.map((entry, index) => (
+          <div key={index} className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <input
+                type="text"
+                name="school"
+                value={entry.school || ""}
+                onChange={(e) => handleEducationChange(index, "school", e.target.value)}
+                placeholder="School/University"
+                className="w-full border border-gray-300 p-2 rounded"
+                required
+              />
             </div>
-          ))}
-        </div>
-      ) : (
-        <div className="space-y-4">
-          {profile.educations?.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 font-medium mb-2">
-              <div>School/University</div>
-              <div>Degree/Certificate</div>
-              <div>Year Graduated</div>
+            <div>
+              <input
+                type="text"
+                name="degree"
+                value={entry.degree || ""}
+                onChange={(e) => handleEducationChange(index, "degree", e.target.value)}
+                placeholder="Degree/Certificate"
+                className="w-full border border-gray-300 p-2 rounded"
+                required
+              />
             </div>
-          ) : (
-            <div className="text-gray-500">
-              No education information available
+            <div className="flex items-center space-x-2">
+              <input
+                type="text"
+                name="year"
+                value={entry.year || ""}
+                onChange={(e) => handleEducationChange(index, "year", e.target.value)}
+                placeholder="Year Graduated"
+                className="w-full border border-gray-300 p-2 rounded"
+                required
+              />
+              {index === educationEntries.length - 1 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const newEntry = { school: "", degree: "", year: "" };
+                    setEducationEntries(prev => [...prev, newEntry]);
+                    onChange({
+                      target: {
+                        name: "educations",
+                        value: [...educationEntries, newEntry],
+                      },
+                    });
+                  }}
+                  className="text-green-600 hover:text-green-800 text-xl"
+                >
+                  +
+                </button>
+              )}
+              {educationEntries.length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const filteredEntries = educationEntries.filter(
+                      (_, i) => i !== index
+                    );
+                    setEducationEntries(filteredEntries);
+                    onChange({
+                      target: {
+                        name: "educations",
+                        value: filteredEntries,
+                      },
+                    });
+                  }}
+                  className="text-red-600 hover:text-red-800 text-xl"
+                >
+                  −
+                </button>
+              )}
             </div>
-          )}
-          {profile.educations?.map((edu, index) => (
-            <div
-              key={index}
-              className="grid grid-cols-1 md:grid-cols-3 gap-4 border-b pb-2"
-            >
-              <div>{edu.school || "—"}</div>
-              <div>{edu.degree || "—"}</div>
-              <div>{edu.year || "—"}</div>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
+          </div>
+        ))}
+      </div>
+    ) : (
+      <div className="space-y-4">
+        {profile.educations?.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 font-medium mb-2">
+            <div>School/University</div>
+            <div>Degree/Certificate</div>
+            <div>Year Graduated</div>
+          </div>
+        ) : (
+          <div className="text-gray-500">
+            No education information available
+          </div>
+        )}
+        {profile.educations?.map((edu, index) => (
+          <div
+            key={index}
+            className="grid grid-cols-1 md:grid-cols-3 gap-4 border-b pb-2"
+          >
+            <div>{edu.school || "—"}</div>
+            <div>{edu.degree || "—"}</div>
+            <div>{edu.year || "—"}</div>
+          </div>
+        ))}
+      </div>
+    )}
+  </div>
+);
 
   const handleFileUpload = async (e) => {
     const file = e.target.files[0];

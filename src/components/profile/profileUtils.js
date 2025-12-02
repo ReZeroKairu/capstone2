@@ -10,18 +10,21 @@ export const validateProfile = (profile) => {
     "lastName",
     "email",
     "phone",
-    "department",
   ];
 
   // Role-specific required fields
   if (profile.role === "Researcher") {
-    requiredFields.push("institution", "fieldOfStudy", "researchInterests");
+    requiredFields.push(
+      "institution", 
+      "fieldOfStudy", 
+      "researchInterests",
+      "cvUrl"
+    );
   } else if (profile.role === "Peer Reviewer") {
     requiredFields.push(
       "affiliation",
       "expertise",
-      "education",
-      "cvUrl" // CV is required for peer reviewers
+      "cvUrl"
     );
   }
 
@@ -31,18 +34,31 @@ export const validateProfile = (profile) => {
     return !value || (typeof value === "string" && value.trim() === "");
   });
 
+  // Special handling for educations array for Peer Reviewers
+  if (profile.role === "Peer Reviewer") {
+    const hasValidEducation = profile.educations && 
+      Array.isArray(profile.educations) && 
+      profile.educations.some(edu => 
+        edu.school?.trim() && 
+        edu.degree?.trim() && 
+        edu.year?.trim()
+      );
+
+    if (!hasValidEducation) {
+      missingFields.push("Education details");
+    }
+  }
+
   return {
     valid: missingFields.length === 0,
     missingFields,
   };
 };
-
 /**
  * Gets a detailed message about missing profile requirements
  * @param {Object} profile - The profile data to check
  * @returns {Object} Object with completion status and message
- */
-export const getProfileCompletionStatus = (profile) => {
+ */export const getProfileCompletionStatus = (profile) => {
   if (!profile) {
     return {
       complete: false,
@@ -64,28 +80,50 @@ export const getProfileCompletionStatus = (profile) => {
     missingFields.push("Phone number");
   }
 
-  // Peer reviewer specific
-  if (profile.role === "Peer Reviewer") {
+  // Role-specific fields
+  if (profile.role === "Researcher") {
+    if (!profile.institution?.trim()) {
+      missingFields.push("Institution");
+    }
+    if (!profile.fieldOfStudy?.trim()) {
+      missingFields.push("Field of study");
+    }
+    if (!profile.researchInterests?.trim()) {
+      missingFields.push("Research interests");
+    }
+    if (!profile.cvUrl) {
+      missingFields.push("CV upload");
+    }
+  } else if (profile.role === "Peer Reviewer") {
     if (!profile.affiliation?.trim()) {
       missingFields.push("Institutional affiliation");
     }
     if (!profile.expertise?.trim()) {
       missingFields.push("At least one area of expertise");
     }
-    if (!profile.education?.trim()) {
-      missingFields.push("Education details");
-    }
     if (!profile.cvUrl) {
       missingFields.push("CV upload");
     }
   }
 
+  // Education validation for both roles
+  const hasValidEducation = profile.educations && 
+    Array.isArray(profile.educations) && 
+    profile.educations.some(edu => 
+      edu.school?.trim() && 
+      edu.degree?.trim() && 
+      edu.year?.trim()
+    );
+
+  if (!hasValidEducation) {
+    missingFields.push("Education details");
+  }
+
   return {
     complete: missingFields.length === 0,
-    message:
-      missingFields.length > 0
-        ? `Please complete the following: ${missingFields.join(", ")}`
-        : "Your profile is complete!",
+    message: missingFields.length > 0
+      ? `Please complete the following: ${missingFields.join(", ")}` 
+      : "Your profile is complete!",
     missingFields,
   };
 };
@@ -115,7 +153,7 @@ export const checkProfileComplete = (profile) => {
       email: "Email",
       phone: "Phone Number",
       affiliation: "Institutional Affiliation",
-      education: "Education Details",
+      educations: "Education Details",
       expertise: "Areas of Expertise",
       cvUrl: "CV Upload",
     };
