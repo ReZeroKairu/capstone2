@@ -202,7 +202,7 @@ export default function CallForPapers() {
     );
 
   return (
-    <div className="min-h-screen bg-gray-200">
+    <div className="min-h-screen bg-white">
       <div className="relative z-10 flex flex-col items-center justify-center py-24 w-full">
         <div className="rounded-sm p-6 w-full max-w-2xl mx-auto">
           {notification.message && (
@@ -369,7 +369,7 @@ export default function CallForPapers() {
               </div>
             ) : (
               <div>
-                <SafeHTML 
+                <SafeHTML
                   className="mb-6 leading-relaxed"
                   content={content.description || ""}
                 />
@@ -377,11 +377,7 @@ export default function CallForPapers() {
                   {content.issues.map(
                     (issue, idx) =>
                       issue.trim() && (
-                        <SafeHTML
-                          key={idx}
-                          content={issue}
-                          className="mb-2"
-                        />
+                        <SafeHTML key={idx} content={issue} className="mb-2" />
                       )
                   )}
                 </div>

@@ -6,8 +6,11 @@ import { auth, db } from "../firebase/firebase";
 import { onAuthStateChanged } from "firebase/auth";
 import SafeHTML from "./common/SafeHTML";
 import { FaEdit, FaTrashAlt } from "react-icons/fa";
-import { quillModules, quillFormats, applyPassiveEventListeners } from "../utils/quillConfig";
-
+import {
+  quillModules,
+  quillFormats,
+  applyPassiveEventListeners,
+} from "../utils/quillConfig";
 
 // Initialize Quill modules
 const modules = quillModules;
@@ -52,7 +55,6 @@ const PubEthics = () => {
       4000
     );
   }, []);
-  
 
   useEffect(() => {
     const docRef = doc(db, "Content", "PubEthics");
@@ -96,25 +98,26 @@ const PubEthics = () => {
     setIsEditing(false);
   };
 
-    // Function to clean and format HTML content
+  // Function to clean and format HTML content
   const cleanHtmlContent = (html) => {
-    if (!html) return '';
+    if (!html) return "";
     // Ensure proper list structure
-    return html.replace(/<p><\/p>/g, '') // Remove empty paragraphs
-             .replace(/<p><br><\/p>/g, '') // Remove empty lines
-             .replace(/<p>(<[uo]l>)/g, '$1') // Fix lists that might be wrapped in paragraphs
-             .replace(/<\/([uo]l)><\/p>/g, '<\/$1>'); // Fix closing tags
+    return html
+      .replace(/<p><\/p>/g, "") // Remove empty paragraphs
+      .replace(/<p><br><\/p>/g, "") // Remove empty lines
+      .replace(/<p>(<[uo]l>)/g, "$1") // Fix lists that might be wrapped in paragraphs
+      .replace(/<\/([uo]l)><\/p>/g, "</$1>"); // Fix closing tags
   };
 
   const saveAllChanges = async () => {
     const original = originalContentRef.current;
-    
+
     // Clean the content before comparing
     const cleanedHeader = cleanHtmlContent(headerText);
     const cleanedFooter = cleanHtmlContent(footerText);
-    const cleanedSections = sections.map(section => ({
+    const cleanedSections = sections.map((section) => ({
       ...section,
-      content: cleanHtmlContent(section.content)
+      content: cleanHtmlContent(section.content),
     }));
 
     const changesMade =
@@ -189,33 +192,33 @@ const PubEthics = () => {
     setSections((prev) => prev.filter((s) => s.id !== id));
   };
   // Add this effect after your state declarations
-useEffect(() => {
-  // Apply passive event listeners when component mounts
-  applyPassiveEventListeners();
-  
-  // Set up a mutation observer to handle dynamically added Quill instances
-  const observer = new MutationObserver((mutations) => {
-    mutations.forEach((mutation) => {
-      if (mutation.addedNodes.length) {
-        applyPassiveEventListeners();
-      }
+  useEffect(() => {
+    // Apply passive event listeners when component mounts
+    applyPassiveEventListeners();
+
+    // Set up a mutation observer to handle dynamically added Quill instances
+    const observer = new MutationObserver((mutations) => {
+      mutations.forEach((mutation) => {
+        if (mutation.addedNodes.length) {
+          applyPassiveEventListeners();
+        }
+      });
     });
-  });
 
-  // Start observing the document with the configured parameters
-  observer.observe(document.body, {
-    childList: true,
-    subtree: true
-  });
+    // Start observing the document with the configured parameters
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+    });
 
-  // Clean up the observer when the component unmounts
-  return () => {
-    observer.disconnect();
-  };
-}, []);
+    // Clean up the observer when the component unmounts
+    return () => {
+      observer.disconnect();
+    };
+  }, []);
 
   return (
-    <div className="min-h-screen py-20 px-2 sm:px-8 lg:px-32 flex items-center justify-center bg-gray-200">
+    <div className="min-h-screen py-20 px-2 sm:px-8 lg:px-32 flex items-center justify-center bg-white">
       <div className="w-full max-w-4xl mx-auto rounded-lg shadow-lg my-8">
         {notifications.map((n) => (
           <Toast
@@ -239,15 +242,15 @@ useEffect(() => {
           <div className="mb-6">
             {isEditing ? (
               <ReactQuill
-  value={headerText}
-  onChange={setHeaderText}
-  modules={modules}
-  formats={quillFormats}
-  theme="snow"
-  bounds={'.quill-editor'}
-  className="bg-white text-black rounded mb-2 quill-editor"
-  placeholder="Enter header text..."
-/>
+                value={headerText}
+                onChange={setHeaderText}
+                modules={modules}
+                formats={quillFormats}
+                theme="snow"
+                bounds={".quill-editor"}
+                className="bg-white text-black rounded mb-2 quill-editor"
+                placeholder="Enter header text..."
+              />
             ) : (
               <SafeHTML content={headerText} />
             )}
@@ -272,15 +275,15 @@ useEffect(() => {
                       placeholder="Section Title"
                     />
                     <ReactQuill
-  value={section.content}
-  onChange={(val) => updateSectionContent(section.id, val)}
-  modules={modules}
-  formats={quillFormats}
-  theme="snow"
-  bounds={'.quill-editor'}
-  className="bg-white text-black rounded mb-2 quill-editor"
-  placeholder="Enter section content..."
-/>
+                      value={section.content}
+                      onChange={(val) => updateSectionContent(section.id, val)}
+                      modules={modules}
+                      formats={quillFormats}
+                      theme="snow"
+                      bounds={".quill-editor"}
+                      className="bg-white text-black rounded mb-2 quill-editor"
+                      placeholder="Enter section content..."
+                    />
                     <button
                       onClick={() => removeSection(section.id)}
                       className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded font-semibold flex items-center gap-2 mt-2"
@@ -315,16 +318,16 @@ useEffect(() => {
                       className="w-full p-3 mb-2 rounded text-black"
                       placeholder="New Section Title"
                     />
-                   <ReactQuill
-  value={newSectionContent}
-  onChange={setNewSectionContent}
-  modules={modules}
-  formats={quillFormats}
-  theme="snow"
-  bounds={'.quill-editor'}
-  className="bg-white text-black rounded mb-2 quill-editor"
-  placeholder="Enter new section content..."
-/>
+                    <ReactQuill
+                      value={newSectionContent}
+                      onChange={setNewSectionContent}
+                      modules={modules}
+                      formats={quillFormats}
+                      theme="snow"
+                      bounds={".quill-editor"}
+                      className="bg-white text-black rounded mb-2 quill-editor"
+                      placeholder="Enter new section content..."
+                    />
                     <div className="flex gap-2">
                       <button
                         onClick={addSection}
@@ -348,16 +351,16 @@ useEffect(() => {
           {/* Footer */}
           <div className="mb-6">
             {isEditing ? (
-             <ReactQuill
-  value={footerText}
-  onChange={setFooterText}
-  modules={modules}
-  formats={quillFormats}
-  theme="snow"
-  bounds={'.quill-editor'}
-  className="bg-white text-black rounded mb-2 quill-editor"
-  placeholder="Enter footer text..."
-/>
+              <ReactQuill
+                value={footerText}
+                onChange={setFooterText}
+                modules={modules}
+                formats={quillFormats}
+                theme="snow"
+                bounds={".quill-editor"}
+                className="bg-white text-black rounded mb-2 quill-editor"
+                placeholder="Enter footer text..."
+              />
             ) : (
               <SafeHTML content={footerText} />
             )}
