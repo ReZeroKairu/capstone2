@@ -215,7 +215,7 @@ useEffect(() => {
 }, []);
 
   return (
-    <div className="min-h-screen py-20 px-2 sm:px-8 lg:px-32 flex items-center justify-center bg-gray-200">
+    <div className="min-h-screen py-20 px-2 sm:px-8 lg:px-32 flex items-center justify-center bg-white">
       <div className="w-full max-w-4xl mx-auto rounded-lg shadow-lg my-8">
         {notifications.map((n) => (
           <Toast
