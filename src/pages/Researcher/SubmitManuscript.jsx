@@ -25,7 +25,7 @@ import FileUpload from "../../components/FileUpload";
 import { debounce } from "lodash";
 import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from 'react-router-dom';
 
 
 export default function SubmitManuscript() {
@@ -266,7 +266,7 @@ useEffect(() => {
         
         // Basic required fields for all users
         const basicRequiredFields = [
-          'firstName', 'lastName', 'email', 'phone', 'department'
+          'firstName', 'lastName', 'email', 'phone'
         ];
         
         // Role-specific required fields
@@ -567,23 +567,24 @@ setMonthlyCount(prev => prev + 1);
       setSelectedUsers([]);
       showMessage("Manuscript submitted successfully!");
       // Navigate to dashboard after successful submission
-    navigate('/dashboard', { replace: true });
- } catch (err) {
-  console.error("Error in form submission:", err);
-  const errorMessage = err.message || "Failed to submit form. Please try again.";
-  showMessage(errorMessage);
-  setError(errorMessage);
-  
-  // If it's a permission error, suggest re-authenticating
-  if (err.code === 'permission-denied' || err.code === 'permission_denied') {
-    console.warn("Permission denied - user may need to re-authenticate");
+     navigate('/dashboard', { replace: true });
+    
+  } catch (err) {
+    console.error("Error in form submission:", err);
+    const errorMessage = err.message || "Failed to submit form. Please try again.";
+    showMessage(errorMessage);
+    setError(errorMessage);
+    
+    // If it's a permission error, suggest re-authenticating
+    if (err.code === 'permission-denied' || err.code === 'permission_denied') {
+      console.warn("Permission denied - user may need to re-authenticate");
+    }
+  } finally {
+    if (isMounted.current) {
+      setLoading(false);
+    }
   }
-} finally {
-  if (isMounted.current) {
-    setLoading(false);
-  }
-}
-  };
+};
 
   // Track last saved draft content
   const lastSavedDraft = useRef(null);

@@ -70,35 +70,38 @@ export const validateProfile = (profile) => {
   const missingFields = [];
 
   // Basic info
-  if (!profile.firstName?.trim() || !profile.lastName?.trim()) {
-    missingFields.push("Full name");
+  if (!profile.firstName?.trim?.()) {
+    missingFields.push("First name");
   }
-  if (!profile.email?.trim()) {
+  if (!profile.lastName?.trim?.()) {
+    missingFields.push("Last name");
+  }
+  if (!profile.email?.trim?.()) {
     missingFields.push("Email address");
   }
-  if (!profile.phone?.trim()) {
+  if (!profile.phone?.trim?.()) {
     missingFields.push("Phone number");
   }
 
   // Role-specific fields
   if (profile.role === "Researcher") {
-    if (!profile.institution?.trim()) {
+    if (!profile.institution?.trim?.()) {
       missingFields.push("Institution");
     }
-    if (!profile.fieldOfStudy?.trim()) {
+    if (!profile.fieldOfStudy?.trim?.()) {
       missingFields.push("Field of study");
     }
-    if (!profile.researchInterests?.trim()) {
+    if (!profile.researchInterests?.trim?.()) {
       missingFields.push("Research interests");
     }
     if (!profile.cvUrl) {
       missingFields.push("CV upload");
     }
   } else if (profile.role === "Peer Reviewer") {
-    if (!profile.affiliation?.trim()) {
+    if (!profile.affiliation?.trim?.()) {
       missingFields.push("Institutional affiliation");
     }
-    if (!profile.expertise?.trim()) {
+    if (!profile.expertise?.trim?.()) {
       missingFields.push("At least one area of expertise");
     }
     if (!profile.cvUrl) {
@@ -110,9 +113,9 @@ export const validateProfile = (profile) => {
   const hasValidEducation = profile.educations && 
     Array.isArray(profile.educations) && 
     profile.educations.some(edu => 
-      edu.school?.trim() && 
-      edu.degree?.trim() && 
-      edu.year?.trim()
+      edu?.school?.trim() && 
+      edu?.degree?.trim() && 
+      edu?.year
     );
 
   if (!hasValidEducation) {
