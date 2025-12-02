@@ -7,7 +7,7 @@ import {
   checkProfileComplete,
   getProfileCompletionStatus,
 } from "../../components/profile/profileUtils";
-import EmailService from "../../utils/EmailService.js";
+import EmailService from "../../utils/emailService";
 import {
   collection,
   getDocs,
