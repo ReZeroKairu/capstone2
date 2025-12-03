@@ -545,9 +545,22 @@ const [previousFormData, setPreviousFormData] = useState(null);
       const completeProfile = {
         ...profile,
         ...fieldsToUpdate,
-        // Include role-specific fields
-        ...(profile.role === "Peer Reviewer" ? peerReviewerInfo : {}),
-        ...(profile.role === "Researcher" ? researcherInfo : {}),
+        // Include ALL form data fields, not just role-specific
+        firstName: updatedFormData.firstName || profile.firstName || "",
+        lastName: updatedFormData.lastName || profile.lastName || "",
+        email: updatedFormData.email || profile.email || "",
+        phone: updatedFormData.phone || profile.phone || "",
+        university: updatedFormData.university || profile.university || "",
+        universityAddress: updatedFormData.universityAddress || profile.universityAddress || "",
+        researchInterests: updatedFormData.researchInterests || profile.researchInterests || "",
+        affiliation: updatedFormData.affiliation || profile.affiliation || "",
+        expertise: updatedFormData.expertise || profile.expertise || "",
+        educations: Array.isArray(updatedFormData.educations) 
+          ? updatedFormData.educations 
+          : profile.educations || [],
+        // Include all other fields
+        role: profile.role,
+        cvUrl: updatedFormData.cvUrl || profile.cvUrl || "",
       };
 
       // Update profile completion status using getProfileCompletionStatus

@@ -1,9 +1,20 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, {
+  useState,
+  useEffect,
+  useRef,
+  useCallback,
+  useMemo,
+} from "react";
 import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { getAuth } from "firebase/auth";
 import { doc, updateDoc, getFirestore } from "firebase/firestore";
 
-const ResearcherForm = ({ profile, formData: initialFormData, onChange, isEditing }) => {
+const ResearcherForm = ({
+  profile,
+  formData: initialFormData,
+  onChange,
+  isEditing,
+}) => {
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const storage = getStorage();
@@ -11,7 +22,7 @@ const ResearcherForm = ({ profile, formData: initialFormData, onChange, isEditin
   const db = getFirestore();
   // Local state for form data
   const [localFormData, setLocalFormData] = useState(initialFormData);
-  
+
   // Update local form data when initialFormData changes
   useEffect(() => {
     setLocalFormData(initialFormData);
@@ -22,7 +33,7 @@ const ResearcherForm = ({ profile, formData: initialFormData, onChange, isEditin
     const { name, value } = e.target;
     const updatedFormData = {
       ...localFormData,
-      [name]: value
+      [name]: value,
     };
     setLocalFormData(updatedFormData);
     onChange(e); // Still notify parent of changes
@@ -34,15 +45,15 @@ const ResearcherForm = ({ profile, formData: initialFormData, onChange, isEditin
     updatedArray[index] = value;
     const updatedFormData = {
       ...localFormData,
-      [field]: updatedArray
+      [field]: updatedArray,
     };
     setLocalFormData(updatedFormData);
     // Create a synthetic event to notify parent
     const e = {
       target: {
         name: field,
-        value: updatedArray
-      }
+        value: updatedArray,
+      },
     };
     onChange(e);
   };
@@ -50,33 +61,33 @@ const ResearcherForm = ({ profile, formData: initialFormData, onChange, isEditin
   // Use refs to track previous values and prevent unnecessary updates
   const prevProfileRef = useRef(profile);
   const prevIsEditingRef = useRef(isEditing);
-  
+
   // Initialize state with empty values
   // Initialize arrays from form data with fallback to profile data
   const [educationEntries, setEducationEntries] = useState(
-    localFormData.educations?.length > 0 
-      ? localFormData.educations 
-      : profile?.educations || [{ school: '', degree: '', year: '' }]
+    localFormData.educations?.length > 0
+      ? localFormData.educations
+      : profile?.educations || [{ school: "", degree: "", year: "" }]
   );
-  
+
   const [publicationEntries, setPublicationEntries] = useState(
-    localFormData.publications?.length > 0 
-      ? localFormData.publications 
-      : profile?.publications || [{ title: '', year: '', journal: '' }]
+    localFormData.publications?.length > 0
+      ? localFormData.publications
+      : profile?.publications || [{ title: "", year: "", journal: "" }]
   );
-  
+
   const [presentationEntries, setPresentationEntries] = useState(
-    localFormData.presentations?.length > 0 
-      ? localFormData.presentations 
-      : profile?.presentations || [{ title: '', year: '', conference: '' }]
+    localFormData.presentations?.length > 0
+      ? localFormData.presentations
+      : profile?.presentations || [{ title: "", year: "", conference: "" }]
   );
-  
+
   const [awards, setAwards] = useState(
-    localFormData.awards?.length > 0 
-      ? localFormData.awards 
-      : profile?.awards || ['']
+    localFormData.awards?.length > 0
+      ? localFormData.awards
+      : profile?.awards || [""]
   );
-  
+
   // Sync local array states with form data
   useEffect(() => {
     if (localFormData.educations) {
@@ -97,79 +108,103 @@ const ResearcherForm = ({ profile, formData: initialFormData, onChange, isEditin
   const hasChanges = useRef(false);
 
   // Memoize the profile data to prevent unnecessary effect triggers
-  const profileData = useMemo(() => ({
-    // Basic info
-    university: localFormData?.university || profile?.university || '',
-    universityAddress: localFormData?.universityAddress || profile?.universityAddress || '',
-    country: localFormData?.country || profile?.country || '',
-    continent: localFormData?.continent || profile?.continent || '',
-    citizenship: localFormData?.citizenship || profile?.citizenship || '',
-    residentialAddress: localFormData?.residentialAddress || profile?.residentialAddress || '',
-    zipCode: localFormData?.zipCode || profile?.zipCode || '',
-    currentPosition: localFormData?.currentPosition || profile?.currentPosition || '',
-    affiliation: localFormData?.affiliation || profile?.affiliation || '',
-    department: localFormData?.department || profile?.department || '',
-    researchInterests: localFormData?.researchInterests || profile?.researchInterests || '',
-    
-    // Array fields
-    educations: localFormData?.educations || profile?.educations || [],
-    education: localFormData?.education || profile?.education || '',
-    publications: localFormData?.publications || profile?.publications || [],
-    presentations: localFormData?.presentations || profile?.presentations || [],
-    awards: localFormData?.awards || profile?.awards || []
-  }), [profile, localFormData]);
+  const profileData = useMemo(
+    () => ({
+      // Basic info
+      university: localFormData?.university || profile?.university || "",
+      universityAddress:
+        localFormData?.universityAddress || profile?.universityAddress || "",
+      country: localFormData?.country || profile?.country || "",
+      continent: localFormData?.continent || profile?.continent || "",
+      citizenship: localFormData?.citizenship || profile?.citizenship || "",
+      residentialAddress:
+        localFormData?.residentialAddress || profile?.residentialAddress || "",
+      zipCode: localFormData?.zipCode || profile?.zipCode || "",
+      currentPosition:
+        localFormData?.currentPosition || profile?.currentPosition || "",
+      affiliation: localFormData?.affiliation || profile?.affiliation || "",
+      department: localFormData?.department || profile?.department || "",
+      researchInterests:
+        localFormData?.researchInterests || profile?.researchInterests || "",
+
+      // Array fields
+      educations: localFormData?.educations || profile?.educations || [],
+      education: localFormData?.education || profile?.education || "",
+      publications: localFormData?.publications || profile?.publications || [],
+      presentations:
+        localFormData?.presentations || profile?.presentations || [],
+      awards: localFormData?.awards || profile?.awards || [],
+    }),
+    [profile, localFormData]
+  );
 
   // Initialize form data when profile or formData changes or when toggling to edit mode
   useEffect(() => {
     if (!profile && !localFormData) return;
-    
+
     // Only update state if there are actual changes to prevent unnecessary re-renders
     const updateState = () => {
       // Use formData from props if available, otherwise use profile data
       const dataSource = localFormData || profileData;
-      
+
       // Set education entries
       if (dataSource.educations?.length > 0) {
-        setEducationEntries(Array.isArray(dataSource.educations) ? 
-          dataSource.educations : 
-          [{ school: dataSource.educations || '', degree: '', year: '' }]);
+        setEducationEntries(
+          Array.isArray(dataSource.educations)
+            ? dataSource.educations
+            : [{ school: dataSource.educations || "", degree: "", year: "" }]
+        );
       } else if (dataSource.education) {
-        setEducationEntries([{ school: dataSource.education, degree: '', year: '' }]);
+        setEducationEntries([
+          { school: dataSource.education, degree: "", year: "" },
+        ]);
       } else if (isEditing) {
-        setEducationEntries([{ school: '', degree: '', year: '' }]);
+        setEducationEntries([{ school: "", degree: "", year: "" }]);
       } else {
         setEducationEntries([]);
       }
 
       // Set publication entries
       if (dataSource.publications?.length > 0) {
-        setPublicationEntries(Array.isArray(dataSource.publications) ? 
-          dataSource.publications : 
-          [{ title: dataSource.publications || '', year: '', journal: '' }]);
+        setPublicationEntries(
+          Array.isArray(dataSource.publications)
+            ? dataSource.publications
+            : [{ title: dataSource.publications || "", year: "", journal: "" }]
+        );
       } else if (isEditing) {
-        setPublicationEntries([{ title: '', year: '', journal: '' }]);
+        setPublicationEntries([{ title: "", year: "", journal: "" }]);
       } else {
         setPublicationEntries([]);
       }
 
       // Set presentation entries
       if (dataSource.presentations?.length > 0) {
-        setPresentationEntries(Array.isArray(dataSource.presentations) ? 
-          dataSource.presentations : 
-          [{ title: dataSource.presentations || '', year: '', conference: '' }]);
+        setPresentationEntries(
+          Array.isArray(dataSource.presentations)
+            ? dataSource.presentations
+            : [
+                {
+                  title: dataSource.presentations || "",
+                  year: "",
+                  conference: "",
+                },
+              ]
+        );
       } else if (isEditing) {
-        setPresentationEntries([{ title: '', year: '', conference: '' }]);
+        setPresentationEntries([{ title: "", year: "", conference: "" }]);
       } else {
         setPresentationEntries([]);
       }
 
       // Set awards
       if (dataSource.awards?.length > 0) {
-        setAwards(Array.isArray(dataSource.awards) ? 
-          dataSource.awards : 
-          [String(dataSource.awards || '')]);
+        setAwards(
+          Array.isArray(dataSource.awards)
+            ? dataSource.awards
+            : [String(dataSource.awards || "")]
+        );
       } else if (isEditing) {
-        setAwards(['']);
+        setAwards([""]);
       } else {
         setAwards([]);
       }
@@ -180,71 +215,95 @@ const ResearcherForm = ({ profile, formData: initialFormData, onChange, isEditin
   }, [profile, localFormData, isEditing]);
 
   // Memoize the form data to prevent unnecessary effect triggers
-  const formState = useMemo(() => ({
-    educationEntries,
-    publicationEntries,
-    presentationEntries,
-    awards,
-    isEditing
-  }), [educationEntries, publicationEntries, presentationEntries, awards, isEditing]);
+  const formState = useMemo(
+    () => ({
+      educationEntries,
+      publicationEntries,
+      presentationEntries,
+      awards,
+      isEditing,
+    }),
+    [
+      educationEntries,
+      publicationEntries,
+      presentationEntries,
+      awards,
+      isEditing,
+    ]
+  );
 
   // Update parent form data when our state changes and we're in edit mode
   const updateParentFormData = useCallback(() => {
     if (!isEditing) return;
-    
+
     // Create updates object with current state
     const updates = {
-      // Basic info fields  
-      university: localFormData?.university || '',
-      universityAddress: localFormData?.universityAddress || '',
-      country: localFormData?.country || '',
-      continent: localFormData?.continent || '',
-      citizenship: localFormData?.citizenship || '',
-      residentialAddress: localFormData?.residentialAddress || '',
-      zipCode: localFormData?.zipCode || '',
-      currentPosition: localFormData?.currentPosition || '',
-      affiliation: localFormData?.affiliation || '',
-      department: localFormData?.department || '',
-      researchInterests: localFormData?.researchInterests || '',
+      // Basic info fields
+      university: localFormData?.university || "",
+      universityAddress: localFormData?.universityAddress || "",
+      country: localFormData?.country || "",
+      continent: localFormData?.continent || "",
+      citizenship: localFormData?.citizenship || "",
+      residentialAddress: localFormData?.residentialAddress || "",
+      zipCode: localFormData?.zipCode || "",
+      currentPosition: localFormData?.currentPosition || "",
+      affiliation: localFormData?.affiliation || "",
+      department: localFormData?.department || "",
+      researchInterests: localFormData?.researchInterests || "",
       // Update education field for backward compatibility
-      education: educationEntries[0]?.school || '',
+      education: educationEntries[0]?.school || "",
       // Update array fields
       educations: educationEntries,
       publications: publicationEntries,
       presentations: presentationEntries,
-      awards: awards
+      awards: awards,
     };
-    
+
     // Only update if there are actual changes
     const hasUpdates = Object.entries(updates).some(([key, value]) => {
       const currentValue = localFormData?.[key];
       return JSON.stringify(currentValue) !== JSON.stringify(value);
     });
-    
+
     if (hasUpdates) {
       // Update all fields at once to prevent multiple re-renders
-      onChange({ 
-        target: { 
-          name: 'researcherForm', 
-          value: updates 
-        } 
+      onChange({
+        target: {
+          name: "researcherForm",
+          value: updates,
+        },
       });
     }
-    
+
     hasChanges.current = false;
-  }, [isEditing, educationEntries, publicationEntries, presentationEntries, awards, localFormData, onChange]);
-  
+  }, [
+    isEditing,
+    educationEntries,
+    publicationEntries,
+    presentationEntries,
+    awards,
+    localFormData,
+    onChange,
+  ]);
+
   // Update parent form data when any of the arrays change in edit mode
   useEffect(() => {
     if (!isEditing) return;
-    
+
     const timer = setTimeout(() => {
       updateParentFormData();
     }, 100);
-    
+
     return () => clearTimeout(timer);
-  }, [educationEntries, publicationEntries, presentationEntries, awards, isEditing, updateParentFormData]);
-  
+  }, [
+    educationEntries,
+    publicationEntries,
+    presentationEntries,
+    awards,
+    isEditing,
+    updateParentFormData,
+  ]);
+
   // Initial data load
   useEffect(() => {
     if (profile && Object.keys(profile).length > 0) {
@@ -253,7 +312,7 @@ const ResearcherForm = ({ profile, formData: initialFormData, onChange, isEditin
       const timer = setTimeout(() => {
         updateParentFormData();
       }, 100);
-      
+
       return () => clearTimeout(timer);
     }
   }, [profile, updateParentFormData]);
@@ -261,13 +320,23 @@ const ResearcherForm = ({ profile, formData: initialFormData, onChange, isEditin
   // Remove the duplicate useEffect hooks since we're now using updateParentFormData
 
   // Check if there's any data to show in view mode
-  const hasData =  profile?.researchInterests || 
-                 profile?.department || profile?.university || profile?.universityAddress || 
-                 profile?.country || profile?.continent || profile?.citizenship || 
-                 profile?.residentialAddress || profile?.zipCode || profile?.currentPosition || 
-                 profile?.affiliation || profile?.publications?.length > 0 || 
-                 profile?.presentations?.length > 0 || profile?.awards?.length > 0 || 
-                 profile?.educations?.length > 0 || profile?.education;
+  const hasData =
+    profile?.researchInterests ||
+    profile?.department ||
+    profile?.university ||
+    profile?.universityAddress ||
+    profile?.country ||
+    profile?.continent ||
+    profile?.citizenship ||
+    profile?.residentialAddress ||
+    profile?.zipCode ||
+    profile?.currentPosition ||
+    profile?.affiliation ||
+    profile?.publications?.length > 0 ||
+    profile?.presentations?.length > 0 ||
+    profile?.awards?.length > 0 ||
+    profile?.educations?.length > 0 ||
+    profile?.education;
 
   if (!isEditing && !hasData) {
     return null;
@@ -313,28 +382,19 @@ const ResearcherForm = ({ profile, formData: initialFormData, onChange, isEditin
 
       // Update the form data with CV information
       const updatedFormData = {
-        ...localFormData,
+        ...initialFormData,
         cvUrl: downloadURL,
         cvFileName: file.name,
-        cvLastUpdated: new Date().toISOString()
+        cvLastUpdated: new Date().toISOString(),
       };
-      
       setLocalFormData(updatedFormData);
 
       // Notify parent component of the change
       onChange({
         target: {
-          name: 'researcherForm',
-          value: updatedFormData
-        }
-      });
-
-      // Also update the user's profile in Firestore
-      const userRef = doc(db, "Users", auth.currentUser.uid);
-      await updateDoc(userRef, {
-        cvUrl: downloadURL,
-        cvFileName: file.name,
-        cvLastUpdated: new Date().toISOString(),
+          name: "cvUrl",
+          value: downloadURL,
+        },
       });
 
       setUploadProgress(100);
@@ -355,9 +415,18 @@ const ResearcherForm = ({ profile, formData: initialFormData, onChange, isEditin
     }
   };
 
-  const renderInputField = (id, label, required = false, type = 'text', placeholder = '') => (
+  const renderInputField = (
+    id,
+    label,
+    required = false,
+    type = "text",
+    placeholder = ""
+  ) => (
     <div className="mb-4">
-      <label htmlFor={id} className="block text-sm font-medium text-gray-700 mb-1">
+      <label
+        htmlFor={id}
+        className="block text-sm font-medium text-gray-700 mb-1"
+      >
         {label} {required && <span className="text-red-500">*</span>}
       </label>
       {isEditing ? (
@@ -365,28 +434,31 @@ const ResearcherForm = ({ profile, formData: initialFormData, onChange, isEditin
           type={type}
           id={id}
           name={id}
-          value={localFormData[id] || ''}
+          value={localFormData[id] || ""}
           onChange={handleChange}
           placeholder={placeholder}
           className="block w-full border border-gray-300 p-2 shadow-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 sm:text-base"
           required={required}
         />
       ) : (
-        <div className="mt-1 text-gray-900">{profile[id] || '—'}</div>
+        <div className="mt-1 text-gray-900">{profile[id] || "—"}</div>
       )}
     </div>
   );
 
   const renderTextArea = (id, label, required = false, rows = 3) => (
     <div className="mb-4">
-      <label htmlFor={id} className="block text-sm font-medium text-gray-700 mb-1">
+      <label
+        htmlFor={id}
+        className="block text-sm font-medium text-gray-700 mb-1"
+      >
         {label} {required && <span className="text-red-500">*</span>}
       </label>
       {isEditing ? (
         <textarea
           id={id}
           name={id}
-          value={localFormData[id] || ''}
+          value={localFormData[id] || ""}
           onChange={handleChange}
           rows={rows}
           className="block w-full border border-gray-300 p-2 shadow-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 sm:text-base"
@@ -394,7 +466,11 @@ const ResearcherForm = ({ profile, formData: initialFormData, onChange, isEditin
         />
       ) : (
         <div className="mt-1 text-gray-900">
-          {profile[id] ? <div className="whitespace-pre-line">{profile[id]}</div> : '—'}
+          {profile[id] ? (
+            <div className="whitespace-pre-line">{profile[id]}</div>
+          ) : (
+            "—"
+          )}
         </div>
       )}
     </div>
@@ -405,14 +481,15 @@ const ResearcherForm = ({ profile, formData: initialFormData, onChange, isEditin
     updatedEntries[index] = { ...updatedEntries[index], [field]: value };
     setEducationEntries(updatedEntries);
     // Update form data
-    handleArrayChange('educations', index, updatedEntries[index]);
+    handleArrayChange("educations", index, updatedEntries[index]);
   };
 
   const renderEducationSection = () => (
     <div className="mt-8">
-     <h4 className="text-md font-medium text-gray-900 mb-4 border-b pb-2">
-  Education <span className="text-red-500">*</span>
-</h4>     {isEditing ? (
+      <h4 className="text-md font-medium text-gray-900 mb-4 border-b pb-2">
+        Education <span className="text-red-500">*</span>
+      </h4>{" "}
+      {isEditing ? (
         <div className="space-y-4">
           {educationEntries.map((entry, index) => (
             <div key={index} className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -420,8 +497,10 @@ const ResearcherForm = ({ profile, formData: initialFormData, onChange, isEditin
                 <input
                   type="text"
                   name="school"
-                  value={entry.school || ''}
-                  onChange={(e) => handleEducationChange(index, 'school', e.target.value)}
+                  value={entry.school || ""}
+                  onChange={(e) =>
+                    handleEducationChange(index, "school", e.target.value)
+                  }
                   placeholder="School/University"
                   className="w-full border border-gray-300 p-2 rounded"
                 />
@@ -430,8 +509,10 @@ const ResearcherForm = ({ profile, formData: initialFormData, onChange, isEditin
                 <input
                   type="text"
                   name="degree"
-                  value={entry.degree || ''}
-                  onChange={(e) => handleEducationChange(index, 'degree', e.target.value)}
+                  value={entry.degree || ""}
+                  onChange={(e) =>
+                    handleEducationChange(index, "degree", e.target.value)
+                  }
                   placeholder="Degree/Certificate"
                   className="w-full border border-gray-300 p-2 rounded"
                 />
@@ -440,8 +521,10 @@ const ResearcherForm = ({ profile, formData: initialFormData, onChange, isEditin
                 <input
                   type="text"
                   name="year"
-                  value={entry.year || ''}
-                  onChange={(e) => handleEducationChange(index, 'year', e.target.value)}
+                  value={entry.year || ""}
+                  onChange={(e) =>
+                    handleEducationChange(index, "year", e.target.value)
+                  }
                   placeholder="Year Graduated"
                   className="w-full border border-gray-300 p-2 rounded"
                 />
@@ -449,10 +532,14 @@ const ResearcherForm = ({ profile, formData: initialFormData, onChange, isEditin
                   <button
                     type="button"
                     onClick={() => {
-                  const newEntry = { school: '', degree: '', year: '' };
-                  setEducationEntries([...educationEntries, newEntry]);
-                  handleArrayChange('educations', educationEntries.length, newEntry);
-                }}
+                      const newEntry = { school: "", degree: "", year: "" };
+                      setEducationEntries([...educationEntries, newEntry]);
+                      handleArrayChange(
+                        "educations",
+                        educationEntries.length,
+                        newEntry
+                      );
+                    }}
                     className="text-green-600 hover:text-green-800 text-xl"
                   >
                     +
@@ -461,7 +548,11 @@ const ResearcherForm = ({ profile, formData: initialFormData, onChange, isEditin
                 {educationEntries.length > 1 && (
                   <button
                     type="button"
-                    onClick={() => setEducationEntries(educationEntries.filter((_, i) => i !== index))}
+                    onClick={() =>
+                      setEducationEntries(
+                        educationEntries.filter((_, i) => i !== index)
+                      )
+                    }
                     className="text-red-600 hover:text-red-800 text-xl"
                   >
                     −
@@ -483,10 +574,13 @@ const ResearcherForm = ({ profile, formData: initialFormData, onChange, isEditin
             <div className="text-gray-500">No education entries</div>
           )}
           {profile.educations?.map((edu, index) => (
-            <div key={index} className="grid grid-cols-1 md:grid-cols-3 gap-4 border-b pb-2">
-              <div>{edu.school || '—'}</div>
-              <div>{edu.degree || '—'}</div>
-              <div>{edu.year || '—'}</div>
+            <div
+              key={index}
+              className="grid grid-cols-1 md:grid-cols-3 gap-4 border-b pb-2"
+            >
+              <div>{edu.school || "—"}</div>
+              <div>{edu.degree || "—"}</div>
+              <div>{edu.year || "—"}</div>
             </div>
           ))}
         </div>
@@ -499,12 +593,15 @@ const ResearcherForm = ({ profile, formData: initialFormData, onChange, isEditin
     updatedEntries[index] = { ...updatedEntries[index], [field]: value };
     setPublicationEntries(updatedEntries);
     // Update form data
-    handleArrayChange('publications', index, updatedEntries[index]);
+    handleArrayChange("publications", index, updatedEntries[index]);
   };
 
   const renderPublicationsSection = () => (
     <div className="mt-8">
-      <h4 className="text-md font-medium text-gray-900 mb-4 border-b pb-2">List of Publications (Last 5 Years) <span className="text-red-500">*</span></h4>
+      <h4 className="text-md font-medium text-gray-900 mb-4 border-b pb-2">
+        List of Publications (Last 5 Years){" "}
+        <span className="text-red-500">*</span>
+      </h4>
       {isEditing ? (
         <div className="space-y-4">
           {publicationEntries.map((entry, index) => (
@@ -513,8 +610,10 @@ const ResearcherForm = ({ profile, formData: initialFormData, onChange, isEditin
                 <input
                   type="text"
                   name="title"
-                  value={entry.title || ''}
-                  onChange={(e) => handlePublicationChange(index, 'title', e.target.value)}
+                  value={entry.title || ""}
+                  onChange={(e) =>
+                    handlePublicationChange(index, "title", e.target.value)
+                  }
                   placeholder="Full Title"
                   className="w-full border border-gray-300 p-2 rounded"
                 />
@@ -523,8 +622,10 @@ const ResearcherForm = ({ profile, formData: initialFormData, onChange, isEditin
                 <input
                   type="text"
                   name="year"
-                  value={entry.year || ''}
-                  onChange={(e) => handlePublicationChange(index, 'year', e.target.value)}
+                  value={entry.year || ""}
+                  onChange={(e) =>
+                    handlePublicationChange(index, "year", e.target.value)
+                  }
                   placeholder="Year Published"
                   className="w-full border border-gray-300 p-2 rounded"
                 />
@@ -533,8 +634,10 @@ const ResearcherForm = ({ profile, formData: initialFormData, onChange, isEditin
                 <input
                   type="text"
                   name="journal"
-                  value={entry.journal || ''}
-                  onChange={(e) => handlePublicationChange(index, 'journal', e.target.value)}
+                  value={entry.journal || ""}
+                  onChange={(e) =>
+                    handlePublicationChange(index, "journal", e.target.value)
+                  }
                   placeholder="Journal/Publisher"
                   className="w-full border border-gray-300 p-2 rounded"
                 />
@@ -542,10 +645,14 @@ const ResearcherForm = ({ profile, formData: initialFormData, onChange, isEditin
                   <button
                     type="button"
                     onClick={() => {
-                  const newEntry = { title: '', year: '', journal: '' };
-                  setPublicationEntries([...publicationEntries, newEntry]);
-                  handleArrayChange('publications', publicationEntries.length, newEntry);
-                }}
+                      const newEntry = { title: "", year: "", journal: "" };
+                      setPublicationEntries([...publicationEntries, newEntry]);
+                      handleArrayChange(
+                        "publications",
+                        publicationEntries.length,
+                        newEntry
+                      );
+                    }}
                     className="text-green-600 hover:text-green-800 text-xl"
                   >
                     +
@@ -554,7 +661,11 @@ const ResearcherForm = ({ profile, formData: initialFormData, onChange, isEditin
                 {publicationEntries.length > 1 && (
                   <button
                     type="button"
-                    onClick={() => setPublicationEntries(publicationEntries.filter((_, i) => i !== index))}
+                    onClick={() =>
+                      setPublicationEntries(
+                        publicationEntries.filter((_, i) => i !== index)
+                      )
+                    }
                     className="text-red-600 hover:text-red-800 text-xl"
                   >
                     −
@@ -576,10 +687,13 @@ const ResearcherForm = ({ profile, formData: initialFormData, onChange, isEditin
             <div className="text-gray-500">No publications listed</div>
           )}
           {profile.publications?.map((pub, index) => (
-            <div key={index} className="grid grid-cols-1 md:grid-cols-3 gap-4 border-b pb-2">
-              <div>{pub.title || '—'}</div>
-              <div>{pub.year || '—'}</div>
-              <div>{pub.journal || '—'}</div>
+            <div
+              key={index}
+              className="grid grid-cols-1 md:grid-cols-3 gap-4 border-b pb-2"
+            >
+              <div>{pub.title || "—"}</div>
+              <div>{pub.year || "—"}</div>
+              <div>{pub.journal || "—"}</div>
             </div>
           ))}
         </div>
@@ -592,12 +706,15 @@ const ResearcherForm = ({ profile, formData: initialFormData, onChange, isEditin
     updatedEntries[index] = { ...updatedEntries[index], [field]: value };
     setPresentationEntries(updatedEntries);
     // Update form data
-    handleArrayChange('presentations', index, updatedEntries[index]);
+    handleArrayChange("presentations", index, updatedEntries[index]);
   };
 
   const renderPresentationsSection = () => (
     <div className="mt-8">
-      <h4 className="text-md font-medium text-gray-900 mb-4 border-b pb-2">List of Paper Presentations (Last 5 Years) <span className="text-red-500">*</span></h4>
+      <h4 className="text-md font-medium text-gray-900 mb-4 border-b pb-2">
+        List of Paper Presentations (Last 5 Years){" "}
+        <span className="text-red-500">*</span>
+      </h4>
       {isEditing ? (
         <div className="space-y-4">
           {presentationEntries.map((entry, index) => (
@@ -606,8 +723,10 @@ const ResearcherForm = ({ profile, formData: initialFormData, onChange, isEditin
                 <input
                   type="text"
                   name="title"
-                  value={entry.title || ''}
-                  onChange={(e) => handlePresentationChange(index, 'title', e.target.value)}
+                  value={entry.title || ""}
+                  onChange={(e) =>
+                    handlePresentationChange(index, "title", e.target.value)
+                  }
                   placeholder="Paper Title"
                   className="w-full border border-gray-300 p-2 rounded"
                 />
@@ -616,8 +735,10 @@ const ResearcherForm = ({ profile, formData: initialFormData, onChange, isEditin
                 <input
                   type="text"
                   name="year"
-                  value={entry.year || ''}
-                  onChange={(e) => handlePresentationChange(index, 'year', e.target.value)}
+                  value={entry.year || ""}
+                  onChange={(e) =>
+                    handlePresentationChange(index, "year", e.target.value)
+                  }
                   placeholder="Year Presented"
                   className="w-full border border-gray-300 p-2 rounded"
                 />
@@ -626,8 +747,14 @@ const ResearcherForm = ({ profile, formData: initialFormData, onChange, isEditin
                 <input
                   type="text"
                   name="conference"
-                  value={entry.conference || ''}
-                  onChange={(e) => handlePresentationChange(index, 'conference', e.target.value)}
+                  value={entry.conference || ""}
+                  onChange={(e) =>
+                    handlePresentationChange(
+                      index,
+                      "conference",
+                      e.target.value
+                    )
+                  }
                   placeholder="Conference/Fora"
                   className="w-full border border-gray-300 p-2 rounded"
                 />
@@ -635,10 +762,17 @@ const ResearcherForm = ({ profile, formData: initialFormData, onChange, isEditin
                   <button
                     type="button"
                     onClick={() => {
-                  const newEntry = { title: '', year: '', conference: '' };
-                  setPresentationEntries([...presentationEntries, newEntry]);
-                  handleArrayChange('presentations', presentationEntries.length, newEntry);
-                }}
+                      const newEntry = { title: "", year: "", conference: "" };
+                      setPresentationEntries([
+                        ...presentationEntries,
+                        newEntry,
+                      ]);
+                      handleArrayChange(
+                        "presentations",
+                        presentationEntries.length,
+                        newEntry
+                      );
+                    }}
                     className="text-green-600 hover:text-green-800 text-xl"
                   >
                     +
@@ -647,7 +781,11 @@ const ResearcherForm = ({ profile, formData: initialFormData, onChange, isEditin
                 {presentationEntries.length > 1 && (
                   <button
                     type="button"
-                    onClick={() => setPresentationEntries(presentationEntries.filter((_, i) => i !== index))}
+                    onClick={() =>
+                      setPresentationEntries(
+                        presentationEntries.filter((_, i) => i !== index)
+                      )
+                    }
                     className="text-red-600 hover:text-red-800 text-xl"
                   >
                     −
@@ -669,10 +807,13 @@ const ResearcherForm = ({ profile, formData: initialFormData, onChange, isEditin
             <div className="text-gray-500">No presentations listed</div>
           )}
           {profile.presentations?.map((pres, index) => (
-            <div key={index} className="grid grid-cols-1 md:grid-cols-3 gap-4 border-b pb-2">
-              <div>{pres.title || '—'}</div>
-              <div>{pres.year || '—'}</div>
-              <div>{pres.conference || '—'}</div>
+            <div
+              key={index}
+              className="grid grid-cols-1 md:grid-cols-3 gap-4 border-b pb-2"
+            >
+              <div>{pres.title || "—"}</div>
+              <div>{pres.year || "—"}</div>
+              <div>{pres.conference || "—"}</div>
             </div>
           ))}
         </div>
@@ -685,12 +826,14 @@ const ResearcherForm = ({ profile, formData: initialFormData, onChange, isEditin
     newAwards[index] = value;
     setAwards(newAwards);
     // Update form data
-    handleArrayChange('awards', index, value);
+    handleArrayChange("awards", index, value);
   };
 
   const renderAwardsSection = () => (
     <div className="mt-8">
-      <h4 className="text-md font-medium text-gray-900 mb-4 border-b pb-2">List of Research Related Awards <span className="text-red-500">*</span></h4>
+      <h4 className="text-md font-medium text-gray-900 mb-4 border-b pb-2">
+        List of Research Related Awards <span className="text-red-500">*</span>
+      </h4>
       {isEditing ? (
         <div className="space-y-2">
           {awards.map((award, index) => (
@@ -706,9 +849,9 @@ const ResearcherForm = ({ profile, formData: initialFormData, onChange, isEditin
                 <button
                   type="button"
                   onClick={() => {
-                  setAwards([...awards, '']);
-                  handleArrayChange('awards', awards.length, '');
-                }}
+                    setAwards([...awards, ""]);
+                    handleArrayChange("awards", awards.length, "");
+                  }}
                   className="text-green-600 hover:text-green-800 text-xl"
                 >
                   +
@@ -717,7 +860,9 @@ const ResearcherForm = ({ profile, formData: initialFormData, onChange, isEditin
               {awards.length > 1 && (
                 <button
                   type="button"
-                  onClick={() => setAwards(awards.filter((_, i) => i !== index))}
+                  onClick={() =>
+                    setAwards(awards.filter((_, i) => i !== index))
+                  }
                   className="text-red-600 hover:text-red-800 text-xl"
                 >
                   −
@@ -745,18 +890,22 @@ const ResearcherForm = ({ profile, formData: initialFormData, onChange, isEditin
   );
 
   return (
-    <div className="space-y-6">      
+    <div className="space-y-6">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {renderInputField('university', 'University', true)}
-        {renderTextArea('universityAddress', 'University Address', true)}
-        {renderInputField('country', 'Country', true)}
-        {renderInputField('continent', 'Continent', true)}
-        {renderInputField('citizenship', 'Citizenship', true)}
-        {renderTextArea('residentialAddress', 'Current Residential Address', true)}
-        {renderInputField('zipCode', 'Zip Code', true)}
-        {renderInputField('currentPosition', 'Current Position', true)}
-        {renderInputField('affiliation', 'HEI/Organization Affiliation', true)}
-        {renderInputField('department', 'College/Department', true)}
+        {renderInputField("university", "University", true)}
+        {renderTextArea("universityAddress", "University Address", true)}
+        {renderInputField("country", "Country", true)}
+        {renderInputField("continent", "Continent", true)}
+        {renderInputField("citizenship", "Citizenship", true)}
+        {renderTextArea(
+          "residentialAddress",
+          "Current Residential Address",
+          true
+        )}
+        {renderInputField("zipCode", "Zip Code", true)}
+        {renderInputField("currentPosition", "Current Position", true)}
+        {renderInputField("affiliation", "HEI/Organization Affiliation", true)}
+        {renderInputField("department", "College/Department", true)}
       </div>
 
       {renderEducationSection()}
@@ -766,14 +915,17 @@ const ResearcherForm = ({ profile, formData: initialFormData, onChange, isEditin
 
       <div className="mt-6">
         <div className="mb-4">
-          <label htmlFor="researchInterests" className="block text-sm font-medium text-gray-700">
+          <label
+            htmlFor="researchInterests"
+            className="block text-sm font-medium text-gray-700"
+          >
             Research Interests/Expertise <span className="text-red-500">*</span>
           </label>
           {isEditing ? (
             <select
               id="researchInterests"
               name="researchInterests"
-              value={localFormData.researchInterests || ''}
+              value={localFormData.researchInterests || ""}
               onChange={handleChange}
               className="mt-1 block w-full border border-gray-300 p-3 shadow-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 sm:text-base"
               required
@@ -785,11 +937,13 @@ const ResearcherForm = ({ profile, formData: initialFormData, onChange, isEditin
               <option value="Health">Health</option>
               <option value="IT">IT</option>
               <option value="Advancing Pharmacy">Advancing Pharmacy</option>
-              <option value="Business and Governance">Business and Governance</option>
+              <option value="Business and Governance">
+                Business and Governance
+              </option>
             </select>
           ) : (
             <div className="mt-1 text-gray-900">
-              {profile.researchInterests || '—'}
+              {profile.researchInterests || "—"}
             </div>
           )}
         </div>
@@ -831,7 +985,7 @@ const ResearcherForm = ({ profile, formData: initialFormData, onChange, isEditin
             )}
           </div>
         </div>
-      ) : (profile.cvUrl || localFormData.cvUrl) ? (
+      ) : profile.cvUrl || localFormData.cvUrl ? (
         <div className="mt-6">
           <h4 className="text-md font-medium text-gray-900 mb-4 border-b pb-2">
             Curriculum Vitae
@@ -841,14 +995,27 @@ const ResearcherForm = ({ profile, formData: initialFormData, onChange, isEditin
               onClick={handleDownloadCV}
               className="text-blue-600 hover:text-blue-800 flex items-center"
             >
-              <svg className="h-5 w-5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+              <svg
+                className="h-5 w-5 mr-1"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+                />
               </svg>
-              {localFormData.cvFileName || profile.cvFileName || 'Download CV'}
+              {localFormData.cvFileName || profile.cvFileName || "Download CV"}
             </button>
             {(localFormData.cvLastUpdated || profile.cvLastUpdated) && (
               <span className="text-sm text-gray-500">
-                Last updated: {new Date(localFormData.cvLastUpdated || profile.cvLastUpdated).toLocaleDateString()}
+                Last updated:{" "}
+                {new Date(
+                  localFormData.cvLastUpdated || profile.cvLastUpdated
+                ).toLocaleDateString()}
               </span>
             )}
           </div>

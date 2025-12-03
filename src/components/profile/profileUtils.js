@@ -5,12 +5,7 @@
  */
 export const validateProfile = (profile) => {
   // Basic required fields for all users
-  const requiredFields = [
-    "firstName",
-    "lastName",
-    "email",
-    "phone",
-  ];
+  const requiredFields = ["firstName", "lastName", "email", "phone"];
 
   // Role-specific required fields
   if (profile.role === "Researcher") {
@@ -21,12 +16,7 @@ export const validateProfile = (profile) => {
       "educations"
     );
   } else if (profile.role === "Peer Reviewer") {
-    requiredFields.push(
-      "affiliation",
-      "educations",
-      "expertise",
-      "cvUrl"
-    );
+    requiredFields.push("affiliation", "educations", "expertise", "cvUrl");
   }
 
   const missingFields = [];
@@ -37,71 +27,88 @@ export const validateProfile = (profile) => {
     let isValid = false;
 
     // Special handling for expertise field which can be array or string
-    if (field === 'expertise') {
+    if (field === "expertise") {
       if (Array.isArray(value)) {
         // Check if array has at least one non-empty string
-        isValid = value.length > 0 && value.some(item => 
-          item && (typeof item === 'string' || typeof item === 'object' && item !== null) && 
-          String(item).trim() !== ''
-        );
-      } else if (value && typeof value === 'object' && value !== null) {
+        isValid =
+          value.length > 0 &&
+          value.some(
+            (item) =>
+              item &&
+              (typeof item === "string" ||
+                (typeof item === "object" && item !== null)) &&
+              String(item).trim() !== ""
+          );
+      } else if (value && typeof value === "object" && value !== null) {
         // Handle case where expertise is an object (e.g., from a select component)
-        const values = Object.values(value).filter(v => v && String(v).trim() !== '');
+        const values = Object.values(value).filter(
+          (v) => v && String(v).trim() !== ""
+        );
         isValid = values.length > 0;
-      } else if (typeof value === 'string') {
+      } else if (typeof value === "string") {
         // Convert string to array and validate
-        const expertiseArray = value.split(',')
-          .map(item => typeof item === 'string' ? item.trim() : '')
+        const expertiseArray = value
+          .split(",")
+          .map((item) => (typeof item === "string" ? item.trim() : ""))
           .filter(Boolean);
         isValid = expertiseArray.length > 0;
       } else {
         // Handle case where value is null, undefined, or other types
         isValid = false;
       }
-    } 
+    }
     // Special handling for cvUrl - check if it exists and is a non-empty string
-    else if (field === 'cvUrl') {
-      isValid = !!value && typeof value === 'string' && value.trim() !== '';
+    else if (field === "cvUrl") {
+      isValid = !!value && typeof value === "string" && value.trim() !== "";
     }
     // Standard string field check
     else {
-      isValid = value && (typeof value === 'string' ? value.trim() !== '' : true);
+      isValid =
+        value && (typeof value === "string" ? value.trim() !== "" : true);
     }
 
     if (!isValid) {
       // Convert field name to a more readable format
-      const fieldName = field === 'affiliation' ? 'Institutional affiliation' : 
-                       field === 'expertise' ? 'Area of expertise' : 
-                       field === 'cvUrl' ? 'CV upload' : 
-                       field === 'educations' ? 'Education' : field;
+      const fieldName =
+        field === "affiliation"
+          ? "Institutional affiliation"
+          : field === "expertise"
+          ? "Area of expertise"
+          : field === "cvUrl"
+          ? "CV upload"
+          : field === "educations"
+          ? "Education"
+          : field;
       missingFields.push(fieldName);
     }
   }
 
   // Special handling for educations array for both Researchers and Peer Reviewers
   let hasValidEducation = false;
-  
+
   if (profile.educations) {
     // Handle case where educations is a string (legacy support)
-    if (typeof profile.educations === 'string' && profile.educations.trim() !== '') {
+    if (
+      typeof profile.educations === "string" &&
+      profile.educations.trim() !== ""
+    ) {
       hasValidEducation = true;
     }
     // Handle array of strings or objects
     else if (Array.isArray(profile.educations)) {
-      hasValidEducation = profile.educations.some(edu => {
+      hasValidEducation = profile.educations.some((edu) => {
         if (!edu) return false;
         // Handle both object with school property or direct string value
-        return typeof edu === 'string' 
-          ? edu.trim() !== ''
-          : edu.school && edu.school.trim() !== '';
+        return typeof edu === "string"
+          ? edu.trim() !== ""
+          : edu.school && edu.school.trim() !== "";
       });
     }
   }
 
   if (!hasValidEducation) {
-    const educationFieldName = profile.role === "Peer Reviewer" 
-      ? "Education details" 
-      : "Education";
+    const educationFieldName =
+      profile.role === "Peer Reviewer" ? "Education details" : "Education";
     missingFields.push(educationFieldName);
   }
 
@@ -114,7 +121,7 @@ export const validateProfile = (profile) => {
  * Gets a detailed message about missing profile requirements
  * @param {Object} profile - The profile data to check
  * @returns {Object} Object with completion status and message
- */export const getProfileCompletionStatus = (profile) => {
+ */ export const getProfileCompletionStatus = (profile) => {
   if (!profile) {
     return {
       complete: false,
@@ -156,7 +163,10 @@ export const validateProfile = (profile) => {
     }
     if (!profile.expertise?.length) {
       missingFields.push("Area of expertise");
-    } else if (Array.isArray(profile.expertise) && !profile.expertise.some(e => e && e.trim() !== '')) {
+    } else if (
+      Array.isArray(profile.expertise) &&
+      !profile.expertise.some((e) => e && e.trim() !== "")
+    ) {
       missingFields.push("Area of expertise");
     }
     if (!profile.cvUrl) {
@@ -168,29 +178,29 @@ export const validateProfile = (profile) => {
   const hasValidEducation = (() => {
     // Handle case where educations is not defined or null
     if (!profile.educations) return false;
-    
+
     // Handle case where educations is a string (legacy support)
-    if (typeof profile.educations === 'string') {
-      return profile.educations.trim() !== '';
+    if (typeof profile.educations === "string") {
+      return profile.educations.trim() !== "";
     }
-    
+
     // Handle case where educations is an array
     if (Array.isArray(profile.educations)) {
-      return profile.educations.length > 0 && 
-        profile.educations.some(edu => {
+      return (
+        profile.educations.length > 0 &&
+        profile.educations.some((edu) => {
           if (!edu) return false;
           // For string entries
-          if (typeof edu === 'string') return edu.trim() !== '';
+          if (typeof edu === "string") return edu.trim() !== "";
           // For object entries
-          if (typeof edu === 'object') {
-            return edu.school?.trim() && 
-                   edu.degree?.trim() && 
-                   edu.year;
+          if (typeof edu === "object") {
+            return edu.school?.trim() && edu.degree?.trim() && edu.year;
           }
           return false;
-        });
+        })
+      );
     }
-    
+
     return false;
   })();
 
@@ -200,9 +210,10 @@ export const validateProfile = (profile) => {
 
   return {
     complete: missingFields.length === 0,
-    message: missingFields.length > 0
-      ? `Please complete the following: ${missingFields.join(", ")}` 
-      : "Your profile is complete!",
+    message:
+      missingFields.length > 0
+        ? `Please complete the following: ${missingFields.join(", ")}`
+        : "Your profile is complete!",
     missingFields,
   };
 };
@@ -216,84 +227,141 @@ export const checkProfileComplete = (profile) => {
   if (!profile) {
     return {
       complete: false,
-      message: 'No profile data available',
-      missingFields: []
+      message: "No profile data available",
+      missingFields: [],
     };
   }
 
-  const validation = validateProfile(profile);
-  
   // For researchers
   if (profile.role === "Researcher") {
     const missingFields = [];
-    if (!profile.researchInterests?.trim()) {
-      missingFields.push('Research interests');
+
+    // Check basic required fields
+    if (!profile.firstName?.trim()) missingFields.push("First Name");
+    if (!profile.lastName?.trim()) missingFields.push("Last Name");
+    if (!profile.email?.trim()) missingFields.push("Email");
+    if (!profile.phone?.trim()) missingFields.push("Phone Number");
+
+    // Check researcher-specific fields
+    if (!profile.university?.trim()) missingFields.push("University");
+    if (!profile.researchInterests?.trim())
+      missingFields.push("Research Interests");
+    if (!profile.cvUrl) missingFields.push("CV Upload");
+
+    // Check education - accept both formats: array or single string
+    let hasValidEducation = false;
+
+    if (Array.isArray(profile.educations)) {
+      hasValidEducation =
+        profile.educations.length > 0 &&
+        profile.educations.some(
+          (edu) =>
+            edu &&
+            ((typeof edu === "string" && edu.trim()) ||
+              (typeof edu === "object" && edu.school?.trim()))
+        );
+    } else if (
+      typeof profile.educations === "string" &&
+      profile.educations.trim()
+    ) {
+      hasValidEducation = true;
+    } else if (profile.education?.trim?.()) {
+      // Fallback to education field if educations is empty
+      hasValidEducation = true;
     }
-    
-    const isComplete = validation.valid && missingFields.length === 0;
-    return {
-      complete: isComplete,
-      message: isComplete ? 'Profile is complete' : 'Please complete all required fields',
-      missingFields: [...validation.missingFields, ...missingFields]
-    };
-  } 
-  // For peer reviewers
-  else if (profile.role === "Peer Reviewer") {
-    const requiredFields = [
-      { key: 'firstName', label: 'First Name' },
-      { key: 'lastName', label: 'Last Name' },
-      { key: 'email', label: 'Email' },
-      { key: 'phone', label: 'Phone Number' },
-      { key: 'affiliation', label: 'Institutional Affiliation' },
-      { key: 'educations', label: 'Education Details' },
-      { key: 'expertise', label: 'Areas of Expertise' },
-      { key: 'cvUrl', label: 'CV Upload' }
-    ];
 
-    const missingFields = [];
-
-    requiredFields.forEach(({ key, label }) => {
-      let isValid = false;
-
-      if (key === 'expertise') {
-        // Handle expertise which can be array or string
-        if (Array.isArray(profile[key])) {
-          isValid = profile[key].length > 0;
-        } else if (typeof profile[key] === 'string') {
-          isValid = profile[key].trim() !== '';
-        }
-      } else if (key === 'educations') {
-        // Special handling for educations array
-        isValid = Array.isArray(profile[key]) && 
-                 profile[key].some(edu => edu?.school?.trim());
-      } else if (key === 'cvUrl') {
-        isValid = !!profile[key];
-      } else {
-        // Standard string field check
-        isValid = !!profile[key]?.toString()?.trim();
-      }
-
-      if (!isValid) {
-        missingFields.push(label);
-      }
-    });
+    if (!hasValidEducation) {
+      missingFields.push("Education");
+    }
 
     const isComplete = missingFields.length === 0;
-    
     return {
       complete: isComplete,
-      message: isComplete 
-        ? 'Profile is complete' 
-        : `Please complete the following: ${missingFields.join(', ')}`,
-      missingFields
+      message: isComplete
+        ? "Profile is complete"
+        : `Please complete the following: ${missingFields.join(", ")}`,
+      missingFields,
+    };
+  }
+  // For peer reviewers
+  else if (profile.role === "Peer Reviewer") {
+    const missingFields = [];
+
+    // Check basic required fields
+    if (!profile.firstName?.trim()) missingFields.push("First Name");
+    if (!profile.lastName?.trim()) missingFields.push("Last Name");
+    if (!profile.email?.trim()) missingFields.push("Email");
+    if (!profile.phone?.trim()) missingFields.push("Phone Number");
+
+    // Check peer reviewer-specific fields
+    if (!profile.affiliation?.trim())
+      missingFields.push("Institutional Affiliation");
+    if (!profile.cvUrl) missingFields.push("CV Upload");
+
+    // Check expertise - handle both array and string formats
+    let hasValidExpertise = false;
+
+    if (Array.isArray(profile.expertise)) {
+      hasValidExpertise =
+        profile.expertise.length > 0 &&
+        profile.expertise.some(
+          (e) =>
+            (typeof e === "string" && e.trim()) ||
+            (typeof e === "object" && Object.values(e).some((v) => v?.trim?.()))
+        );
+    } else if (
+      typeof profile.expertise === "string" &&
+      profile.expertise.trim()
+    ) {
+      hasValidExpertise = true;
+    }
+
+    if (!hasValidExpertise) {
+      missingFields.push("Area of Expertise");
+    }
+
+    // Check education - accept both formats: array or single string
+    let hasValidEducation = false;
+
+    if (Array.isArray(profile.educations)) {
+      hasValidEducation =
+        profile.educations.length > 0 &&
+        profile.educations.some(
+          (edu) =>
+            edu &&
+            ((typeof edu === "string" && edu.trim()) ||
+              (typeof edu === "object" && edu.school?.trim()))
+        );
+    } else if (
+      typeof profile.educations === "string" &&
+      profile.educations.trim()
+    ) {
+      hasValidEducation = true;
+    } else if (profile.education?.trim?.()) {
+      // Fallback to education field if educations is empty
+      hasValidEducation = true;
+    }
+
+    if (!hasValidEducation) {
+      missingFields.push("Education");
+    }
+
+    const isComplete = missingFields.length === 0;
+
+    return {
+      complete: isComplete,
+      message: isComplete
+        ? "Profile is complete"
+        : `Please complete the following: ${missingFields.join(", ")}`,
+      missingFields,
     };
   }
 
-  // Default case for other roles
+  // Default case for other roles (Admin, etc.)
   return {
-    complete: validation.valid,
-    message: validation.valid ? 'Profile is complete' : 'Please complete all required fields',
-    missingFields: validation.missingFields || []
+    complete: true,
+    message: "Profile is complete",
+    missingFields: [],
   };
 };
 
