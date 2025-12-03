@@ -39,7 +39,6 @@ function Profile() {
     educations: [], // Changed from empty string to empty array
   });
   const [researcherInfo, setResearcherInfo] = useState({
-    educations: [], // Changed from empty string to empty array
     researchInterests: "",
   });
   const messageRef = useRef(null);
@@ -283,7 +282,6 @@ const [previousFormData, setPreviousFormData] = useState(null);
         phone: profile.phone || "",
 
         // Common fields
-        educations: profile.educations || "",
         researchInterests: profile.researchInterests || "",
 
         // Peer reviewer fields
@@ -301,11 +299,11 @@ const [previousFormData, setPreviousFormData] = useState(null);
         currentPosition: profile.currentPosition || "",
 
         // Array fields (initialize with empty arrays if not present)
-        educations:
-          profile.educations ||
-          (profile.educations
-            ? [{ school: profile.educations, degree: "", year: "" }]
-            : []),
+        educations: Array.isArray(profile.educations) 
+          ? profile.educations 
+          : profile.educations 
+            ? [{ school: profile.educations, degree: "", year: "" }] 
+            : [],
         publications: profile.publications || [],
         presentations: profile.presentations || [],
         awards: profile.awards || [],

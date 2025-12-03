@@ -3,6 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { db, auth } from "../../firebase/firebase";
 import NotificationService from "../../utils/notificationService";
 import { formatFirestoreDate } from "../../utils/dateUtils";
+import { checkProfileComplete, getProfileCompletionStatus } from "../../components/profile/profileUtils";
 import UserLogService from '../../utils/userLogService';
 
 import {
@@ -131,40 +132,32 @@ export default function ResubmitManuscript() {
     fetchManuscript();
   }, [manuscriptId, navigate]);
 
-  // Check if user's profile is complete
-  const isProfileComplete = async (userId) => {
+  // Check if user's profile is complete using the same logic as Submit Manuscript
+  const checkProfileCompletion = async (userId) => {
     try {
-      // First check local storage for quick access
-      const cachedComplete = localStorage.getItem(`profileComplete_${userId}`);
-      if (cachedComplete !== null) {
-        return cachedComplete === 'true';
-      }
-
-      // If not in cache, check Firestore
       const userDoc = await getDoc(doc(db, "Users", userId));
       if (userDoc.exists()) {
         const userData = userDoc.data();
-        const requiredFields = {
-          'Researcher': [ 'education', 'researchInterests'],
-          'Peer Reviewer': ['affiliation', 'expertise', 'education']
-        };
-
-        const role = userData.role || 'Researcher';
-        if (!role || !requiredFields[role]) return true; // If role not set or not in list, consider complete
-
-        const isComplete = requiredFields[role].every(field => {
-          const value = userData[field];
-          return value && value.trim() !== '';
-        });
-
-        // Cache the result
-        localStorage.setItem(`profileComplete_${userId}`, isComplete);
-        return isComplete;
+        const { complete, message, missingFields } = checkProfileComplete(userData);
+        
+        if (!complete) {
+          console.log('Profile incomplete. Missing fields:', missingFields);
+          return { complete: false, message, missingFields };
+        }
+        return { complete: true };
       }
-      return false;
+      return { 
+        complete: false, 
+        message: 'User profile not found. Please complete your profile first.',
+        missingFields: []
+      };
     } catch (error) {
       console.error('Error checking profile completion:', error);
-      return false;
+      return { 
+        complete: false, 
+        message: 'Error checking profile completion. Please try again.',
+        missingFields: []
+      };
     }
   };
 
@@ -172,10 +165,14 @@ export default function ResubmitManuscript() {
     e.preventDefault();
 
     try {
-      // Check if profile is complete
-      const profileComplete = await isProfileComplete(auth.currentUser.uid);
-      if (!profileComplete) {
-        alert('Please complete your profile before resubmitting a manuscript. All required fields must be filled out.');
+      // Check if profile is complete using the centralized validation
+      const { complete, message } = await checkProfileCompletion(auth.currentUser.uid);
+      if (!complete) {
+        // Clear any cached completion status to force a fresh check next time
+        localStorage.removeItem(`profileComplete_${auth.currentUser.uid}`);
+        
+        // Show more detailed error message
+        alert(`Please complete your profile before resubmitting a manuscript.\n\n${message}`);
         navigate('/profile');
         return;
       }
