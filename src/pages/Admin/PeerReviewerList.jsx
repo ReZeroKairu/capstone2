@@ -468,8 +468,14 @@ try {
       }
 
       // Filter by expertise if selected
-      if (expertiseFilter && reviewer.expertise !== expertiseFilter) {
-        return false;
+      if (expertiseFilter) {
+        if (Array.isArray(reviewer.expertise)) {
+          if (!reviewer.expertise.includes(expertiseFilter)) {
+            return false;
+          }
+        } else if (reviewer.expertise !== expertiseFilter) {
+          return false;
+        }
       }
 
       // Filter by search query if provided
