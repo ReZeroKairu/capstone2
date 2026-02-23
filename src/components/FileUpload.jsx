@@ -1,8 +1,32 @@
 // src/components/FileUpload.jsx
 import React, { useState, useEffect } from 'react';
 import { ref, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage';
-import { storage, auth } from '../firebase/firebase';
+import { storage, auth, db } from '../firebase/firebase';
+import { collection, query, where, getDocs, addDoc } from 'firebase/firestore';
 import { getFileTypeIcon, formatFileSize, isImage } from '../utils/fileUtils';
+
+// Helper function to calculate file hash
+const calculateFileHash = (file) => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      try {
+        const buffer = e.target.result;
+        const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
+        const hashArray = Array.from(new Uint8Array(hashBuffer));
+        const hashHex = hashArray
+          .map(b => b.toString(16).padStart(2, '0'))
+          .join('');
+        resolve(hashHex);
+      } catch (error) {
+        console.error('Error calculating file hash:', error);
+        reject(error);
+      }
+    };
+    reader.onerror = error => reject(error);
+    reader.readAsArrayBuffer(file);
+  });
+};
 
 const FileUpload = ({
   onUploadSuccess,
@@ -30,6 +54,66 @@ const FileUpload = ({
     }
   }, [initialFile]);
 
+  // Helper function to get a unique filename
+  const getUniqueFileName = async (baseName) => {
+    let counter = 0;
+    let fileName = baseName;
+    
+    while (true) {
+      try {
+        const fileRef = ref(storage, `manuscripts/${fileName}`);
+        await getDownloadURL(fileRef);
+        // If we get here, file exists, try next number
+        counter++;
+        const ext = baseName.slice(baseName.lastIndexOf('.'));
+        const nameWithoutExt = baseName.slice(0, baseName.lastIndexOf('.'));
+        fileName = `${nameWithoutExt}(${counter})${ext}`;
+      } catch (error) {
+        if (error.code === 'storage/object-not-found') {
+          // File doesn't exist, we can use this name
+          return fileName;
+        }
+        // Some other error, rethrow
+        throw error;
+      }
+    }
+  };
+
+  // Function to check if file with same content already exists
+  const checkForDuplicateContent = async (file) => {
+    try {
+      // Calculate file hash
+      const fileHash = await calculateFileHash(file);
+      console.log('Calculated file hash:', fileHash);
+      
+      // Check Firestore for existing file with same hash
+      const filesRef = collection(db, 'file_hashes');
+      const q = query(filesRef, where('hash', '==', fileHash));
+      const querySnapshot = await getDocs(q);
+      
+      if (!querySnapshot.empty) {
+        // Get the first matching file's data
+        const existingFile = querySnapshot.docs[0].data();
+        console.log('Found duplicate file:', existingFile);
+        return {
+          isDuplicate: true,
+          existingFile: {
+            name: existingFile.originalName,
+            url: existingFile.downloadURL,
+            uploadedAt: existingFile.uploadedAt
+          }
+        };
+      }
+      
+      console.log('No duplicate content found');
+      return { isDuplicate: false, fileHash };
+    } catch (error) {
+      console.error('Error checking for duplicate content:', error);
+      // If there's an error, we'll still allow the upload but log it
+      return { isDuplicate: false, error: error.message };
+    }
+  };
+
   const handleFileChange = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -53,9 +137,35 @@ const FileUpload = ({
 
       setPreviewUrl(null);
 
-      const timestamp = Date.now();
       const safeFileName = file.name.replace(/[^\w\d.-]/g, "_");
-      const storagePath = `manuscripts/${timestamp}_${safeFileName}`;
+      
+      // Check for duplicate content first
+      const { isDuplicate, existingFile, fileHash } = await checkForDuplicateContent(file);
+      
+      if (isDuplicate) {
+        throw new Error(
+          `A file with identical content ("${existingFile.name}") was already uploaded on ${new Date(existingFile.uploadedAt).toLocaleDateString()}. ` +
+          'Please upload a different file or modify the content to create a new version.'
+        );
+      }
+      
+      // Always get a unique filename, even if content is unique
+      const uniqueFileName = await getUniqueFileName(safeFileName);
+      const storagePath = `manuscripts/${uniqueFileName}`;
+      
+      // Double-check if this exact file already exists
+      try {
+        const existingFileRef = ref(storage, storagePath);
+        await getDownloadURL(existingFileRef);
+        // If we get here, file exists with same name but different content
+        throw new Error('A file with this name already exists. Please rename your file.');
+      } catch (error) {
+        if (error.code !== 'storage/object-not-found') {
+          throw error; // Re-throw if it's not a "not found" error
+        }
+        // If we get here, the file doesn't exist yet, which is good
+      }
+      
       const storageRef = ref(storage, storagePath);
       
       // Include user metadata for access control
@@ -87,7 +197,21 @@ const FileUpload = ({
               size: file.size,
               storagePath,
               lastModified: new Date().toISOString(),
+              fileHash // Store the file hash for future reference
             };
+            
+            // Store the file hash in Firestore for future duplicate checking
+            if (fileHash) {
+              const fileHashesRef = collection(db, 'file_hashes');
+              await addDoc(fileHashesRef, {
+                hash: fileHash,
+                originalName: file.name,
+                downloadURL,
+                uploadedBy: auth?.currentUser?.uid || 'unknown',
+                uploadedAt: new Date().toISOString(),
+                storagePath
+              });
+            }
             setFileInfo(fileData);
             onUploadSuccess?.(fileData);
           } catch (err) {

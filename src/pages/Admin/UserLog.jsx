@@ -53,18 +53,58 @@ const UserLog = ({ onLogsUpdated }) => {
     return [first, middle, last].filter(Boolean).join(" ");
   };
 
+  // Reset to first page when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+    setPageCursors([]);
+    fetchLogs(1);
+  }, [searchTerm, startDate, endDate, actionFilter, roleFilter, logsPerPage]);
+
   const fetchLogs = async (page = 1) => {
     try {
       setLoading(true);
       const logsRef = collection(db, "UserLog");
-      const baseQuery = [orderBy("timestamp", "desc"), limit(logsPerPage)];
+      
+      // Base query conditions
+      const conditions = [orderBy("timestamp", "desc"), limit(logsPerPage)];
+      
+      // Add search conditions if any
+      if (searchTerm) {
+        // Note: This is a simplified search. For better search, consider using Algolia or similar
+        conditions.push(where("email", ">=", searchTerm.toLowerCase()));
+        conditions.push(where("email", "<=", searchTerm.toLowerCase() + '\uf8ff'));
+      }
+      
+      // Add date range filter
+      if (startDate) {
+        conditions.push(where("timestamp", ">=", Timestamp.fromDate(new Date(startDate))));
+      }
+      if (endDate) {
+        const endOfDay = new Date(endDate);
+        endOfDay.setHours(23, 59, 59, 999);
+        conditions.push(where("timestamp", "<=", Timestamp.fromDate(endOfDay)));
+      }
+      
+      // Add action filter
+      if (actionFilter && actionFilter !== "all") {
+        conditions.push(where("action", "==", actionFilter));
+      }
+      
+      // Add role filter if applicable
+      if (roleFilter && roleFilter !== "all") {
+        conditions.push(where("metadata.newRole", "==", roleFilter));
+      }
 
       let logsQuery;
       if (page === 1) {
-        logsQuery = query(logsRef, ...baseQuery);
+        logsQuery = query(logsRef, ...conditions);
       } else {
         const cursor = pageCursors[page - 2];
-        logsQuery = query(logsRef, ...baseQuery, startAfter(cursor));
+        if (cursor) {
+          logsQuery = query(logsRef, ...conditions, startAfter(cursor));
+        } else {
+          logsQuery = query(logsRef, ...conditions);
+        }
       }
 
       const logsSnapshot = await getDocs(logsQuery);
@@ -164,31 +204,11 @@ const UserLog = ({ onLogsUpdated }) => {
     fetchLogs(currentPage);
   }, [currentPage, logsPerPage]);
 
-  const filteredLogs = useMemo(
-    () =>
-      logs.filter((log) => {
-        const fullName = log.fullName || "";
-        const matchesSearch =
-          log.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          log.action.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          log.userId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          fullName.toLowerCase().includes(searchTerm.toLowerCase());
+  // Use logs directly since filtering is now done on the server
+  const filteredLogs = logs;
 
-        const matchesStartDate = startDate
-          ? log.timestamp >= new Date(startDate)
-          : true;
-        const matchesEndDate = endDate
-          ? log.timestamp <=
-            new Date(new Date(endDate).setHours(23, 59, 59, 999))
-          : true;
-
-        return matchesSearch && matchesStartDate && matchesEndDate;
-      }),
-    [logs, searchTerm, startDate, endDate]
-  );
-
-  // Reliable total pages based on Firestore cursor
-  const totalPages = pageCursors.length + (hasMore ? 1 : 0);
+  // Estimate total pages based on current data and hasMore flag
+  const totalPages = Math.max(1, pageCursors.length + (hasMore ? 1 : 0));
 
   const getPageNumbers = (current, total) => {
     const delta = 2;
@@ -441,7 +461,7 @@ const UserLog = ({ onLogsUpdated }) => {
         </div>
 
         {/* Pagination */}
-        <div className="mt-4 p-2 bg-yellow-400 shadow-lg flex flex-col sm:flex-row justify-between items-center gap-2 rounded-sm">
+        <div className="mt-4 p-2 bg-yellow-400 shadow-lg flex flex-col sm:flex-row justify-between items-center gap-2 rounded-sm" key={`pagination-${currentPage}-${logsPerPage}`}>
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-sm font-bold text-red-900">Page Size:</span>
             <select
@@ -502,8 +522,12 @@ const UserLog = ({ onLogsUpdated }) => {
               Next
             </button>
             <button
-              onClick={() => setCurrentPage(totalPages)}
-              disabled={!hasMore}
+              onClick={() => {
+                if (totalPages > 1) {
+                  setCurrentPage(totalPages);
+                }
+              }}
+              disabled={!hasMore || totalPages <= 1}
               className="px-3 py-1 mr-1 bg-yellow-400 text-red-900 rounded-md border border-red-900 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Last

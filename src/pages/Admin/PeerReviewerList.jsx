@@ -368,30 +368,31 @@ const handleAssign = async (reviewerId) => {
         const reviewerDoc = await getDoc(doc(db, "Users", reviewerId));
         const reviewerData = reviewerDoc.data();
 
-        // Send invitation email
-       // Send invitation email
-try {
-  const emailData = {
-    reviewerEmail: reviewerData.email,
-    reviewerName: `${reviewerData.firstName} ${reviewerData.lastName}`,
-    manuscriptTitle: msData.title,
-    deadlineDate: deadlineDate.toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric'
-    }),
-    manuscriptId: manuscriptId,
-    adminName: currentUser.displayName || 'Admin'
-  };
+        // Email functionality has been disabled to prevent charges
+        console.log('Email functionality is currently disabled');
+        /* Email functionality disabled
+        try {
+          const emailData = {
+            reviewerEmail: reviewerData.email,
+            reviewerName: `${reviewerData.firstName} ${reviewerData.lastName}`,
+            manuscriptTitle: msData.title,
+            deadlineDate: deadlineDate.toLocaleDateString('en-US', {
+              year: 'numeric',
+              month: 'long',
+              day: 'numeric'
+            }),
+            manuscriptId: manuscriptId,
+            adminName: currentUser.displayName || 'Admin'
+          };
 
-  // Call the Firebase Function directly
-  const sendInvitationEmail = httpsCallable(functions, 'sendReviewerInvitationEmail');
-  await sendInvitationEmail(emailData);
-} catch (emailError) {
-  console.error("Failed to send invitation email:", emailError);
-  // Don't fail the entire process if email fails
-  // The reviewer is still assigned in Firestore
-}
+          // Call the Firebase Function directly
+          const sendInvitationEmail = httpsCallable(functions, 'sendReviewerInvitationEmail');
+          await sendInvitationEmail(emailData);
+        } catch (emailError) {
+          console.error("Email functionality is disabled:", emailError);
+          // Email functionality is intentionally disabled
+        }
+        */
 
         // Update the local state immediately for better UX
         setReviewers((prevReviewers) =>

@@ -226,7 +226,16 @@ exports.sendReviewerInvitationEmail = onCall(
         );
       }
 
-      // Send the email using the EmailServiceBackend
+      // Email sending functionality has been disabled
+      logger.info(`Email sending functionality is disabled. Would have sent to: ${reviewerEmail}`);
+      
+      return {
+        success: true,
+        messageId: 'email-disabled',
+        message: "Email functionality is currently disabled",
+      };
+      
+      /* Email sending code (commented out to prevent charges)
       const result = await EmailServiceBackend.sendReviewerInvitation({
         reviewerEmail,
         reviewerName,
@@ -243,6 +252,7 @@ exports.sendReviewerInvitationEmail = onCall(
         messageId: result.messageId,
         message: "Invitation email sent successfully",
       };
+      */
     } catch (error) {
       logger.error("Error in sendReviewerInvitationEmail:", error);
       throw new functions.https.HttpsError(
