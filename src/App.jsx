@@ -46,6 +46,10 @@ import DeadlineSettings from "./pages/Admin/DeadlineSettings";
 import Deadlines from "./pages/Admin/Deadlines";
 import PeerReviewerList from "./pages/Admin/PeerReviewerList";
 
+// ⬇️ New legal pages
+import PrivacyPolicy from "./pages/Legal/PrivacyPolicy";
+import TermsOfService from "./pages/Legal/TermsOfService";
+
 function App() {
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState(null);
@@ -121,6 +125,8 @@ function App() {
                 <Route path="/pub-ethics" element={<PubEthics />} />
                 <Route path="/guidelines" element={<Guidelines />} />
                 <Route path="/format-guidelines" element={<FormatGuidelines />} />
+                <Route path="/privacy" element={<PrivacyPolicy />} />
+                <Route path="/terms" element={<TermsOfService />} />
                 <Route path="/unauthorized" element={<Unauthorized />} />
                 <Route path="/manuscripts" element={<Manuscripts />} />
                 <Route path="/createform" element={<CreateForm />} />
