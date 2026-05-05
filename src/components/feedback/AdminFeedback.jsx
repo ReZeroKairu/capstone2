@@ -53,11 +53,7 @@ const AdminFeedback = ({
   const [loading, setLoading] = useState(true);
   const [showFeedbackForm, setShowFeedbackForm] = useState(true);
   const [isFormExpanded, setIsFormExpanded] = useState(true);
-
-  // Use the status from props if available, otherwise fetch it
   const [manuscriptStatus, setManuscriptStatus] = useState(propStatus || "");
-
-  // Statuses where feedback should be hidden from researchers
   const hideFeedbackStatuses = [
     "Back to Admin",
     "Assigning Peer Reviewer",
@@ -68,18 +64,16 @@ const AdminFeedback = ({
   const { currentUser } = useAuth();
   const prevFeedbackGroups = useRef({});
 
-  // Group feedbacks by version and sort by version number
   const feedbackGroups = useMemo(() => {
     const groupFeedbacksByVersion = (feedbacks) => {
       return feedbacks.reduce((groups, item) => {
-        // Convert version to string and handle decimal versions (e.g., 1.0.0 -> 1)
+
         let version = "1";
         if (item.version) {
-          // If version is a string with dots, take the first part
+
           if (typeof item.version === "string" && item.version.includes(".")) {
             version = item.version.split(".")[0];
           } else {
-            // Otherwise, convert to string and remove any decimal part
             version = String(item.version).split(".")[0];
           }
         }
@@ -95,7 +89,6 @@ const AdminFeedback = ({
     return groupFeedbacksByVersion(feedbacks);
   }, [feedbacks]);
 
-  // Get all versions sorted (newest first)
   const sortedVersions = useMemo(() => {
     return Object.keys(feedbackGroups).sort((a, b) => {
       // Convert to numbers if possible for numeric comparison
@@ -105,29 +98,24 @@ const AdminFeedback = ({
     });
   }, [feedbackGroups]);
 
-  // Determine the latest version, using currentVersion prop if available
   const latestVersion = useMemo(() => {
-    // If currentVersion is provided, use it as the latest version
     if (currentVersion) {
-      return String(currentVersion).split(".")[0]; // Use only the major version
+      return String(currentVersion).split(".")[0]; 
     }
 
-    // Fall back to the first version in the sorted list if available
+
     return sortedVersions[0] || "1";
   }, [sortedVersions, currentVersion]);
 
-  // Track expanded state for each version
   const [expandedFeedback, setExpandedFeedback] = useState({});
   const [fileInputKey, setFileInputKey] = useState(0);
 
-  // If status prop changes, update the state
   useEffect(() => {
     if (propStatus !== undefined) {
       setManuscriptStatus(propStatus);
     }
   }, [propStatus]);
 
-  // Only fetch status if not provided via props
   useEffect(() => {
     if (propStatus !== undefined || !manuscriptId) return;
 
@@ -146,7 +134,6 @@ const AdminFeedback = ({
     fetchManuscriptStatus();
   }, [manuscriptId, propStatus]);
 
-  // Check if user is admin
   useEffect(() => {
     const checkAdminStatus = async () => {
       if (!currentUser) {
@@ -175,7 +162,7 @@ const AdminFeedback = ({
     checkAdminStatus();
   }, [currentUser]);
 
-  // Set up feedback listener
+
   useEffect(() => {
     let isMounted = true;
     let unsubscribe = null;
@@ -228,10 +215,9 @@ const AdminFeedback = ({
       );
     };
 
-    // Initialize the listener
+
     const unsubscribePromise = setupFeedbackListener();
 
-    // Cleanup function
     return () => {
       isMounted = false;
       if (unsubscribePromise) {
@@ -242,7 +228,7 @@ const AdminFeedback = ({
     };
   }, [manuscriptId]);
 
-  // Memoize the showAllFeedbackStatuses array to prevent unnecessary re-renders
+
   const showAllFeedbackStatuses = useMemo(
     () => [
       "For Revision (Minor)",
@@ -254,11 +240,9 @@ const AdminFeedback = ({
     []
   );
 
-  // Initialize expanded state when feedback groups or user role changes
   useEffect(() => {
     if (!latestVersion || !Object.keys(feedbackGroups).length) return;
 
-    // Always update the expanded state based on the current conditions
     const versions = Object.keys(feedbackGroups);
 
     setExpandedFeedback((prev) => {
@@ -272,7 +256,6 @@ const AdminFeedback = ({
           showAllFeedbackStatuses.includes(manuscriptStatus) ||
           !isLatestVersion;
 
-        // Only update if the version is new or if the expanded state needs to change
         if (
           newExpanded[version] === undefined ||
           newExpanded[version] !== shouldBeExpanded
@@ -282,11 +265,9 @@ const AdminFeedback = ({
         }
       });
 
-      // Only update if there are actual changes to prevent unnecessary re-renders
-      return hasChanges ? newExpanded : prev;
+          return hasChanges ? newExpanded : prev;
     });
 
-    // Update the previous groups and admin status for reference
     prevFeedbackGroups.current = {
       ...feedbackGroups,
       isAdmin: isAdmin,
@@ -300,7 +281,6 @@ const AdminFeedback = ({
     showAllFeedbackStatuses,
   ]);
 
-  // Upload file to storage
   const uploadFile = async () => {
     if (!file) return null;
 
@@ -327,41 +307,38 @@ const AdminFeedback = ({
     }
   };
 
-  // Reset the feedback form
   const resetForm = () => {
-    // Clear form state
+
     setFeedback("");
     setFile(null);
     setFilePreview(null);
     setEditingFeedback(null);
 
-    // Clear the file input
     const fileInput = document.getElementById("file-upload");
     if (fileInput) {
       fileInput.value = "";
-      // Trigger change event to ensure React state updates
+
       const event = new Event("change", { bubbles: true });
       fileInput.dispatchEvent(event);
     }
 
-    // Force re-render of the file input by toggling the key
+
     setFileInputKey((prev) => prev + 1);
   };
 
-  // Handle form submission
-  const handleSubmit = async () => {
+   const handleSubmit = async () => {
     if ((!feedback.trim() && !file) || submitting) return;
 
     setSubmitting(true);
     setError("");
 
     try {
-      // 1. Upload file if exists
+
       let fileData = null;
       if (file) {
         fileData = await uploadFile();
       } else if (editingFeedback) {
-        // Keep existing file data if editing and no new file is uploaded
+
         fileData = {
           url: editingFeedback.fileUrl,
           name: editingFeedback.fileName,
@@ -371,11 +348,9 @@ const AdminFeedback = ({
         };
       }
 
-      // 2. Get manuscript data
       const manuscriptRef = doc(db, "manuscripts", manuscriptId);
       const manuscriptDoc = await getDoc(manuscriptRef);
 
-      // 3. Prepare feedback data
       const feedbackData = {
         message: feedback.trim(),
         createdAt: editingFeedback
@@ -383,7 +358,6 @@ const AdminFeedback = ({
           : serverTimestamp(),
         createdBy: currentUser.uid,
         createdByName: currentUser.displayName || "Admin",
-        // Use the existing version when editing, otherwise use currentVersion
         version: editingFeedback ? editingFeedback.version : currentVersion,
         fileUrl: fileData?.url || null,
         fileName: fileData?.name || null,
@@ -393,11 +367,10 @@ const AdminFeedback = ({
         manuscriptStatus: manuscriptDoc.exists()
           ? manuscriptDoc.data().status
           : "Unknown",
-        ...(editingFeedback && { updatedAt: serverTimestamp() }), // Only set updatedAt when editing
-      };
+        ...(editingFeedback && { updatedAt: serverTimestamp() }),      };
 
       if (editingFeedback) {
-        // 4. Update existing feedback
+
         const feedbackRef = doc(
           db,
           "manuscripts",
@@ -407,7 +380,7 @@ const AdminFeedback = ({
         );
         await updateDoc(feedbackRef, feedbackData);
       } else {
-        // 5. Create new feedback
+  
         const feedbackRef = collection(
           db,
           "manuscripts",
@@ -417,7 +390,6 @@ const AdminFeedback = ({
         await addDoc(feedbackRef, feedbackData);
       }
 
-      // 6. Reset form
       resetForm();
     } catch (error) {
       console.error("Error in feedback submission:", error);
@@ -429,23 +401,21 @@ const AdminFeedback = ({
     }
   };
 
-  // Handle editing feedback
+
   const handleEditFeedback = (feedback) => {
     setEditingFeedback(feedback);
     setFeedback(feedback.message);
-    // Don't pre-fill the file input, but show a note that a new file can be uploaded
-    // which will replace the existing one
+
     setFile(null);
     setFilePreview(null);
     document.getElementById("file-upload").value = "";
 
-    // Scroll to the form
     document
       .getElementById("feedback-form")
       ?.scrollIntoView({ behavior: "smooth" });
   };
 
- // In handleDeleteFeedback function
+
 const handleDeleteFeedback = async (id, storagePath) => {
   if (!currentUser) {
     console.error('No user is signed in');
@@ -462,20 +432,18 @@ const handleDeleteFeedback = async (id, storagePath) => {
     console.log('Is admin?', isAdmin);
     console.log('Storage path to delete:', storagePath);
 
-    // If there's a file associated with this feedback, delete it from storage
     if (storagePath) {
       try {
-        // Decode and clean the path
+
         const decodedPath = decodeURIComponent(storagePath);
         const cleanPath = decodedPath.startsWith('/') ? decodedPath.substring(1) : decodedPath;
         
         console.log("Cleaned path:", cleanPath);
         
-        // Create a reference to the file
+    
         const fileRef = ref(storage, cleanPath);
         console.log("File reference created:", fileRef.fullPath);
-        
-        // Test if the file exists and is readable
+
         try {
           const url = await getDownloadURL(fileRef);
           console.log("File exists and is readable. URL:", url);
@@ -483,7 +451,7 @@ const handleDeleteFeedback = async (id, storagePath) => {
           console.warn("File access test failed, but will still attempt deletion:", error.message);
         }
         
-        // Delete the file
+
         await deleteObject(fileRef);
         console.log("File deleted successfully from storage");
       } catch (error) {
@@ -492,11 +460,10 @@ const handleDeleteFeedback = async (id, storagePath) => {
           message: error.message,
           details: error
         });
-        // Continue with feedback deletion even if file deletion fails
+
       }
     }
 
-    // Delete the feedback document
     console.log("Deleting feedback document with ID:", id);
     await deleteDoc(doc(db, "manuscripts", manuscriptId, "adminFeedback", id));
     console.log("Feedback document deleted successfully");
@@ -516,10 +483,10 @@ const handleDeleteFeedback = async (id, storagePath) => {
     alert(errorMessage);
   }
 };
-  // Toggle feedback expansion - fixed version
+
   const toggleFeedback = useCallback(
     (version, isLatestVersion) => {
-      // Check if this version should be restricted
+
       const isRestricted =
         isLatestVersion &&
         !isAdmin &&
@@ -528,16 +495,15 @@ const handleDeleteFeedback = async (id, storagePath) => {
         return;
       }
 
-      // Use functional update to ensure we have the latest state
       setExpandedFeedback((prev) => {
-        // Create a new object to ensure React detects the state change
+
         const newState = { ...prev };
 
-        // If the version doesn't exist in the state, initialize it as true
+
         if (newState[version] === undefined) {
           newState[version] = true;
         } else {
-          // Toggle the current version
+  
           newState[version] = !newState[version];
         }
 
@@ -548,12 +514,11 @@ const handleDeleteFeedback = async (id, storagePath) => {
     [isAdmin, manuscriptStatus, showAllFeedbackStatuses]
   );
 
-  // Expand all feedback versions
+
   const expandAll = useCallback(() => {
     const newExpanded = {};
     Object.keys(feedbackGroups).forEach((version) => {
       const isLatestVersion = version === latestVersion;
-      // Skip the latest version for researchers if not in allowed status
       if (
         !isAdmin &&
         isLatestVersion &&
@@ -572,30 +537,26 @@ const handleDeleteFeedback = async (id, storagePath) => {
     showAllFeedbackStatuses,
   ]);
 
-  // Collapse all feedback versions
   const collapseAll = useCallback(() => {
     const newExpanded = {};
-
-    // For researchers in restricted status, only collapse non-latest versions
     if (
       !isAdmin &&
       latestVersion &&
       !showAllFeedbackStatuses.includes(manuscriptStatus)
     ) {
-      // Keep the latest version expanded if it's the only one visible
+
       const versions = Object.keys(feedbackGroups);
       if (versions.length > 1) {
-        // Collapse all except the latest version
         Object.keys(feedbackGroups).forEach((version) => {
           if (version !== latestVersion) {
             newExpanded[version] = false;
           } else {
-            newExpanded[version] = true; // Keep latest expanded
+            newExpanded[version] = true; 
           }
         });
       }
     } else {
-      // For admins or when all versions are visible, collapse everything
+
       Object.keys(feedbackGroups).forEach((version) => {
         newExpanded[version] = false;
       });
@@ -612,19 +573,13 @@ const handleDeleteFeedback = async (id, storagePath) => {
     manuscriptStatus,
     showAllFeedbackStatuses,
   ]);
-
-  // Check if all visible versions are currently expanded
-  const allExpanded = useMemo(() => {
+ const allExpanded = useMemo(() => {
     if (!latestVersion) return false;
     const versions = Object.keys(feedbackGroups);
 
-    // Filter out versions that shouldn't be visible to the current user
     const visibleVersions = versions.filter((version) => {
       const isLatestVersion = version === latestVersion;
-      // Show version if:
-      // 1. User is admin, OR
-      // 2. It's not the latest version, OR
-      // 3. It's the latest version but in an allowed status
+
       return (
         isAdmin ||
         !isLatestVersion ||
@@ -645,7 +600,6 @@ const handleDeleteFeedback = async (id, storagePath) => {
     showAllFeedbackStatuses,
   ]);
 
-  // Calculate if there are multiple versions
   const hasMultipleVersions = useMemo(() => {
     if (!feedbacks?.length) return false;
     return feedbacks.some((fb) => fb.version && fb.version !== "1");
@@ -657,7 +611,6 @@ const handleDeleteFeedback = async (id, storagePath) => {
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-      {/* Header with Toggle */}
       <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold text-gray-800">
@@ -693,7 +646,6 @@ const handleDeleteFeedback = async (id, storagePath) => {
         </div>
       </div>
 
-      {/* Feedback Form Header with Toggle */}
       {showFeedbackForm && isAdmin && (
         <div className="border-b border-gray-200">
           <button
@@ -721,7 +673,7 @@ const handleDeleteFeedback = async (id, storagePath) => {
             </svg>
           </button>
 
-          {/* Collapsible Form Content */}
+
           <div
             className={`transition-all duration-200 overflow-hidden ${
               isFormExpanded
@@ -777,13 +729,12 @@ const handleDeleteFeedback = async (id, storagePath) => {
           </div>
         ) : feedbacks.length > 0 ? (
           <div className="space-y-4">
-            {/* Removed duplicate expand/collapse controls */}
+
 
             {sortedVersions.map((version) => {
               const versionFeedbacks = feedbackGroups[version] || [];
               const isLatestVersion = version === latestVersion;
 
-              // For researchers, hide the latest version if it's not in an allowed status
               if (
                 !isAdmin &&
                 isLatestVersion &&

@@ -28,7 +28,7 @@ if (typeof window !== "undefined") {
   });
 }
 
-// Initialize Firebase services
+// Initialize Firebase services 
 const db = getFirestore(app); // Firestore
 const auth = getAuth(app); // Authentication
 const provider = new GoogleAuthProvider(); // Google login

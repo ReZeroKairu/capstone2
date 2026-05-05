@@ -97,7 +97,6 @@ function App() {
             />
           )}
 
-          {/* Main content */}
           <div
             className={`flex-1 flex flex-col transition-all duration-300 ease-in-out relative ${
               user && sidebarOpen ? "md:ml-64" : ""

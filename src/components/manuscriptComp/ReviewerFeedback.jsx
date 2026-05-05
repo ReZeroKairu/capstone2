@@ -1,4 +1,4 @@
-// src/components/Manuscripts/ReviewerFeedback.jsx
+
 import React from "react";
 import { useNavigate } from "react-router-dom";
 
@@ -15,19 +15,14 @@ const ReviewerFeedback = ({
   downloadFileCandidate,
   unassignReviewer,
 }) => {
-  // Get current manuscript version
   const currentVersion = manuscript.versionNumber || 1;
-  
-  // Filter reviewers to only show those assigned to the current version
   const filteredReviewers = visibleReviewers.filter(reviewer => {
     const meta = manuscript.assignedReviewersMeta?.[reviewer.id] || {};
-    // If no version info, assume it's for version 1 (legacy support)
     if (!meta.assignedVersions) return currentVersion === 1;
     return meta.assignedVersions?.includes(currentVersion);
   });
   const [showFullName, setShowFullName] = React.useState(propShowFullName);
   const [clickedEmails, setClickedEmails] = React.useState({});
-  // Define isFinalState at the component level
   const navigate = useNavigate();
   const isFinalState = [
     "For Revision (Minor)",
@@ -35,7 +30,6 @@ const ReviewerFeedback = ({
     "For Publication",
     "Rejected"
   ].includes(manuscript.status);
-  // If user is a researcher and manuscript is not in final state, don't show any feedback
   if (role === "Researcher" && !isFinalState) {
     return (
       <div className="bg-blue-50 p-3 rounded-md mb-3 border text-center">
@@ -58,8 +52,6 @@ const ReviewerFeedback = ({
               assignedByUser.middleName ? assignedByUser.middleName + " " : ""
             }${assignedByUser.lastName}`
           : reviewer.assignedBy || "—";
-
-        // Gather all submissions for this reviewer across all versions
         const allSubmissions = (manuscript.reviewerSubmissions || [])
           .filter((s) => s.reviewerId === reviewer.id)
           .sort((a, b) => {
@@ -71,31 +63,21 @@ const ReviewerFeedback = ({
               : new Date(b.completedAt || 0).getTime();
             return aTime - bTime;
           });
-
-        // Determine which submissions to show based on role
         let submissionsToShow = [];
         let showNoFeedbackMessage = false;
-
         if (role === "Researcher") {
-          // Filter out the latest version if not in final state
           const currentVersion = manuscript.versionNumber || 1;
-          
           submissionsToShow = allSubmissions.filter(submission => {
-            // Only show if it's not the latest version or if in final state
             const submissionVersion = submission.manuscriptVersionNumber || 1;
             return submissionVersion < currentVersion || isFinalState;
           });
-
-          // If in final state, show all completed submissions
           if (isFinalState) {
             const completedSubmissions = allSubmissions.filter(
               submission => submission.status === "Completed"
             );
-            
             if (completedSubmissions.length > 0) {
               submissionsToShow = completedSubmissions.map(submission => ({
                 ...submission,
-                // Override any decision-related fields to hide them
                 decision: null,
                 recommendation: null,
                 comments: "",
@@ -106,17 +88,14 @@ const ReviewerFeedback = ({
           
           showNoFeedbackMessage = submissionsToShow.length === 0;
         } else if (role === "Admin" || role === "Peer Reviewer") {
-          // For admins and peer reviewers, show all their submissions
           submissionsToShow = allSubmissions;
         }
-
         return (
           <div
             key={reviewer.id}
             className="bg-blue-50 p-3 rounded-md mb-3 border"
           >
             {role === "Admin" ? (
-              // Admin view
               <>
                 <div className="flex justify-between items-start">
                   <div>
@@ -146,19 +125,16 @@ const ReviewerFeedback = ({
                           }`}
                           onClick={(e) => {
                             e.stopPropagation();
-                            // Add visual feedback
                             setClickedEmails(prev => ({
                               ...prev,
                               [reviewer.id]: true
                             }));
-                            // Navigate after a small delay for visual feedback
                             setTimeout(() => {
                               navigate(`/profile/${reviewer.id}`);
                             }, 150);
                           }}
                           title="View reviewer profile"
                           onMouseLeave={() => {
-                            // Reset the clicked state when mouse leaves
                             setTimeout(() => {
                               setClickedEmails(prev => ({
                                 ...prev,
@@ -237,8 +213,6 @@ const ReviewerFeedback = ({
                           </span>
                         );
                       }
-                      
-                      // If we get here, invitation is accepted
                       return (
                         <span className="text-xs px-2 py-1 rounded bg-green-100 text-green-800">
                           {manuscript.status === "Back to Admin" ? "Previously Reviewed" : "Reviewing..."}
@@ -303,8 +277,6 @@ const ReviewerFeedback = ({
                   `at ${formatDate(decisionMeta.decidedAt)}`}
               </div>
             )}
-
-            {/* Submissions */}
             {submissionsToShow.length > 0 ? (
               <div className="mt-2 space-y-2">
                 {submissionsToShow.map((submission, idx) => (
@@ -325,15 +297,12 @@ const ReviewerFeedback = ({
                         {submission.completedAt ? (() => {
                           try {
                             const date = submission.completedAt;
-                            // Handle Firestore timestamp
                             if (date.toDate) {
                               return date.toDate().toLocaleString();
                             }
-                            // Handle timestamp with seconds
                             if (date.seconds) {
                               return new Date(date.seconds * 1000).toLocaleString();
                             }
-                            // Handle string or number
                             const parsedDate = new Date(date);
                             return isNaN(parsedDate.getTime()) ? '—' : parsedDate.toLocaleString();
                           } catch (e) {

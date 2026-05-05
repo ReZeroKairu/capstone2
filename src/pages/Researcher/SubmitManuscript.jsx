@@ -17,7 +17,7 @@ import {
   serverTimestamp,
   query,
   orderBy,
-  increment  // Add this back
+  increment 
 } from "firebase/firestore";
 import { useNotifications } from "../../hooks/useNotifications";
 import { useUserLogs } from "../../hooks/useUserLogs";
@@ -27,8 +27,6 @@ import { debounce } from "lodash";
 import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import { useNavigate } from 'react-router-dom';
-
-
 export default function SubmitManuscript() {
   const [forms, setForms] = useState([]);
   const [form, setForm] = useState(null);
@@ -42,15 +40,13 @@ export default function SubmitManuscript() {
   const fileQuestionIndex =
     form?.questions?.findIndex((q) => q.type === "file") ?? -1;
   const [cooldown, setCooldown] = useState(0);
-
   const [allResearchers, setAllResearchers] = useState([]);
   const [selectedUsers, setSelectedUsers] = useState([]);
   const [userSearch, setUserSearch] = useState("");
   const [currentPage, setCurrentPage] = useState(0);
   const questionsPerPage = 5;
-
   const [monthlyCount, setMonthlyCount] = useState(0);
-  const [monthlyLimit, setMonthlyLimit] = useState(3); // Set monthly limit to 3
+  const [monthlyLimit, setMonthlyLimit] = useState(3); 
   const [error, setError] = useState(null);
   const [isFileUploading, setIsFileUploading] = useState(false);
 const isMounted = useRef(true);
@@ -73,11 +69,8 @@ useEffect(() => {
   const showMessage = (msg) => {
     setMessage(msg);
     setMessageVisible(true);
-    // Increased timeout from 4000ms (4s) to 10000ms (10s)
     setTimeout(() => setMessageVisible(false), 10000);
   };
-  
-  // Check if user's profile is complete
   const checkProfileCompletion = useCallback(async (userId) => {
     try {
       const userDoc = await getDoc(doc(db, "Users", userId));
@@ -96,11 +89,9 @@ useEffect(() => {
       return false;
     } catch (error) {
       console.error('Error checking profile completion:', error);
-      return true; // Assume profile is complete to avoid blocking submission due to an error
+      return true;
     }
   }, []);
-  
-  // Check profile completion when user loads the page
   useEffect(() => {
     if (currentUser?.uid) {
       checkProfileCompletion(currentUser.uid);
@@ -115,8 +106,6 @@ useEffect(() => {
     const m = String(date.getUTCMonth() + 1).padStart(2, "0");
     return `${y}-${m}`;
   };
-
-  // Fetch monthly submission count
   const fetchMonthlyCount = useCallback(async () => {
     if (!currentUser?.uid) return;
     
@@ -135,8 +124,6 @@ useEffect(() => {
       setError("Failed to load submission data. Please refresh the page.");
     }
   }, [currentUser]);
-
-  // Fetch forms, researchers, and user info
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -164,8 +151,6 @@ useEffect(() => {
               setLoading(false);
               return;
             }
-            
-            // Get user data
             const userDoc = await getDoc(doc(db, "Users", user.uid));
             if (!userDoc.exists()) {
               setLoading(false);
@@ -176,18 +161,13 @@ useEffect(() => {
             const role = userData.role || "Researcher";
             setCurrentUser({ ...user, role });
             setMonthlyLimit(role === "Researcher" ? 3 : Infinity);
-            
-            // Check if profile is complete
             const isComplete = await checkProfileCompleteStatus(user.uid);
             if (!isComplete) {
-              // Show warning message but don't redirect
               showMessage('Please complete your profile to submit a manuscript.');
-              // Set the profile incomplete flag to show the warning banner
               setIsProfileComplete(false);
               setLoading(false);
             } else {
               setIsProfileComplete(true);
-              // Only fetch monthly count if profile is complete
               try {
                 const monthKey = getMonthKey();
                 const counterDoc = await getDoc(
@@ -201,8 +181,6 @@ useEffect(() => {
               }
             }
             
-            // Monthly count is now handled in the profile complete check
-            
           } catch (err) {
             console.error("Error in auth state change:", err);
             setError("Failed to load page. Please try again.");
@@ -211,7 +189,6 @@ useEffect(() => {
           }
         });
         
-        // Cleanup subscription on unmount
         return () => unsubscribe();
       } catch (err) {
         console.error("Error fetching data:", err);
@@ -311,21 +288,14 @@ useEffect(() => {
     `${first || ""} ${middle ? middle.charAt(0) + ". " : ""}${
       last || ""
     }`.trim();
-
-  // Check if user's profile is complete
   const checkProfileCompleteStatus = async (userId) => {
     try {
-      // Always check Firestore for the latest data
       const userDoc = await getDoc(doc(db, "Users", userId));
       if (userDoc.exists()) {
         const userData = userDoc.data();
-        
-        // Basic required fields for all users
         const basicRequiredFields = [
           'firstName', 'lastName', 'email', 'phone'
         ];
-        
-        // Role-specific required fields
         const roleSpecificFields = {
           'Researcher': ['researchInterests'],
           'Peer Reviewer': ['affiliation', 'expertise']
@@ -336,8 +306,6 @@ useEffect(() => {
           ...basicRequiredFields,
           ...(roleSpecificFields[role] || [])
         ];
-
-        // Check all required fields are present and non-empty
         return allRequiredFields.every(field => {
           const value = userData[field];
           return value !== undefined && 
@@ -354,24 +322,18 @@ useEffect(() => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
-    if (loading) return; // Prevent multiple submissions
-    
-    // Set loading state and scroll to top to show the loading overlay
+    if (loading) return; 
     setLoading(true);
     window.scrollTo({ top: 0, behavior: 'smooth' });
     
     try {
-      // Check if profile is complete
       const isComplete = await checkProfileCompleteStatus(currentUser.uid);
       if (!isComplete) {
         showMessage('Please complete your profile to submit a manuscript. You will be redirected to your profile page.');
-        setTimeout(() => navigate('/profile'), 3000); // Redirect after 3 seconds
+        setTimeout(() => navigate('/profile'), 3000); 
         setLoading(false);
         return;
       }
-
-      // Clear the draft on successful submission
       localStorage.removeItem("manuscriptDraft");
       if (saveTimeoutRef.current) {
         clearTimeout(saveTimeoutRef.current);
@@ -393,7 +355,6 @@ useEffect(() => {
         return;
       }
       
-      // Check monthly limit from Firestore to ensure it's up-to-date
       const monthKey = getMonthKey();
       const counterRef = doc(db, `submissionCounters/${currentUser.uid}_${monthKey}`);
       const counterDoc = await getDoc(counterRef);
@@ -450,8 +411,6 @@ useEffect(() => {
         setLoading(false);
         return;
       }
-
-      // If we got here, all validations passed
       const userSnap = await getDoc(doc(db, "Users", currentUser.uid));
       if (!userSnap.exists()) {
         showMessage("User record not found.");
@@ -522,11 +481,9 @@ useEffect(() => {
 
       setCooldown(5);
       cooldownRef.current = 5;
-
-      // Create submission history entry for the initial submission
       const initialSubmission = {
         versionNumber: 1,
-        submittedAt: new Date(), // Use client-side date for the initial submission
+        submittedAt: new Date(),
         fileUrl: downloadURL,
         fileName: fileData.name,
         fileType: fileData.type,
@@ -535,8 +492,6 @@ useEffect(() => {
         revisionNotes: "Initial submission",
         status: initialStatus,
       };
-
-      // Add manuscript to the manuscripts collection
       const manuscriptRef = await addDoc(collection(db, "manuscripts"), {
         formId: form.id,
         formTitle: form.title || "",
@@ -577,15 +532,12 @@ useEffect(() => {
         },
       });
 
-    // Update the submission counter
     try {
-      // First try to update the counter atomically
       await updateDoc(counterRef, {
         count: increment(1),
         lastUpdated: serverTimestamp()
       });
     } catch (error) {
-      // If document doesn't exist, create it
       if (error.code === 'not-found') {
         await setDoc(counterRef, {
           count: 1,
@@ -595,7 +547,7 @@ useEffect(() => {
           lastUpdated: serverTimestamp()
         });
       } else {
-        throw error; // Re-throw other errors
+        throw error; 
       }
     }
 
@@ -606,7 +558,6 @@ setMonthlyCount(prev => prev + 1);
         manuscriptTitleAnswer || form.title || "Untitled Manuscript",
         currentUser.uid
       );
-      // Ensure we have a valid title before logging
       const manuscriptTitle = manuscriptTitleAnswer || form.title || "Untitled Manuscript";
       await logManuscriptSubmission(
         currentUser.uid,
@@ -614,7 +565,6 @@ setMonthlyCount(prev => prev + 1);
         manuscriptTitle
       );
       
-      // Also log to console for debugging
       console.log('Logged manuscript submission:', {
         userId: currentUser.uid,
         manuscriptId: manuscriptRef.id,
@@ -624,7 +574,6 @@ setMonthlyCount(prev => prev + 1);
       setAnswers({});
       setSelectedUsers([]);
       showMessage("Manuscript submitted successfully!");
-      // Navigate to dashboard after successful submission
      navigate('/dashboard', { replace: true });
     
   } catch (err) {
@@ -632,8 +581,7 @@ setMonthlyCount(prev => prev + 1);
     const errorMessage = err.message || "Failed to submit form. Please try again.";
     showMessage(errorMessage);
     setError(errorMessage);
-    
-    // If it's a permission error, suggest re-authenticating
+
     if (err.code === 'permission-denied' || err.code === 'permission_denied') {
       console.warn("Permission denied - user may need to re-authenticate");
     }
@@ -643,11 +591,7 @@ setMonthlyCount(prev => prev + 1);
     }
   }
 };
-
-  // Track last saved draft content
   const lastSavedDraft = useRef(null);
-
-  // Save draft to localStorage
   const saveDraft = useCallback(() => {
     if (loading) return;
 
@@ -656,11 +600,9 @@ setMonthlyCount(prev => prev + 1);
       fileData: fileQuestionIndex >= 0 ? answers[fileQuestionIndex] : null,
       formId: form?.id,
     };
-
-    // Only save if there are actual changes
     const currentDraftStr = JSON.stringify(currentDraft);
     if (lastSavedDraft.current === currentDraftStr) {
-      return; // No changes, don't save
+      return;
     }
 
     const draftData = {
@@ -672,14 +614,10 @@ setMonthlyCount(prev => prev + 1);
     localStorage.setItem("manuscriptDraft", JSON.stringify(draftData));
     setLastSaved(new Date());
     setIsDraftSaving(false);
-
-    // Only show toast if not the initial load
     if (lastSavedDraft.current !== null) {
       toast.info("Draft saved", { autoClose: 2000 });
     }
   }, [answers, fileQuestionIndex, form?.id, loading]);
-
-  // Memoize the debounced save function
   const debouncedSave = useMemo(
     () =>
       debounce(() => {
@@ -690,7 +628,6 @@ setMonthlyCount(prev => prev + 1);
     [saveDraft, loading]
   );
 
-  // Cleanup debounce on unmount
   useEffect(() => {
     return () => {
       debouncedSave.cancel();
@@ -699,8 +636,6 @@ setMonthlyCount(prev => prev + 1);
       }
     };
   }, [debouncedSave]);
-
-  // Load draft when form loads
   useEffect(() => {
     if (!form?.id) return;
 
@@ -711,16 +646,13 @@ setMonthlyCount(prev => prev + 1);
 
         const draft = JSON.parse(savedDraft);
         if (draft.formId === form.id) {
-          // Only update state if there are actual changes
           setAnswers((prev) => {
-            // Skip if answers are the same
             if (JSON.stringify(prev) === JSON.stringify(draft.answers || {})) {
               return prev;
             }
             return draft.answers || {};
           });
 
-          // Restore file data if exists
           if (draft.fileData) {
             const fileQIndex = form.questions.findIndex(
               (q) => q.type === "file"
@@ -743,7 +675,6 @@ setMonthlyCount(prev => prev + 1);
 
     loadDraft();
 
-    // Auto-save interval
     const autoSaveInterval = setInterval(() => {
       if (
         Object.keys(answers).length > 0 ||
@@ -751,21 +682,18 @@ setMonthlyCount(prev => prev + 1);
       ) {
         saveDraft();
       }
-    }, 30000); // Auto-save every 30 seconds
+    }, 30000);
 
     return () => {
       clearInterval(autoSaveInterval);
     };
-  }, [form?.id]); // Removed saveDraft and answers from dependencies
-
-  // Auto-save on changes with debounce and change detection
+  }, [form?.id]);
   useEffect(() => {
     const hasAnswers = Object.keys(answers).length > 0;
     const hasFileData = fileQuestionIndex >= 0 && answers[fileQuestionIndex]?.file;
     const hasChanges = hasAnswers || hasFileData;
 
     if (hasChanges && !loading) {
-      // Only set saving state if there are actual changes
       const currentDraft = {
         answers,
         fileData: fileQuestionIndex >= 0 ? answers[fileQuestionIndex] : null,
@@ -801,8 +729,6 @@ setMonthlyCount(prev => prev + 1);
       <h1 className="text-xl md:text-2xl font-semibold mb-4 md:mb-6 text-[#111] text-center">
         Submit Manuscript
       </h1>
-
-      {/* Monthly Limit Alert */}
       {monthlyCount >= monthlyLimit && (
         <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-6 rounded" role="alert">
           <div className="flex">
@@ -818,7 +744,6 @@ setMonthlyCount(prev => prev + 1);
           </div>
         </div>
       )}
-
       <div className="mb-6">
         <label className="block mb-2 font-semibold">Select Form:</label>
         <select
@@ -874,7 +799,6 @@ setMonthlyCount(prev => prev + 1);
                       </select>
                     );
                   }
-                  
                   return q.options.map((opt, optIndex) => (
                     <div
                       key={opt.id || optIndex}
@@ -905,7 +829,6 @@ setMonthlyCount(prev => prev + 1);
                     </div>
                   ));
                 };
-                
                 return (
                   <div
                     key={q.id || globalIndex}
